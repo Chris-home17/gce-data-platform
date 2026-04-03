@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import type { Route } from 'next'
 import { usePathname } from 'next/navigation'
 import {
   Activity,
@@ -30,7 +31,7 @@ import { Button } from '@/components/ui/button'
 
 interface NavItem {
   label: string
-  href: string
+  href: Route
   icon: React.ElementType
 }
 
@@ -60,6 +61,7 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Infrastructure',
     items: [
+      { label: 'Shared Geography', href: '/shared-geography', icon: Map },
       { label: 'Sites', href: '/sites', icon: MapPin },
       { label: 'Coverage', href: '/coverage', icon: Map },
       { label: 'Source Mapping', href: '/source-mapping', icon: GitBranch },

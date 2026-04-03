@@ -84,6 +84,9 @@ GO
 IF OBJECT_ID('App.vSourceMappings', 'V') IS NOT NULL
     DROP VIEW App.vSourceMappings;
 GO
+IF OBJECT_ID('App.vSharedGeoUnits', 'V') IS NOT NULL
+    DROP VIEW App.vSharedGeoUnits;
+GO
 IF OBJECT_ID('App.vOrgUnits', 'V') IS NOT NULL
     DROP VIEW App.vOrgUnits;
 GO
@@ -251,6 +254,12 @@ GO
 IF OBJECT_ID('App.UpsertUser', 'P') IS NOT NULL
     DROP PROCEDURE App.UpsertUser;
 GO
+IF OBJECT_ID('App.UpsertSharedGeoUnit', 'P') IS NOT NULL
+    DROP PROCEDURE App.UpsertSharedGeoUnit;
+GO
+IF OBJECT_ID('App.AttachSharedGeoUnitToAccount', 'P') IS NOT NULL
+    DROP PROCEDURE App.AttachSharedGeoUnitToAccount;
+GO
 IF OBJECT_ID('App.CreateOrEnsureSitePath', 'P') IS NOT NULL
     DROP PROCEDURE App.CreateOrEnsureSitePath;
 GO
@@ -373,6 +382,9 @@ IF OBJECT_ID('Dim.Package', 'U') IS NOT NULL
 GO
 IF OBJECT_ID('Dim.OrgUnit', 'U') IS NOT NULL
     DROP TABLE Dim.OrgUnit;
+GO
+IF OBJECT_ID('Dim.SharedGeoUnit', 'U') IS NOT NULL
+    DROP TABLE Dim.SharedGeoUnit;
 GO
 IF OBJECT_ID('Dim.Account', 'U') IS NOT NULL
     DROP TABLE Dim.Account;

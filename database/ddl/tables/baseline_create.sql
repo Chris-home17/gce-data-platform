@@ -55,12 +55,38 @@ BEGIN
 END;
 GO
 
+IF OBJECT_ID('Dim.SharedGeoUnit', 'U') IS NULL
+BEGIN
+    CREATE TABLE Dim.SharedGeoUnit
+    (
+        SharedGeoUnitId  INT IDENTITY(1,1)  NOT NULL PRIMARY KEY,
+        GeoUnitType      NVARCHAR(20)       NOT NULL,
+        GeoUnitCode      NVARCHAR(50)       NOT NULL,
+        GeoUnitName      NVARCHAR(200)      NOT NULL,
+        CountryCode      NVARCHAR(10)       NULL,
+        IsActive         BIT                NOT NULL CONSTRAINT DF_SharedGeoUnit_IsActive DEFAULT (1),
+        CreatedOnUtc     DATETIME2          NOT NULL CONSTRAINT DF_SharedGeoUnit_Created DEFAULT (SYSUTCDATETIME()),
+        ModifiedOnUtc    DATETIME2          NOT NULL CONSTRAINT DF_SharedGeoUnit_Modified DEFAULT (SYSUTCDATETIME()),
+        CreatedBy        NVARCHAR(128)      NOT NULL CONSTRAINT DF_SharedGeoUnit_CreatedBy DEFAULT (SESSION_USER),
+        ModifiedBy       NVARCHAR(128)      NOT NULL CONSTRAINT DF_SharedGeoUnit_ModifiedBy DEFAULT (SESSION_USER)
+    );
+
+    ALTER TABLE Dim.SharedGeoUnit
+        ADD CONSTRAINT CK_SharedGeoUnit_Type CHECK (GeoUnitType IN ('Region','SubRegion','Cluster','Country'));
+
+    CREATE UNIQUE INDEX UX_SharedGeoUnit_Code ON Dim.SharedGeoUnit (GeoUnitType, GeoUnitCode);
+    CREATE INDEX IX_SharedGeoUnit_CountryCode ON Dim.SharedGeoUnit (CountryCode) WHERE CountryCode IS NOT NULL;
+END;
+GO
+
 IF OBJECT_ID('Dim.OrgUnit', 'U') IS NULL
 BEGIN
     CREATE TABLE Dim.OrgUnit
     (
         OrgUnitId          INT IDENTITY(1,1)  NOT NULL PRIMARY KEY,
         AccountId          INT                NOT NULL,
+        SharedGeoUnitId    INT                NULL,
+        CountryOrgUnitId   INT                NULL,
         OrgUnitType        NVARCHAR(20)       NOT NULL,
         OrgUnitCode        NVARCHAR(50)       NOT NULL,
         OrgUnitName        NVARCHAR(200)      NOT NULL,
@@ -73,15 +99,38 @@ BEGIN
         CreatedBy          NVARCHAR(128)      NOT NULL CONSTRAINT DF_OrgUnit_CreatedBy DEFAULT (SESSION_USER),
         ModifiedBy         NVARCHAR(128)      NOT NULL CONSTRAINT DF_OrgUnit_ModifiedBy DEFAULT (SESSION_USER),
         CONSTRAINT FK_OrgUnit_Account FOREIGN KEY (AccountId) REFERENCES Dim.Account (AccountId),
-        CONSTRAINT FK_OrgUnit_Parent FOREIGN KEY (ParentOrgUnitId) REFERENCES Dim.OrgUnit (OrgUnitId)
+        CONSTRAINT FK_OrgUnit_Parent FOREIGN KEY (ParentOrgUnitId) REFERENCES Dim.OrgUnit (OrgUnitId),
+        CONSTRAINT FK_OrgUnit_SharedGeo FOREIGN KEY (SharedGeoUnitId) REFERENCES Dim.SharedGeoUnit (SharedGeoUnitId),
+        CONSTRAINT FK_OrgUnit_Country FOREIGN KEY (CountryOrgUnitId) REFERENCES Dim.OrgUnit (OrgUnitId)
     );
 
     ALTER TABLE Dim.OrgUnit
-        ADD CONSTRAINT CK_OrgUnit_Type CHECK (OrgUnitType IN ('Division','Country','Site','Region','Branch','Area','Territory'));
+        ADD CONSTRAINT CK_OrgUnit_Type CHECK (OrgUnitType IN ('Region','SubRegion','Cluster','Country','Area','Branch','Site'));
+
+    ALTER TABLE Dim.OrgUnit
+        ADD CONSTRAINT CK_OrgUnit_SharedLink CHECK
+        (
+            (OrgUnitType IN ('Region','SubRegion','Cluster','Country') AND SharedGeoUnitId IS NOT NULL)
+            OR
+            (OrgUnitType IN ('Area','Branch','Site') AND SharedGeoUnitId IS NULL)
+        );
+
+    ALTER TABLE Dim.OrgUnit
+        ADD CONSTRAINT CK_OrgUnit_CountryLink CHECK
+        (
+            (OrgUnitType IN ('Area','Branch','Site') AND CountryOrgUnitId IS NOT NULL)
+            OR
+            (OrgUnitType IN ('Region','SubRegion','Cluster','Country') AND CountryOrgUnitId IS NULL)
+        );
 
     CREATE UNIQUE INDEX UX_OrgUnit_Path ON Dim.OrgUnit (Path);
     CREATE UNIQUE INDEX UX_OrgUnit_CodePerAccount ON Dim.OrgUnit (AccountId, OrgUnitType, OrgUnitCode);
+    CREATE UNIQUE INDEX UX_OrgUnit_SharedGeoPerAccount
+        ON Dim.OrgUnit (AccountId, SharedGeoUnitId)
+        WHERE SharedGeoUnitId IS NOT NULL;
     CREATE INDEX IX_OrgUnit_Parent ON Dim.OrgUnit (ParentOrgUnitId);
+    CREATE INDEX IX_OrgUnit_SharedGeo ON Dim.OrgUnit (SharedGeoUnitId) WHERE SharedGeoUnitId IS NOT NULL;
+    CREATE INDEX IX_OrgUnit_Country ON Dim.OrgUnit (CountryOrgUnitId) WHERE CountryOrgUnitId IS NOT NULL;
     CREATE INDEX IX_OrgUnit_CountryCode ON Dim.OrgUnit (CountryCode) WHERE CountryCode IS NOT NULL;
 END;
 GO
@@ -1217,6 +1266,27 @@ AS
 GO
 
 -- --------------------------------------------------------------------------------
+-- App.vSharedGeoUnits
+-- Canonical shared geography repository
+-- --------------------------------------------------------------------------------
+IF OBJECT_ID('App.vSharedGeoUnits', 'V') IS NOT NULL
+    DROP VIEW App.vSharedGeoUnits;
+GO
+CREATE OR ALTER VIEW App.vSharedGeoUnits
+AS
+    SELECT
+        sgu.SharedGeoUnitId,
+        sgu.GeoUnitType,
+        sgu.GeoUnitCode,
+        sgu.GeoUnitName,
+        sgu.CountryCode,
+        sgu.IsActive,
+        sgu.CreatedOnUtc,
+        sgu.ModifiedOnUtc
+    FROM Dim.SharedGeoUnit AS sgu;
+GO
+
+-- --------------------------------------------------------------------------------
 -- App.vOrgUnits
 -- Org units with account info and parent info
 -- Used by: scrSites (M-03), scrSiteDetail (M-04)
@@ -1231,6 +1301,12 @@ AS
         ou.AccountId,
         a.AccountCode,
         a.AccountName,
+        ou.SharedGeoUnitId,
+        sgu.GeoUnitCode            AS SharedGeoUnitCode,
+        sgu.GeoUnitName            AS SharedGeoUnitName,
+        ou.CountryOrgUnitId,
+        ctry.OrgUnitCode           AS CountryOrgUnitCode,
+        ctry.OrgUnitName           AS CountryOrgUnitName,
         ou.OrgUnitType,
         ou.OrgUnitCode,
         ou.OrgUnitName,
@@ -1247,6 +1323,8 @@ AS
     FROM Dim.OrgUnit AS ou
     JOIN Dim.Account AS a ON a.AccountId = ou.AccountId
     LEFT JOIN Dim.OrgUnit AS parent ON parent.OrgUnitId = ou.ParentOrgUnitId
+    LEFT JOIN Dim.SharedGeoUnit AS sgu ON sgu.SharedGeoUnitId = ou.SharedGeoUnitId
+    LEFT JOIN Dim.OrgUnit AS ctry ON ctry.OrgUnitId = ou.CountryOrgUnitId
     OUTER APPLY
     (
         SELECT COUNT(*) AS ChildCount
@@ -1276,6 +1354,7 @@ AS
     SELECT
         m.OrgUnitSourceMapId,
         m.OrgUnitId,
+        ou.SharedGeoUnitId,
         ou.OrgUnitCode,
         ou.OrgUnitName,
         ou.OrgUnitType,
@@ -1290,7 +1369,7 @@ AS
         m.ModifiedOnUtc
     FROM Dim.OrgUnitSourceMap AS m
     JOIN Dim.OrgUnit AS ou ON ou.OrgUnitId = m.OrgUnitId
-    JOIN Dim.Account AS a  ON a.AccountId  = ou.AccountId;
+    LEFT JOIN Dim.Account AS a  ON a.AccountId  = ou.AccountId;
 GO
 
 -- --------------------------------------------------------------------------------
@@ -1344,18 +1423,66 @@ GO
 
 -- Stored procedures ----------------------------------------------------------------
 
--- Inserts or updates an org unit, enforcing materialized path construction
-CREATE OR ALTER PROCEDURE App.InsertOrgUnit
-    @AccountCode            NVARCHAR(50),
-    @OrgUnitType            NVARCHAR(20),
-    @OrgUnitCode            NVARCHAR(50),
-    @OrgUnitName            NVARCHAR(200),
-    @ParentOrgUnitType      NVARCHAR(20) = NULL,
-    @ParentOrgUnitCode      NVARCHAR(50) = NULL,
+CREATE OR ALTER PROCEDURE App.UpsertSharedGeoUnit
+    @GeoUnitType            NVARCHAR(20),
+    @GeoUnitCode            NVARCHAR(50),
+    @GeoUnitName            NVARCHAR(200),
     @CountryCode            NVARCHAR(10) = NULL,
     @IsActive               BIT = 1,
-    @ApplyPolicies          BIT = 0,
-    @OrgUnitId              INT OUTPUT
+    @SharedGeoUnitId        INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @GeoUnitType NOT IN ('Region','SubRegion','Cluster','Country')
+        THROW 50060, 'Shared geography type must be Region, SubRegion, Cluster, or Country.', 1;
+
+    IF @GeoUnitType = 'Country' AND @CountryCode IS NULL
+        THROW 50072, 'CountryCode is required when GeoUnitType is Country.', 1;
+
+    IF @GeoUnitType <> 'Country'
+        SET @CountryCode = NULL;
+
+    DECLARE @ExistingId INT = (
+        SELECT SharedGeoUnitId
+        FROM Dim.SharedGeoUnit
+        WHERE GeoUnitType = @GeoUnitType
+          AND GeoUnitCode = @GeoUnitCode
+    );
+
+    IF @ExistingId IS NULL
+    BEGIN
+        INSERT INTO Dim.SharedGeoUnit
+            (GeoUnitType, GeoUnitCode, GeoUnitName, CountryCode, IsActive)
+        VALUES
+            (@GeoUnitType, @GeoUnitCode, @GeoUnitName,
+             CASE WHEN @GeoUnitType = 'Country' THEN @CountryCode ELSE NULL END,
+             @IsActive);
+
+        SET @SharedGeoUnitId = SCOPE_IDENTITY();
+    END
+    ELSE
+    BEGIN
+        UPDATE Dim.SharedGeoUnit
+        SET GeoUnitName = @GeoUnitName,
+            CountryCode = CASE WHEN @GeoUnitType = 'Country' THEN @CountryCode ELSE NULL END,
+            IsActive = @IsActive,
+            ModifiedOnUtc = SYSUTCDATETIME(),
+            ModifiedBy = SESSION_USER
+        WHERE SharedGeoUnitId = @ExistingId;
+
+        SET @SharedGeoUnitId = @ExistingId;
+    END
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.AttachSharedGeoUnitToAccount
+    @AccountCode       NVARCHAR(50),
+    @SharedGeoUnitId   INT,
+    @ParentOrgUnitType NVARCHAR(20) = NULL,
+    @ParentOrgUnitCode NVARCHAR(50) = NULL,
+    @ApplyPolicies     BIT = 0,
+    @OrgUnitId         INT OUTPUT
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -1364,11 +1491,69 @@ BEGIN
     IF @AccountId IS NULL
         THROW 50001, 'Account not found for provided AccountCode.', 1;
 
-    DECLARE @ParentOrgUnitId INT = NULL;
-    DECLARE @ParentPath NVARCHAR(850) = CONCAT('|', @AccountCode, '|');
+    DECLARE
+        @GeoUnitType NVARCHAR(20),
+        @GeoUnitCode NVARCHAR(50),
+        @GeoUnitName NVARCHAR(200),
+        @CountryCode NVARCHAR(10);
 
-    IF @ParentOrgUnitCode IS NOT NULL
+    SELECT
+        @GeoUnitType = GeoUnitType,
+        @GeoUnitCode = GeoUnitCode,
+        @GeoUnitName = GeoUnitName,
+        @CountryCode = CountryCode
+    FROM Dim.SharedGeoUnit
+    WHERE SharedGeoUnitId = @SharedGeoUnitId;
+
+    IF @GeoUnitType IS NULL
+        THROW 50063, 'Shared geography not found.', 1;
+
+    SELECT @OrgUnitId = OrgUnitId
+    FROM Dim.OrgUnit
+    WHERE AccountId = @AccountId
+      AND SharedGeoUnitId = @SharedGeoUnitId;
+
+    IF @OrgUnitId IS NOT NULL
     BEGIN
+        UPDATE Dim.OrgUnit
+        SET OrgUnitType = @GeoUnitType,
+            OrgUnitCode = @GeoUnitCode,
+            OrgUnitName = @GeoUnitName,
+            CountryCode = CASE WHEN @GeoUnitType = 'Country' THEN @CountryCode ELSE NULL END,
+            IsActive = 1,
+            ModifiedOnUtc = SYSUTCDATETIME(),
+            ModifiedBy = SESSION_USER
+        WHERE OrgUnitId = @OrgUnitId;
+
+        IF @ApplyPolicies = 1
+            EXEC App.ApplyAccountPolicies @AccountCode = @AccountCode, @ApplyAccess = 1, @ApplyPackages = 1;
+        RETURN;
+    END
+
+    DECLARE @AllowedParentTypes NVARCHAR(200) = CASE @GeoUnitType
+        WHEN 'Region'    THEN ''
+        WHEN 'SubRegion' THEN 'Region'
+        WHEN 'Cluster'   THEN 'Region,SubRegion'
+        WHEN 'Country'   THEN 'Region,SubRegion,Cluster'
+        ELSE ''
+    END;
+
+    DECLARE @ParentOrgUnitId INT = NULL;
+    DECLARE @ParentPath NVARCHAR(850) = NULL;
+
+    IF @GeoUnitType = 'Region'
+    BEGIN
+        IF @ParentOrgUnitType IS NOT NULL OR @ParentOrgUnitCode IS NOT NULL
+            THROW 50061, 'Region org units cannot have a parent org unit.', 1;
+    END
+    ELSE
+    BEGIN
+        IF @ParentOrgUnitType IS NULL OR @ParentOrgUnitCode IS NULL
+            THROW 50062, 'Parent org unit is required for SubRegion, Cluster, and Country.', 1;
+
+        IF CHARINDEX(@ParentOrgUnitType, @AllowedParentTypes) = 0
+            THROW 50073, 'Invalid parent type for the selected shared geography type.', 1;
+
         SELECT
             @ParentOrgUnitId = OrgUnitId,
             @ParentPath = Path
@@ -1378,8 +1563,112 @@ BEGIN
           AND OrgUnitCode = @ParentOrgUnitCode;
 
         IF @ParentOrgUnitId IS NULL
+            THROW 50074, 'Parent org unit not found for the selected account hierarchy.', 1;
+    END
+
+    DECLARE @Path NVARCHAR(850) = CASE
+        WHEN @ParentOrgUnitId IS NULL THEN CONCAT('|', @AccountCode, '|', @GeoUnitCode, '|')
+        ELSE CONCAT(@ParentPath, @GeoUnitCode, '|')
+    END;
+
+    INSERT INTO Dim.OrgUnit
+        (AccountId, SharedGeoUnitId, CountryOrgUnitId, OrgUnitType, OrgUnitCode, OrgUnitName, ParentOrgUnitId, Path, CountryCode, IsActive)
+    VALUES
+        (@AccountId, @SharedGeoUnitId, NULL, @GeoUnitType, @GeoUnitCode, @GeoUnitName, @ParentOrgUnitId, @Path,
+         CASE WHEN @GeoUnitType = 'Country' THEN @CountryCode ELSE NULL END,
+         1);
+
+    SET @OrgUnitId = SCOPE_IDENTITY();
+
+    IF @ApplyPolicies = 1
+        EXEC App.ApplyAccountPolicies @AccountCode = @AccountCode, @ApplyAccess = 1, @ApplyPackages = 1;
+END;
+GO
+
+-- Inserts or updates a local account org unit (Area / Branch / Site)
+CREATE OR ALTER PROCEDURE App.InsertOrgUnit
+    @AccountCode            NVARCHAR(50),
+    @OrgUnitType            NVARCHAR(20),
+    @OrgUnitCode            NVARCHAR(50),
+    @OrgUnitName            NVARCHAR(200),
+    @ParentOrgUnitType      NVARCHAR(20) = NULL,
+    @ParentOrgUnitCode      NVARCHAR(50) = NULL,
+    @CountrySharedGeoUnitId INT = NULL,
+    @IsActive               BIT = 1,
+    @ApplyPolicies          BIT = 0,
+    @OrgUnitId              INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @OrgUnitType NOT IN ('Area','Branch','Site')
+        THROW 50064, 'App.InsertOrgUnit only accepts Area, Branch, or Site.', 1;
+
+    DECLARE @AccountId INT = (SELECT AccountId FROM Dim.Account WHERE AccountCode = @AccountCode);
+    IF @AccountId IS NULL
+        THROW 50001, 'Account not found for provided AccountCode.', 1;
+
+    DECLARE @ParentOrgUnitId INT = NULL;
+    DECLARE @ParentPath NVARCHAR(850) = NULL;
+    DECLARE @ParentCountryOrgUnitId INT = NULL;
+
+    IF @ParentOrgUnitCode IS NOT NULL
+    BEGIN
+        SELECT
+            @ParentOrgUnitId = OrgUnitId,
+            @ParentPath = Path,
+            @ParentCountryOrgUnitId = CountryOrgUnitId
+        FROM Dim.OrgUnit
+        WHERE AccountId = @AccountId
+          AND OrgUnitType = @ParentOrgUnitType
+          AND OrgUnitCode = @ParentOrgUnitCode;
+
+        IF @ParentOrgUnitId IS NULL
             THROW 50002, 'Parent org unit not found for provided parameters.', 1;
     END
+
+    DECLARE @AllowedParentTypes NVARCHAR(200) = CASE @OrgUnitType
+        WHEN 'Area'   THEN 'Country'
+        WHEN 'Branch' THEN 'Country,Area'
+        WHEN 'Site'   THEN 'Country,Area,Branch'
+        ELSE ''
+    END;
+
+    IF @ParentOrgUnitCode IS NULL OR @ParentOrgUnitType IS NULL
+        THROW 50065, 'Parent org unit is required for Area, Branch, and Site.', 1;
+
+    IF CHARINDEX(@ParentOrgUnitType, @AllowedParentTypes) = 0
+        THROW 50066, 'Invalid parent type for the given org unit type.', 1;
+
+    DECLARE @CountryOrgUnitId INT = NULL;
+    IF @CountrySharedGeoUnitId IS NOT NULL
+    BEGIN
+        SELECT @CountryOrgUnitId = OrgUnitId
+        FROM Dim.OrgUnit
+        WHERE AccountId = @AccountId
+          AND SharedGeoUnitId = @CountrySharedGeoUnitId
+          AND OrgUnitType = 'Country';
+
+        IF @CountryOrgUnitId IS NULL
+            THROW 50067, 'CountrySharedGeoUnitId must reference an existing Country org unit for the account.', 1;
+    END
+
+    IF @CountryOrgUnitId IS NULL
+    BEGIN
+        SET @CountryOrgUnitId = CASE
+            WHEN @ParentOrgUnitType = 'Country' THEN @ParentOrgUnitId
+            ELSE @ParentCountryOrgUnitId
+        END;
+    END
+
+    IF @CountryOrgUnitId IS NULL
+        THROW 50068, 'A country selection is required for Area, Branch, and Site.', 1;
+
+    IF @ParentOrgUnitType = 'Country' AND @ParentOrgUnitId <> @CountryOrgUnitId
+        THROW 50069, 'Selected parent country does not match the chosen country.', 1;
+
+    IF @ParentOrgUnitType IN ('Area','Branch') AND @ParentCountryOrgUnitId <> @CountryOrgUnitId
+        THROW 50070, 'Parent org unit belongs to a different country.', 1;
 
     DECLARE @ExistingId INT = (
         SELECT OrgUnitId
@@ -1389,17 +1678,20 @@ BEGIN
           AND OrgUnitCode = @OrgUnitCode
     );
 
-    DECLARE @Path NVARCHAR(850) = CASE
-                                      WHEN @ParentOrgUnitId IS NULL THEN CONCAT('|', @AccountCode, '|', @OrgUnitCode, '|')
-                                      ELSE CONCAT(@ParentPath, @OrgUnitCode, '|')
-                                  END;
+    DECLARE @CountryCode NVARCHAR(10) = (
+        SELECT CountryCode
+        FROM Dim.OrgUnit
+        WHERE OrgUnitId = @CountryOrgUnitId
+    );
+
+    DECLARE @Path NVARCHAR(850) = CONCAT(@ParentPath, @OrgUnitCode, '|');
 
     IF @ExistingId IS NULL
     BEGIN
-        INSERT INTO Dim.OrgUnit (AccountId, OrgUnitType, OrgUnitCode, OrgUnitName, ParentOrgUnitId, Path, CountryCode, IsActive)
-        VALUES (@AccountId, @OrgUnitType, @OrgUnitCode, @OrgUnitName, @ParentOrgUnitId, @Path,
-                CASE WHEN @OrgUnitType IN ('Country','Site') THEN @CountryCode ELSE NULL END,
-                @IsActive);
+        INSERT INTO Dim.OrgUnit
+            (AccountId, SharedGeoUnitId, CountryOrgUnitId, OrgUnitType, OrgUnitCode, OrgUnitName, ParentOrgUnitId, Path, CountryCode, IsActive)
+        VALUES
+            (@AccountId, NULL, @CountryOrgUnitId, @OrgUnitType, @OrgUnitCode, @OrgUnitName, @ParentOrgUnitId, @Path, @CountryCode, @IsActive);
 
         SET @OrgUnitId = SCOPE_IDENTITY();
     END
@@ -1408,8 +1700,9 @@ BEGIN
         UPDATE Dim.OrgUnit
         SET OrgUnitName = @OrgUnitName,
             ParentOrgUnitId = @ParentOrgUnitId,
+            CountryOrgUnitId = @CountryOrgUnitId,
             Path = @Path,
-            CountryCode = CASE WHEN @OrgUnitType IN ('Country','Site') THEN @CountryCode ELSE CountryCode END,
+            CountryCode = @CountryCode,
             IsActive = @IsActive,
             ModifiedOnUtc = SYSUTCDATETIME(),
             ModifiedBy = SESSION_USER
@@ -1423,13 +1716,17 @@ BEGIN
 END;
 GO
 
--- Ensures full site hierarchy exists for an account/division/country/site combination
+-- Ensures full hierarchy exists for an account/shared geography/local operating path
 CREATE OR ALTER PROCEDURE App.CreateOrEnsureSitePath
     @AccountCode    NVARCHAR(50),
-    @DivisionCode   NVARCHAR(50),
-    @DivisionName   NVARCHAR(200),
+    @RegionCode     NVARCHAR(50),
+    @SubRegionCode  NVARCHAR(50) = NULL,
+    @ClusterCode    NVARCHAR(50) = NULL,
     @CountryCode    NVARCHAR(10),
-    @CountryName    NVARCHAR(200),
+    @AreaCode       NVARCHAR(50) = NULL,
+    @AreaName       NVARCHAR(200) = NULL,
+    @BranchCode     NVARCHAR(50) = NULL,
+    @BranchName     NVARCHAR(200) = NULL,
     @SiteCode       NVARCHAR(50),
     @SiteName       NVARCHAR(200),
     @ApplyPolicies  BIT = 0,
@@ -1438,38 +1735,164 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @DivisionOrgUnitId INT;
-    EXEC App.InsertOrgUnit
+    DECLARE
+        @RegionSharedGeoUnitId INT,
+        @SubRegionSharedGeoUnitId INT,
+        @ClusterSharedGeoUnitId INT,
+        @CountrySharedGeoUnitId INT;
+
+    SELECT @RegionSharedGeoUnitId = SharedGeoUnitId
+    FROM Dim.SharedGeoUnit
+    WHERE GeoUnitType = 'Region'
+      AND GeoUnitCode = @RegionCode;
+
+    IF @RegionSharedGeoUnitId IS NULL
+        THROW 50071, 'Region not found in shared geography repository.', 1;
+
+    IF @SubRegionCode IS NOT NULL
+    BEGIN
+        SELECT @SubRegionSharedGeoUnitId = SharedGeoUnitId
+        FROM Dim.SharedGeoUnit
+        WHERE GeoUnitType = 'SubRegion'
+          AND GeoUnitCode = @SubRegionCode;
+
+        IF @SubRegionSharedGeoUnitId IS NULL
+            THROW 50073, 'SubRegion not found in shared geography repository.', 1;
+    END
+
+    IF @ClusterCode IS NOT NULL
+    BEGIN
+        SELECT @ClusterSharedGeoUnitId = SharedGeoUnitId
+        FROM Dim.SharedGeoUnit
+        WHERE GeoUnitType = 'Cluster'
+          AND GeoUnitCode = @ClusterCode;
+
+        IF @ClusterSharedGeoUnitId IS NULL
+            THROW 50074, 'Cluster not found in shared geography repository.', 1;
+    END
+
+    SELECT @CountrySharedGeoUnitId = SharedGeoUnitId
+    FROM Dim.SharedGeoUnit
+    WHERE GeoUnitType = 'Country'
+      AND GeoUnitCode = @CountryCode;
+
+    IF @CountrySharedGeoUnitId IS NULL
+        THROW 50075, 'Country not found in shared geography repository.', 1;
+
+    DECLARE @RegionOrgUnitId INT;
+    DECLARE @SubRegionOrgUnitId INT;
+    DECLARE @ClusterOrgUnitId INT;
+    DECLARE @CountryOrgUnitId INT;
+    DECLARE @ClusterParentType NVARCHAR(20);
+    DECLARE @ClusterParentCode NVARCHAR(50);
+    DECLARE @CountryParentType NVARCHAR(20);
+    DECLARE @CountryParentCode NVARCHAR(50);
+
+    EXEC App.AttachSharedGeoUnitToAccount
         @AccountCode = @AccountCode,
-        @OrgUnitType = 'Division',
-        @OrgUnitCode = @DivisionCode,
-        @OrgUnitName = @DivisionName,
+        @SharedGeoUnitId = @RegionSharedGeoUnitId,
         @ParentOrgUnitType = NULL,
         @ParentOrgUnitCode = NULL,
-        @CountryCode = NULL,
         @ApplyPolicies = 0,
-        @OrgUnitId = @DivisionOrgUnitId OUTPUT;
+        @OrgUnitId = @RegionOrgUnitId OUTPUT;
 
-    DECLARE @CountryOrgUnitId INT;
-    EXEC App.InsertOrgUnit
+    IF @SubRegionSharedGeoUnitId IS NOT NULL
+    BEGIN
+        EXEC App.AttachSharedGeoUnitToAccount
+            @AccountCode = @AccountCode,
+            @SharedGeoUnitId = @SubRegionSharedGeoUnitId,
+            @ParentOrgUnitType = 'Region',
+            @ParentOrgUnitCode = @RegionCode,
+            @ApplyPolicies = 0,
+            @OrgUnitId = @SubRegionOrgUnitId OUTPUT;
+    END
+
+    IF @ClusterSharedGeoUnitId IS NOT NULL
+    BEGIN
+        SET @ClusterParentType = CASE
+                                     WHEN @SubRegionSharedGeoUnitId IS NOT NULL THEN 'SubRegion'
+                                     ELSE 'Region'
+                                 END;
+        SET @ClusterParentCode = CASE
+                                     WHEN @SubRegionSharedGeoUnitId IS NOT NULL THEN @SubRegionCode
+                                     ELSE @RegionCode
+                                 END;
+
+        EXEC App.AttachSharedGeoUnitToAccount
+            @AccountCode = @AccountCode,
+            @SharedGeoUnitId = @ClusterSharedGeoUnitId,
+            @ParentOrgUnitType = @ClusterParentType,
+            @ParentOrgUnitCode = @ClusterParentCode,
+            @ApplyPolicies = 0,
+            @OrgUnitId = @ClusterOrgUnitId OUTPUT;
+    END
+
+    SET @CountryParentType = CASE
+                                 WHEN @ClusterSharedGeoUnitId IS NOT NULL THEN 'Cluster'
+                                 WHEN @SubRegionSharedGeoUnitId IS NOT NULL THEN 'SubRegion'
+                                 ELSE 'Region'
+                             END;
+    SET @CountryParentCode = CASE
+                                 WHEN @ClusterSharedGeoUnitId IS NOT NULL THEN @ClusterCode
+                                 WHEN @SubRegionSharedGeoUnitId IS NOT NULL THEN @SubRegionCode
+                                 ELSE @RegionCode
+                             END;
+
+    EXEC App.AttachSharedGeoUnitToAccount
         @AccountCode = @AccountCode,
-        @OrgUnitType = 'Country',
-        @OrgUnitCode = @CountryCode,
-        @OrgUnitName = @CountryName,
-        @ParentOrgUnitType = 'Division',
-        @ParentOrgUnitCode = @DivisionCode,
-        @CountryCode = @CountryCode,
+        @SharedGeoUnitId = @CountrySharedGeoUnitId,
+        @ParentOrgUnitType = @CountryParentType,
+        @ParentOrgUnitCode = @CountryParentCode,
         @ApplyPolicies = 0,
         @OrgUnitId = @CountryOrgUnitId OUTPUT;
+
+    DECLARE @ParentType NVARCHAR(20) = 'Country';
+    DECLARE @ParentCode NVARCHAR(50) = @CountryCode;
+
+    IF @AreaCode IS NOT NULL AND @AreaName IS NOT NULL
+    BEGIN
+        DECLARE @AreaOrgUnitId INT;
+        EXEC App.InsertOrgUnit
+            @AccountCode = @AccountCode,
+            @OrgUnitType = 'Area',
+            @OrgUnitCode = @AreaCode,
+            @OrgUnitName = @AreaName,
+            @ParentOrgUnitType = @ParentType,
+            @ParentOrgUnitCode = @ParentCode,
+            @CountrySharedGeoUnitId = @CountrySharedGeoUnitId,
+            @ApplyPolicies = 0,
+            @OrgUnitId = @AreaOrgUnitId OUTPUT;
+
+        SET @ParentType = 'Area';
+        SET @ParentCode = @AreaCode;
+    END
+
+    IF @BranchCode IS NOT NULL AND @BranchName IS NOT NULL
+    BEGIN
+        DECLARE @BranchOrgUnitId INT;
+        EXEC App.InsertOrgUnit
+            @AccountCode = @AccountCode,
+            @OrgUnitType = 'Branch',
+            @OrgUnitCode = @BranchCode,
+            @OrgUnitName = @BranchName,
+            @ParentOrgUnitType = @ParentType,
+            @ParentOrgUnitCode = @ParentCode,
+            @CountrySharedGeoUnitId = @CountrySharedGeoUnitId,
+            @ApplyPolicies = 0,
+            @OrgUnitId = @BranchOrgUnitId OUTPUT;
+
+        SET @ParentType = 'Branch';
+        SET @ParentCode = @BranchCode;
+    END
 
     EXEC App.InsertOrgUnit
         @AccountCode = @AccountCode,
         @OrgUnitType = 'Site',
         @OrgUnitCode = @SiteCode,
         @OrgUnitName = @SiteName,
-        @ParentOrgUnitType = 'Country',
-        @ParentOrgUnitCode = @CountryCode,
-        @CountryCode = @CountryCode,
+        @ParentOrgUnitType = @ParentType,
+        @ParentOrgUnitCode = @ParentCode,
+        @CountrySharedGeoUnitId = @CountrySharedGeoUnitId,
         @ApplyPolicies = 0,
         @OrgUnitId = @SiteOrgUnitId OUTPUT;
 
@@ -5135,22 +5558,40 @@ AS
         site.CountryCode        AS SiteCountryISOCode,
         site.Path               AS SitePath,
         site.IsActive           AS SiteIsActive,
-        -- Country (parent of site)
+        -- Country (explicit country link, not necessarily direct parent)
         cty.OrgUnitId           AS CountryId,
         cty.OrgUnitCode         AS CountryCode,
         cty.OrgUnitName         AS CountryName,
-        -- Division (grandparent of site)
-        div.OrgUnitId           AS DivisionId,
-        div.OrgUnitCode         AS DivisionCode,
-        div.OrgUnitName         AS DivisionName,
+        -- Shared geography
+        reg.OrgUnitId           AS RegionId,
+        reg.OrgUnitCode         AS RegionCode,
+        reg.OrgUnitName         AS RegionName,
+        sreg.OrgUnitId          AS SubRegionId,
+        sreg.OrgUnitCode        AS SubRegionCode,
+        sreg.OrgUnitName        AS SubRegionName,
+        clus.OrgUnitId          AS ClusterId,
+        clus.OrgUnitCode        AS ClusterCode,
+        clus.OrgUnitName        AS ClusterName,
         -- Account
         acct.AccountId,
         acct.AccountCode,
         acct.AccountName
     FROM Dim.OrgUnit    AS site
     JOIN Dim.Account    AS acct ON acct.AccountId   = site.AccountId
-    LEFT JOIN Dim.OrgUnit AS cty  ON cty.OrgUnitId  = site.ParentOrgUnitId
-    LEFT JOIN Dim.OrgUnit AS div  ON div.OrgUnitId  = cty.ParentOrgUnitId
+    LEFT JOIN Dim.OrgUnit AS cty  ON cty.OrgUnitId  = site.CountryOrgUnitId
+    LEFT JOIN Dim.OrgUnit AS clus ON clus.OrgUnitId = cty.ParentOrgUnitId
+        AND clus.OrgUnitType = 'Cluster'
+    LEFT JOIN Dim.OrgUnit AS sreg ON sreg.OrgUnitId = CASE
+        WHEN clus.OrgUnitId IS NOT NULL THEN clus.ParentOrgUnitId
+        WHEN cty.ParentOrgUnitId IS NOT NULL AND EXISTS (SELECT 1 FROM Dim.OrgUnit x WHERE x.OrgUnitId = cty.ParentOrgUnitId AND x.OrgUnitType = 'SubRegion') THEN cty.ParentOrgUnitId
+        ELSE NULL
+    END
+    LEFT JOIN Dim.OrgUnit AS reg  ON reg.OrgUnitId = CASE
+        WHEN sreg.OrgUnitId IS NOT NULL THEN sreg.ParentOrgUnitId
+        WHEN clus.OrgUnitId IS NOT NULL AND EXISTS (SELECT 1 FROM Dim.OrgUnit x WHERE x.OrgUnitId = clus.ParentOrgUnitId AND x.OrgUnitType = 'Region') THEN clus.ParentOrgUnitId
+        WHEN cty.ParentOrgUnitId IS NOT NULL AND EXISTS (SELECT 1 FROM Dim.OrgUnit x WHERE x.OrgUnitId = cty.ParentOrgUnitId AND x.OrgUnitType = 'Region') THEN cty.ParentOrgUnitId
+        ELSE NULL
+    END
     WHERE site.OrgUnitType = 'Site'
       AND site.IsActive    = 1
       AND acct.IsActive    = 1;

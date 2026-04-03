@@ -32,7 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-const ORG_UNIT_TYPES = ['Division', 'Region', 'Country', 'Area', 'Territory', 'Branch', 'Site'] as const
+const ORG_UNIT_TYPES = ['Region', 'SubRegion', 'Cluster', 'Country', 'Area', 'Branch', 'Site'] as const
 import { Switch } from '@/components/ui/switch'
 import { api } from '@/lib/api'
 

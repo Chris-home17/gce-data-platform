@@ -20,6 +20,7 @@ const TITLE_MAP: Record<string, string> = {
   '/delegations': 'Delegations',
   '/packages': 'Packages',
   '/reports': 'BI Reports',
+  '/shared-geography': 'Shared Geography',
   '/sites': 'Sites',
   '/coverage': 'Coverage Map',
   '/source-mapping': 'Source Mapping',

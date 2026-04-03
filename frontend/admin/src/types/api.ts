@@ -157,7 +157,23 @@ export interface BiReport {
 // Infrastructure domain types
 // ---------------------------------------------------------------------------
 
-export type OrgUnitType = 'Division' | 'Country' | 'Site' | 'Region' | 'Branch' | 'Area' | 'Territory'
+export type OrgUnitType = 'Region' | 'SubRegion' | 'Cluster' | 'Country' | 'Area' | 'Branch' | 'Site'
+
+export interface SharedGeoUnit {
+  sharedGeoUnitId: number
+  geoUnitType: 'Region' | 'SubRegion' | 'Cluster' | 'Country'
+  geoUnitCode: string
+  geoUnitName: string
+  countryCode: string | null
+  isActive: boolean
+}
+
+export interface CreateSharedGeoUnitInput {
+  geoUnitType: 'Region' | 'SubRegion' | 'Cluster' | 'Country'
+  geoUnitCode: string
+  geoUnitName: string
+  countryCode?: string
+}
 
 /** From App.vOrgUnits */
 export interface OrgUnit {
@@ -165,6 +181,12 @@ export interface OrgUnit {
   accountId: number
   accountCode: string
   accountName: string
+  sharedGeoUnitId: number | null
+  sharedGeoUnitCode: string | null
+  sharedGeoUnitName: string | null
+  countryOrgUnitId: number | null
+  countryOrgUnitCode: string | null
+  countryOrgUnitName: string | null
   orgUnitType: OrgUnitType
   orgUnitCode: string
   orgUnitName: string
@@ -182,12 +204,13 @@ export interface OrgUnit {
 export interface SourceMapping {
   orgUnitSourceMapId: number
   orgUnitId: number
+  sharedGeoUnitId: number | null
   orgUnitCode: string
   orgUnitName: string
   orgUnitType: string
-  accountId: number
-  accountCode: string
-  accountName: string
+  accountId: number | null
+  accountCode: string | null
+  accountName: string | null
   sourceSystem: string
   sourceOrgUnitId: string
   sourceOrgUnitName: string | null
@@ -417,11 +440,12 @@ export interface AssignReportToPackageInput {
 export interface CreateOrgUnitInput {
   accountCode: string
   orgUnitType: string
-  orgUnitCode: string
-  orgUnitName: string
+  orgUnitCode?: string
+  orgUnitName?: string
   parentOrgUnitType?: string
   parentOrgUnitCode?: string
-  countryCode?: string
+  sharedGeoUnitId?: number
+  countrySharedGeoUnitId?: number
 }
 
 export interface CreateSourceMappingInput {

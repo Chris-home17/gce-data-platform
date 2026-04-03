@@ -263,11 +263,28 @@ public record SiteCompletionDto(
 public record CreateOrgUnitRequest(
     string  AccountCode,
     string  OrgUnitType,
-    string  OrgUnitCode,
-    string  OrgUnitName,
+    string? OrgUnitCode,
+    string? OrgUnitName,
     string? ParentOrgUnitType,
     string? ParentOrgUnitCode,
-    string? CountryCode
+    int?    SharedGeoUnitId,
+    int?    CountrySharedGeoUnitId
+);
+
+public record SharedGeoUnitDto(
+    int      SharedGeoUnitId,
+    string   GeoUnitType,
+    string   GeoUnitCode,
+    string   GeoUnitName,
+    string?  CountryCode,
+    bool     IsActive
+);
+
+public record CreateSharedGeoUnitRequest(
+    string   GeoUnitType,
+    string   GeoUnitCode,
+    string   GeoUnitName,
+    string?  CountryCode
 );
 
 // ---------------------------------------------------------------------------
@@ -277,12 +294,13 @@ public record CreateOrgUnitRequest(
 public record SourceMappingDto(
     int      OrgUnitSourceMapId,
     int      OrgUnitId,
+    int?     SharedGeoUnitId,
     string   OrgUnitCode,
     string   OrgUnitName,
     string   OrgUnitType,
-    int      AccountId,
-    string   AccountCode,
-    string   AccountName,
+    int?     AccountId,
+    string?  AccountCode,
+    string?  AccountName,
     string   SourceSystem,
     string   SourceOrgUnitId,
     string?  SourceOrgUnitName,
@@ -427,6 +445,12 @@ public record OrgUnitDto(
     int      AccountId,
     string   AccountCode,
     string   AccountName,
+    int?     SharedGeoUnitId,
+    string?  SharedGeoUnitCode,
+    string?  SharedGeoUnitName,
+    int?     CountryOrgUnitId,
+    string?  CountryOrgUnitCode,
+    string?  CountryOrgUnitName,
     string   OrgUnitType,
     string   OrgUnitCode,
     string   OrgUnitName,

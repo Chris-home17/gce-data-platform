@@ -27,6 +27,7 @@ import type {
   CreatePackageInput,
   CreatePolicyInput,
   CreateRoleInput,
+  CreateSharedGeoUnitInput,
   CreateSourceMappingInput,
   CreateUserInput,
   CreateDelegationInput,
@@ -44,6 +45,7 @@ import type {
   Policy,
   Role,
   RoleMember,
+  SharedGeoUnit,
   Site,
   SiteCompletion,
   SourceMapping,
@@ -266,6 +268,16 @@ export const api = {
     },
     setActive(id: number, isActive: boolean): Promise<void> {
       return apiFetch(`/org-units/${id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) })
+    },
+  },
+
+  sharedGeoUnits: {
+    list(params?: { geoUnitType?: string }): Promise<ApiList<SharedGeoUnit>> {
+      const qs = params?.geoUnitType ? `?geoUnitType=${encodeURIComponent(params.geoUnitType)}` : ''
+      return apiFetch(`/shared-geo-units${qs}`)
+    },
+    create(data: CreateSharedGeoUnitInput): Promise<SharedGeoUnit> {
+      return apiFetch('/shared-geo-units', { method: 'POST', body: JSON.stringify(data) })
     },
   },
 

@@ -45,34 +45,71 @@ BEGIN
     DELETE FROM @AccountProcess WHERE AccountCode = @AccountCode;
 END;
 
--- Seed hierarchical org units -----------------------------------------------------
-DECLARE @Divisions TABLE (DivisionCode NVARCHAR(50) PRIMARY KEY, DivisionName NVARCHAR(200));
-INSERT INTO @Divisions (DivisionCode, DivisionName)
-VALUES
-    ('NA',    'North America'),
-    ('EU',    'Europe'),
-    ('APAC',  'Asia Pacific'),
-    ('LATAM', 'Latin America'),
-    ('MEA',   'Middle East & Africa');
-
-DECLARE @Countries TABLE (
-    DivisionCode NVARCHAR(50),
-    CountryCode  NVARCHAR(10),
-    CountryName  NVARCHAR(200),
-    PRIMARY KEY (DivisionCode, CountryCode)
+-- Seed shared geography repository -----------------------------------------------
+DECLARE @SharedGeoSeed TABLE
+(
+    RowId           INT IDENTITY(1,1) PRIMARY KEY,
+    GeoUnitType     NVARCHAR(20),
+    GeoUnitCode     NVARCHAR(50),
+    GeoUnitName     NVARCHAR(200),
+    CountryCode     NVARCHAR(10) NULL
 );
-INSERT INTO @Countries (DivisionCode, CountryCode, CountryName)
+
+INSERT INTO @SharedGeoSeed
+    (GeoUnitType, GeoUnitCode, GeoUnitName, CountryCode)
 VALUES
-    ('NA',    'US', 'United States'),
-    ('NA',    'CA', 'Canada'),
-    ('EU',    'BE', 'Belgium'),
-    ('EU',    'DE', 'Germany'),
-    ('APAC',  'SG', 'Singapore'),
-    ('APAC',  'AU', 'Australia'),
-    ('LATAM', 'BR', 'Brazil'),
-    ('LATAM', 'MX', 'Mexico'),
-    ('MEA',   'AE', 'United Arab Emirates'),
-    ('MEA',   'ZA', 'South Africa');
+    ('Region',    'AMER',    'Americas',                             NULL),
+    ('Region',    'EMEA',    'Europe, Middle East & Africa',         NULL),
+    ('Region',    'APAC',    'Asia Pacific',                         NULL),
+    ('Region',    'LATAM',   'Latin America',                        NULL),
+    ('SubRegion', 'NORA',    'North America',                        NULL),
+    ('SubRegion', 'WEU',     'Western Europe',                       NULL),
+    ('SubRegion', 'MEA',     'Middle East & Africa',                 NULL),
+    ('SubRegion', 'ANZSEA',  'Australia and Southeast Asia',         NULL),
+    ('SubRegion', 'NOLA',    'Northern Latin America',               NULL),
+    ('SubRegion', 'SOLA',    'Southern Latin America',               NULL),
+    ('Cluster',   'BENELUX', 'Benelux',                              NULL),
+    ('Cluster',   'DACH',    'DACH',                                 NULL),
+    ('Cluster',   'GCC',     'Gulf Cooperation Council',             NULL),
+    ('Cluster',   'SEA',     'Southeast Asia',                       NULL),
+    ('Country',   'US',      'United States',                        'US'),
+    ('Country',   'CA',      'Canada',                               'CA'),
+    ('Country',   'BE',      'Belgium',                              'BE'),
+    ('Country',   'DE',      'Germany',                              'DE'),
+    ('Country',   'SG',      'Singapore',                            'SG'),
+    ('Country',   'AU',      'Australia',                            'AU'),
+    ('Country',   'BR',      'Brazil',                               'BR'),
+    ('Country',   'MX',      'Mexico',                               'MX'),
+    ('Country',   'AE',      'United Arab Emirates',                 'AE'),
+    ('Country',   'ZA',      'South Africa',                         'ZA');
+
+DECLARE @SharedGeoRowId INT;
+DECLARE @GeoUnitType NVARCHAR(20);
+DECLARE @GeoUnitCode NVARCHAR(50);
+DECLARE @GeoUnitName NVARCHAR(200);
+DECLARE @SharedCountryCode NVARCHAR(10);
+DECLARE @SharedGeoUnitId INT;
+
+WHILE EXISTS (SELECT 1 FROM @SharedGeoSeed)
+BEGIN
+    SELECT TOP (1)
+        @SharedGeoRowId = RowId,
+        @GeoUnitType = GeoUnitType,
+        @GeoUnitCode = GeoUnitCode,
+        @GeoUnitName = GeoUnitName,
+        @SharedCountryCode = CountryCode
+    FROM @SharedGeoSeed
+    ORDER BY RowId;
+
+    EXEC App.UpsertSharedGeoUnit
+        @GeoUnitType = @GeoUnitType,
+        @GeoUnitCode = @GeoUnitCode,
+        @GeoUnitName = @GeoUnitName,
+        @CountryCode = @SharedCountryCode,
+        @SharedGeoUnitId = @SharedGeoUnitId OUTPUT;
+
+    DELETE FROM @SharedGeoSeed WHERE RowId = @SharedGeoRowId;
+END;
 
 DECLARE @SiteSuffix TABLE (Suffix NVARCHAR(2), SiteLabel NVARCHAR(50));
 INSERT INTO @SiteSuffix (Suffix, SiteLabel)
@@ -82,33 +119,69 @@ DECLARE @SeedSites TABLE
 (
     RowId INT IDENTITY(1,1) PRIMARY KEY,
     AccountCode NVARCHAR(50),
-    DivisionCode NVARCHAR(50),
-    DivisionName NVARCHAR(200),
+    RegionCode NVARCHAR(50),
+    SubRegionCode NVARCHAR(50) NULL,
+    ClusterCode NVARCHAR(50) NULL,
     CountryCode NVARCHAR(10),
-    CountryName NVARCHAR(200),
     SiteCode NVARCHAR(50),
     SiteName NVARCHAR(200)
 );
 
-INSERT INTO @SeedSites (AccountCode, DivisionCode, DivisionName, CountryCode, CountryName, SiteCode, SiteName)
+DECLARE @CountrySeed TABLE
+(
+    AccountCode NVARCHAR(50),
+    RegionCode NVARCHAR(50),
+    SubRegionCode NVARCHAR(50) NULL,
+    ClusterCode NVARCHAR(50) NULL,
+    CountryCode NVARCHAR(10),
+    CountryName NVARCHAR(200),
+    PRIMARY KEY (AccountCode, CountryCode)
+);
+
+INSERT INTO @CountrySeed (AccountCode, RegionCode, SubRegionCode, ClusterCode, CountryCode, CountryName)
+VALUES
+    ('DHL',   'AMER',  'NORA',   NULL,      'US', 'United States'),
+    ('DHL',   'AMER',  NULL,     NULL,      'CA', 'Canada'),
+    ('DHL',   'EMEA',  'WEU',    'BENELUX', 'BE', 'Belgium'),
+    ('DHL',   'EMEA',  'WEU',    'DACH',    'DE', 'Germany'),
+    ('DHL',   'APAC',  'ANZSEA', 'SEA',     'SG', 'Singapore'),
+    ('DHL',   'APAC',  NULL,     NULL,      'AU', 'Australia'),
+    ('UPS',   'EMEA',  'WEU',    NULL,      'BE', 'Belgium'),
+    ('UPS',   'LATAM', 'NOLA',   NULL,      'MX', 'Mexico'),
+    ('UPS',   'LATAM', NULL,     NULL,      'BR', 'Brazil'),
+    ('UPS',   'APAC',  NULL,     'SEA',     'SG', 'Singapore'),
+    ('UPS',   'APAC',  'ANZSEA', NULL,      'AU', 'Australia'),
+    ('FEDEX', 'EMEA',  'WEU',    'BENELUX', 'BE', 'Belgium'),
+    ('FEDEX', 'APAC',  NULL,     NULL,      'AU', 'Australia'),
+    ('FEDEX', 'APAC',  'ANZSEA', 'SEA',     'SG', 'Singapore'),
+    ('FEDEX', 'EMEA',  NULL,     NULL,      'DE', 'Germany'),
+    ('AMZN',  'EMEA',  NULL,     NULL,      'BE', 'Belgium'),
+    ('AMZN',  'APAC',  NULL,     NULL,      'SG', 'Singapore'),
+    ('AMZN',  'APAC',  'ANZSEA', NULL,      'AU', 'Australia'),
+    ('AMZN',  'EMEA',  'MEA',    NULL,      'ZA', 'South Africa'),
+    ('AMZN',  'AMER',  'NORA',   NULL,      'US', 'United States'),
+    ('ACME',  'EMEA',  NULL,     NULL,      'BE', 'Belgium'),
+    ('ACME',  'EMEA',  'MEA',    'GCC',     'AE', 'United Arab Emirates'),
+    ('ACME',  'LATAM', 'NOLA',   NULL,      'MX', 'Mexico'),
+    ('ACME',  'APAC',  'ANZSEA', 'SEA',     'SG', 'Singapore'),
+    ('ACME',  'APAC',  NULL,     NULL,      'AU', 'Australia');
+
+INSERT INTO @SeedSites (AccountCode, RegionCode, SubRegionCode, ClusterCode, CountryCode, SiteCode, SiteName)
 SELECT
-    a.AccountCode,
-    d.DivisionCode,
-    d.DivisionName,
+    c.AccountCode,
+    c.RegionCode,
+    c.SubRegionCode,
+    c.ClusterCode,
     c.CountryCode,
-    c.CountryName,
     CONCAT(c.CountryCode, '-', s.Suffix) AS SiteCode,
-    CONCAT(a.AccountCode, ' ', c.CountryName, ' ', s.SiteLabel) AS SiteName
-FROM @AccountSeed AS a
-CROSS JOIN @Divisions AS d
-JOIN @Countries AS c
-    ON c.DivisionCode = d.DivisionCode
+    CONCAT(c.AccountCode, ' ', c.CountryName, ' ', s.SiteLabel) AS SiteName
+FROM @CountrySeed AS c
 CROSS JOIN @SiteSuffix AS s;
 
-DECLARE @DivisionCode NVARCHAR(50);
-DECLARE @DivisionName NVARCHAR(200);
+DECLARE @RegionCode NVARCHAR(50);
+DECLARE @SubRegionCode NVARCHAR(50);
+DECLARE @ClusterCode NVARCHAR(50);
 DECLARE @CountryCode NVARCHAR(10);
-DECLARE @CountryName NVARCHAR(200);
 DECLARE @SiteCode NVARCHAR(50);
 DECLARE @SiteName NVARCHAR(200);
 DECLARE @SiteOrgUnitId INT;
@@ -119,10 +192,10 @@ BEGIN
     SELECT TOP (1)
         @SiteRowId = RowId,
         @AccountCode = AccountCode,
-        @DivisionCode = DivisionCode,
-        @DivisionName = DivisionName,
+        @RegionCode = RegionCode,
+        @SubRegionCode = SubRegionCode,
+        @ClusterCode = ClusterCode,
         @CountryCode = CountryCode,
-        @CountryName = CountryName,
         @SiteCode = SiteCode,
         @SiteName = SiteName
     FROM @SeedSites
@@ -130,10 +203,10 @@ BEGIN
 
     EXEC App.CreateOrEnsureSitePath
         @AccountCode = @AccountCode,
-        @DivisionCode = @DivisionCode,
-        @DivisionName = @DivisionName,
+        @RegionCode = @RegionCode,
+        @SubRegionCode = @SubRegionCode,
+        @ClusterCode = @ClusterCode,
         @CountryCode = @CountryCode,
-        @CountryName = @CountryName,
         @SiteCode = @SiteCode,
         @SiteName = @SiteName,
         @SiteOrgUnitId = @SiteOrgUnitId OUTPUT;
@@ -271,8 +344,8 @@ INSERT INTO @RoleSeed (RoleCode, RoleName, RoleDescription)
 VALUES
     ('GLOBAL_EXECUTIVE',    'Global Executives',          'Full visibility to all packages and accounts.'),
     ('SOC_GLOBAL',          'SOC Global Administrators',  'SOC package access across every account.'),
-    ('FIN_DHL_EU',          'DHL Europe Finance',         'Finance package scoped to DHL Europe division.'),
-    ('FIN_UPS_LATAM',       'UPS LATAM Finance',          'Finance package scoped to UPS LATAM division.'),
+    ('FIN_DHL_EU',          'DHL Europe Finance',         'Finance package scoped to DHL EMEA region.'),
+    ('FIN_UPS_LATAM',       'UPS LATAM Finance',          'Finance package scoped to UPS LATAM region.'),
     ('COUNTRY_MANAGER_BE',  'Belgium Country Managers',   'Country-level coverage for Belgium across accounts.');
 
 DECLARE @RoleCode NVARCHAR(100);
@@ -514,19 +587,19 @@ IF NOT EXISTS (
     FROM Sec.AccountRolePolicy
     WHERE RoleCodeTemplate = '{AccountCode}_EU_MANAGER'
       AND ScopeType = 'ORGUNIT'
-      AND OrgUnitType = 'Division'
-      AND OrgUnitCode = 'EU'
+      AND OrgUnitType = 'Region'
+      AND OrgUnitCode = 'EMEA'
 )
 BEGIN
     INSERT INTO Sec.AccountRolePolicy
         (PolicyName, RoleCodeTemplate, RoleNameTemplate, ScopeType, OrgUnitType, OrgUnitCode)
     VALUES
-        ('Per-account Europe Division Manager Role',
+        ('Per-account EMEA Region Manager Role',
          '{AccountCode}_EU_MANAGER',
-         '{AccountName} Europe Division Manager',
+         '{AccountName} EMEA Region Manager',
          'ORGUNIT',
-         'Division',
-         'EU');
+         'Region',
+         'EMEA');
 END;
 
 -- Grants applied to roles ---------------------------------------------------------
@@ -556,8 +629,8 @@ EXEC Sec.GrantGlobal @PrincipalType = 'Role', @PrincipalIdentifier = 'FIN_DHL_EU
 EXEC Sec.GrantGlobal @PrincipalType = 'Role', @PrincipalIdentifier = 'FIN_UPS_LATAM', @PackageCode = 'FIN';
 EXEC Sec.GrantGlobal @PrincipalType = 'Role', @PrincipalIdentifier = 'COUNTRY_MANAGER_BE', @PackageCode = 'KPI';
 
-EXEC Sec.GrantPathPrefix @PrincipalType = 'Role', @PrincipalIdentifier = 'FIN_DHL_EU', @AccountCode = 'DHL', @OrgUnitType = 'Division', @OrgUnitCode = 'EU';
-EXEC Sec.GrantPathPrefix @PrincipalType = 'Role', @PrincipalIdentifier = 'FIN_UPS_LATAM', @AccountCode = 'UPS', @OrgUnitType = 'Division', @OrgUnitCode = 'LATAM';
+EXEC Sec.GrantPathPrefix @PrincipalType = 'Role', @PrincipalIdentifier = 'FIN_DHL_EU', @AccountCode = 'DHL', @OrgUnitType = 'Region', @OrgUnitCode = 'EMEA';
+EXEC Sec.GrantPathPrefix @PrincipalType = 'Role', @PrincipalIdentifier = 'FIN_UPS_LATAM', @AccountCode = 'UPS', @OrgUnitType = 'Region', @OrgUnitCode = 'LATAM';
 EXEC Sec.GrantCountryAllAccounts @PrincipalType = 'Role', @PrincipalIdentifier = 'COUNTRY_MANAGER_BE', @CountryCode = 'BE';
 
 EXEC Sec.GrantDelegation
@@ -577,8 +650,8 @@ EXEC Sec.GrantDelegation
     @AccessType             = 'ACCOUNT',
     @AccountCode            = 'DHL',
     @ScopeType              = 'ORGUNIT',
-    @OrgUnitType            = 'Division',
-    @OrgUnitCode            = 'EU';
+    @OrgUnitType            = 'Region',
+    @OrgUnitCode            = 'EMEA';
 
 -- Direct grants applied to users --------------------------------------------------
 EXEC Sec.GrantGlobalAllPackages @PrincipalType = 'User', @PrincipalIdentifier = 'allison.tate@fabrikam.com';
@@ -601,9 +674,9 @@ EXEC Sec.GrantFullAccount @PrincipalType = 'User', @PrincipalIdentifier = 'marco
 EXEC Sec.GrantFullAccount @PrincipalType = 'User', @PrincipalIdentifier = 'victor.lee@fabrikam.com', @AccountCode = 'ACME';
 EXEC Sec.GrantFullAccount @PrincipalType = 'User', @PrincipalIdentifier = 'uma.bala@fabrikam.com', @AccountCode = 'DHL';
 
-EXEC Sec.GrantPathPrefix @PrincipalType = 'User', @PrincipalIdentifier = 'li.na@fabrikam.com', @AccountCode = 'FEDEX', @OrgUnitType = 'Division', @OrgUnitCode = 'APAC';
+EXEC Sec.GrantPathPrefix @PrincipalType = 'User', @PrincipalIdentifier = 'li.na@fabrikam.com', @AccountCode = 'FEDEX', @OrgUnitType = 'Region', @OrgUnitCode = 'APAC';
 EXEC Sec.GrantPathPrefix @PrincipalType = 'User', @PrincipalIdentifier = 'ines.silva@fabrikam.com', @AccountCode = 'UPS', @OrgUnitType = 'Country', @OrgUnitCode = 'BR';
-EXEC Sec.GrantPathPrefix @PrincipalType = 'User', @PrincipalIdentifier = 'quinn.hughes@fabrikam.com', @AccountCode = 'FEDEX', @OrgUnitType = 'Division', @OrgUnitCode = 'EU';
+EXEC Sec.GrantPathPrefix @PrincipalType = 'User', @PrincipalIdentifier = 'quinn.hughes@fabrikam.com', @AccountCode = 'FEDEX', @OrgUnitType = 'Region', @OrgUnitCode = 'EMEA';
 EXEC Sec.GrantPathPrefix @PrincipalType = 'User', @PrincipalIdentifier = 'priya.bose@fabrikam.com', @AccountCode = 'AMZN', @OrgUnitType = 'Country', @OrgUnitCode = 'SG';
 EXEC Sec.GrantPathPrefix @PrincipalType = 'User', @PrincipalIdentifier = 'john.doe@fabrikam.com', @AccountCode = 'DHL', @OrgUnitType = 'Site', @OrgUnitCode = 'US-01';
 EXEC Sec.GrantPathPrefix @PrincipalType = 'User', @PrincipalIdentifier = 'karla.nygaard@fabrikam.com', @AccountCode = 'DHL', @OrgUnitType = 'Site', @OrgUnitCode = 'US-02';

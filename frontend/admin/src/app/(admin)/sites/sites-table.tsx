@@ -15,11 +15,11 @@ function pathDepth(path: string): number {
 }
 
 const TYPE_COLOURS: Record<OrgUnitType, string> = {
-  Division:  'bg-violet-100 text-violet-700 border-violet-200',
   Region:    'bg-blue-100 text-blue-700 border-blue-200',
+  SubRegion: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+  Cluster:   'bg-violet-100 text-violet-700 border-violet-200',
   Country:   'bg-sky-100 text-sky-700 border-sky-200',
   Area:      'bg-teal-100 text-teal-700 border-teal-200',
-  Territory: 'bg-cyan-100 text-cyan-700 border-cyan-200',
   Branch:    'bg-orange-100 text-orange-700 border-orange-200',
   Site:      'bg-emerald-100 text-emerald-700 border-emerald-200',
 }
@@ -121,7 +121,8 @@ function SitesTreeTable({
   showAccountFilter: boolean
 }) {
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all')
-  const effectiveAccountId = accountId ?? (selectedAccountId !== 'all' ? Number(selectedAccountId) : undefined)
+  const selectedAccountIdNumber = selectedAccountId !== 'all' ? Number(selectedAccountId) : undefined
+  const effectiveAccountId = showAccountFilter ? undefined : accountId
 
   const { data: accounts } = useQuery({
     queryKey: ['accounts'],
@@ -136,7 +137,13 @@ function SitesTreeTable({
   })
 
   // Items arrive pre-sorted by Path from the API — tree order is correct already
-  const items = data?.items ?? []
+  const items = (data?.items ?? []).filter((unit) => {
+    if (!showAccountFilter || selectedAccountIdNumber == null) {
+      return true
+    }
+
+    return unit.accountId === selectedAccountIdNumber
+  })
 
   return (
     <div className="space-y-3">
