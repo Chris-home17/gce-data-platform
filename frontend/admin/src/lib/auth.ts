@@ -1,0 +1,71 @@
+/**
+ * NextAuth v5 configuration.
+ *
+ * Exported as `auth` so it can be used in both the route handler and
+ * middleware without duplicating configuration.
+ *
+ * Dev bypass
+ * ----------
+ * Set NEXT_PUBLIC_DEV_BYPASS=true in .env.local to skip Azure AD entirely.
+ * A Credentials provider is used instead — one click signs you in as a
+ * local dev user. No Azure application registration needed.
+ */
+
+import NextAuth from 'next-auth'
+import AzureAD from 'next-auth/providers/microsoft-entra-id'
+import Credentials from 'next-auth/providers/credentials'
+
+const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_BYPASS === 'true'
+
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  providers: DEV_BYPASS
+    ? [
+        Credentials({
+          name: 'Dev Bypass',
+          credentials: {
+            name: { label: 'Name', type: 'text' },
+          },
+          // Accept any input — local dev only, never deployed
+          authorize(credentials) {
+            return {
+              id: 'dev-user-001',
+              name: (credentials?.name as string | undefined) || 'Dev User',
+              email: 'dev@gce-platform.local',
+            }
+          },
+        }),
+      ]
+    : [
+        AzureAD({
+          clientId: process.env.AZURE_AD_CLIENT_ID!,
+          clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
+          tenantId: process.env.AZURE_AD_TENANT_ID!,
+          authorization: {
+            params: { scope: 'openid profile email offline_access' },
+          },
+        }),
+      ],
+
+  callbacks: {
+    async jwt({ token, account }) {
+      if (account?.access_token) {
+        token.accessToken = account.access_token
+      }
+      // Give the API client a placeholder so it doesn't send an empty header
+      if (DEV_BYPASS && !token.accessToken) {
+        token.accessToken = 'dev-bypass-token'
+      }
+      return token
+    },
+    async session({ session, token }) {
+      ;(session as typeof session & { accessToken?: string }).accessToken =
+        token.accessToken as string | undefined
+      return session
+    },
+  },
+
+  pages: {
+    signIn: '/login',
+    error: '/login',
+  },
+})
