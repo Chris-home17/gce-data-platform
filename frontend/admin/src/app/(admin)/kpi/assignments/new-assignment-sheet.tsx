@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
   SelectContent,
@@ -51,10 +52,16 @@ const schema = z.object({
   thresholdRed: z.number().nullable().optional(),
   thresholdDirection: z.enum(['Higher', 'Lower', 'none']).optional(),
   submitterGuidance: z.string().max(1000).optional(),
+  overrideKpiName: z.boolean(),
+  customKpiName: z.string().max(200).optional(),
+  customKpiDescription: z.string().max(1000).optional(),
   materializeNow: z.boolean(),
 }).superRefine((d, ctx) => {
   if (!d.isAccountWide && !d.orgUnitCode) {
     ctx.addIssue({ code: 'custom', path: ['orgUnitCode'], message: 'Select a site' })
+  }
+  if (d.overrideKpiName && !d.customKpiName?.trim()) {
+    ctx.addIssue({ code: 'custom', path: ['customKpiName'], message: 'Display name is required when override is enabled' })
   }
 })
 
@@ -100,12 +107,16 @@ export function NewAssignmentSheet() {
       isRequired: true,
       thresholdDirection: 'none',
       submitterGuidance: '',
+      overrideKpiName: false,
+      customKpiName: '',
+      customKpiDescription: '',
       materializeNow: true,
     },
   })
 
   const watchedAccountCode = form.watch('accountCode')
   const isAccountWide = form.watch('isAccountWide')
+  const overrideKpiName = form.watch('overrideKpiName')
   const selectedAccount = accountsData?.items.find((a) => a.accountCode === watchedAccountCode)
 
   const { data: sitesData } = useQuery({
@@ -149,6 +160,8 @@ export function NewAssignmentSheet() {
         thresholdRed: values.thresholdRed ?? null,
         thresholdDirection: values.thresholdDirection === 'none' ? null : values.thresholdDirection,
         submitterGuidance: values.submitterGuidance || undefined,
+        customKpiName: values.overrideKpiName ? (values.customKpiName || null) : null,
+        customKpiDescription: values.overrideKpiName ? (values.customKpiDescription || null) : null,
         materializeNow: values.materializeNow,
       }),
     onSuccess: () => {
@@ -172,6 +185,8 @@ export function NewAssignmentSheet() {
     }
     setOpen(value)
   }
+
+  const selectedKpi = activeKpis.find((k) => k.kpiCode === form.watch('kpiCode'))
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
@@ -449,6 +464,73 @@ export function NewAssignmentSheet() {
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="overrideKpiName"
+              render={({ field }) => (
+                <FormItem className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <div>
+                    <FormLabel className="text-sm">Override KPI display name</FormLabel>
+                    <FormDescription className="text-xs">
+                      Use a custom name and description for this account instead of the library default.
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={(value) => {
+                        field.onChange(value)
+                        if (value && selectedKpi) {
+                          // Pre-fill with library values so the user can edit from a known baseline
+                          form.setValue('customKpiName', selectedKpi.kpiName)
+                          form.setValue('customKpiDescription', '')
+                        } else if (!value) {
+                          form.resetField('customKpiName')
+                          form.resetField('customKpiDescription')
+                        }
+                      }}
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+
+            {overrideKpiName && (
+              <>
+                <FormField
+                  control={form.control}
+                  name="customKpiName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Display name</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Name shown to submitters and in reports" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="customKpiDescription"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Display description <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Custom description for this account"
+                          className="resize-none"
+                          rows={3}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
+            )}
 
             <FormField
               control={form.control}

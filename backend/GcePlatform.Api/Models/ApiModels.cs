@@ -185,6 +185,10 @@ public record KpiAssignmentTemplateDto(
     Guid      ExternalId,
     string    KpiCode,
     string    KpiName,
+    string?   CustomKpiName,
+    string?   CustomKpiDescription,
+    string?   EffectiveKpiName,
+    string?   EffectiveKpiDescription,
     string?   Category,
     int?      PeriodScheduleId,
     string?   ScheduleName,
@@ -218,6 +222,8 @@ public record CreateKpiAssignmentTemplateRequest(
     decimal? ThresholdRed,
     string?  ThresholdDirection,
     string?  SubmitterGuidance,
+    string?  CustomKpiName,
+    string?  CustomKpiDescription,
     bool     MaterializeNow
 );
 

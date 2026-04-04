@@ -17,6 +17,10 @@ public static class KpiAssignmentEndpoints
                     ExternalId,
                     KpiCode,
                     KpiName,
+                    CustomKpiName,
+                    CustomKpiDescription,
+                    EffectiveKpiName,
+                    EffectiveKpiDescription,
                     Category,
                     PeriodScheduleId,
                     ScheduleName,
@@ -61,6 +65,8 @@ public static class KpiAssignmentEndpoints
             p.Add("@ThresholdRed", request.ThresholdRed);
             p.Add("@ThresholdDirection", request.ThresholdDirection);
             p.Add("@SubmitterGuidance", request.SubmitterGuidance);
+            p.Add("@CustomKpiName", request.CustomKpiName);
+            p.Add("@CustomKpiDescription", request.CustomKpiDescription);
             p.Add("@AssignmentTemplateID", dbType: System.Data.DbType.Int32,
                   direction: System.Data.ParameterDirection.Output);
 
@@ -82,6 +88,10 @@ public static class KpiAssignmentEndpoints
                     ExternalId,
                     KpiCode,
                     KpiName,
+                    CustomKpiName,
+                    CustomKpiDescription,
+                    EffectiveKpiName,
+                    EffectiveKpiDescription,
                     Category,
                     PeriodScheduleId,
                     ScheduleName,

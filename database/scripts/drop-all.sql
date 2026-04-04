@@ -167,6 +167,9 @@ IF OBJECT_ID('Audit.usp_WriteLog', 'P') IS NOT NULL
 GO
 
 -- Drop App stored procedures ------------------------------------------------------
+IF OBJECT_ID('App.usp_ProcessScheduledPeriods', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_ProcessScheduledPeriods;
+GO
 IF OBJECT_ID('App.usp_InitialiseReminderState', 'P') IS NOT NULL
     DROP PROCEDURE App.usp_InitialiseReminderState;
 GO

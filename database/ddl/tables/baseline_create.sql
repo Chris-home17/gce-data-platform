@@ -3665,6 +3665,8 @@ BEGIN
     (
         PeriodID            INT IDENTITY(1,1)   NOT NULL PRIMARY KEY,
         ExternalId          UNIQUEIDENTIFIER    NOT NULL CONSTRAINT DF_KpiPeriod_ExternalId DEFAULT (NEWID()),
+        -- Which schedule this period belongs to (periods are per-schedule, not global)
+        PeriodScheduleID    INT                 NOT NULL,
         -- Human-readable label, e.g. '2026-03'
         PeriodLabel         NVARCHAR(20)        NOT NULL,
         PeriodYear          SMALLINT            NOT NULL,
@@ -3673,14 +3675,13 @@ BEGIN
         -- Submission window
         SubmissionOpenDate  DATE                NOT NULL,
         SubmissionCloseDate DATE                NOT NULL,
-        -- Lifecycle
-        -- Draft    : being configured, not yet open to submitters
-        -- Open     : submitters can enter values
-        -- Closed   : window passed, no new submissions; data quality checks run
-        -- Distributed: reports published to customers
+        -- Lifecycle: Draft → Open → Closed
         Status              NVARCHAR(20)        NOT NULL CONSTRAINT DF_KpiPeriod_Status DEFAULT ('Draft')
             CONSTRAINT CK_KpiPeriod_Status
-                CHECK (Status IN ('Draft','Open','Closed','Distributed')),
+                CHECK (Status IN ('Draft','Open','Closed')),
+        -- When 1 (default), Power Automate daily job auto-opens and auto-closes
+        -- based on SubmissionOpenDate / SubmissionCloseDate. Set to 0 to hold manually.
+        AutoTransition      BIT                 NOT NULL CONSTRAINT DF_KpiPeriod_AutoTransition DEFAULT (1),
         -- Optional notes for operations team
         Notes               NVARCHAR(500)       NULL,
         -- Audit
@@ -3690,12 +3691,14 @@ BEGIN
         ModifiedBy          NVARCHAR(128)       NOT NULL CONSTRAINT DF_KpiPeriod_ModifiedBy DEFAULT (SESSION_USER),
         -- Business rule: close date must be after open date
         CONSTRAINT CK_KpiPeriod_Dates CHECK (SubmissionCloseDate >= SubmissionOpenDate)
+        -- FK to PeriodSchedule added after that table is created below
     );
 
-    CREATE UNIQUE INDEX UX_KpiPeriod_YearMonth  ON KPI.Period (PeriodYear, PeriodMonth);
-    CREATE UNIQUE INDEX UX_KpiPeriod_Label       ON KPI.Period (PeriodLabel);
-    CREATE UNIQUE INDEX UX_KpiPeriod_ExternalId  ON KPI.Period (ExternalId);
-    CREATE INDEX        IX_KpiPeriod_Status      ON KPI.Period (Status);
+    -- Unique per schedule (different schedules can have the same calendar month)
+    CREATE UNIQUE INDEX UX_KpiPeriod_ScheduleYearMonth ON KPI.Period (PeriodScheduleID, PeriodYear, PeriodMonth);
+    CREATE UNIQUE INDEX UX_KpiPeriod_ExternalId        ON KPI.Period (ExternalId);
+    CREATE INDEX        IX_KpiPeriod_Status            ON KPI.Period (Status);
+    CREATE INDEX        IX_KpiPeriod_Schedule          ON KPI.Period (PeriodScheduleID);
 
     PRINT '  + KPI.Period created';
 END;
@@ -3758,6 +3761,16 @@ BEGIN
 END;
 GO
 
+-- KPI.Period references KPI.PeriodSchedule — add FK now that both tables exist
+IF NOT EXISTS (
+    SELECT 1 FROM sys.foreign_keys
+    WHERE name = 'FK_KpiPeriod_Schedule'
+)
+    ALTER TABLE KPI.Period
+        ADD CONSTRAINT FK_KpiPeriod_Schedule
+            FOREIGN KEY (PeriodScheduleID) REFERENCES KPI.PeriodSchedule (PeriodScheduleID);
+GO
+
 IF OBJECT_ID('KPI.Assignment', 'U') IS NULL
 BEGIN
     CREATE TABLE KPI.Assignment
@@ -3784,6 +3797,9 @@ BEGIN
                 CHECK (ThresholdDirection IN ('Higher','Lower') OR ThresholdDirection IS NULL),
         -- Notes visible to submitters
         SubmitterGuidance   NVARCHAR(1000)      NULL,
+        -- Source template (NULL for manually created assignments).
+        -- Used by views to inherit CustomKpiName / CustomKpiDescription.
+        AssignmentTemplateID INT                NULL,
         -- Admin
         AssignedByPrincipalId INT               NULL,
         IsActive            BIT                 NOT NULL CONSTRAINT DF_KpiAsgn_IsActive   DEFAULT (1),
@@ -3798,6 +3814,7 @@ BEGIN
         CONSTRAINT FK_KpiAsgn_Period     FOREIGN KEY (PeriodID)    REFERENCES KPI.Period      (PeriodID),
         CONSTRAINT FK_KpiAsgn_AssignedBy FOREIGN KEY (AssignedByPrincipalId)
                                                                    REFERENCES Sec.Principal   (PrincipalId),
+        -- FK_KpiAsgn_Template added after KPI.AssignmentTemplate via ALTER TABLE below
         -- Business rule: OrgUnitId must belong to AccountId when provided
         -- (enforced procedurally in App.usp_AssignKpi; DB can't express cross-row easily)
     );
@@ -3842,6 +3859,11 @@ BEGIN
         ThresholdRed         DECIMAL(18,4) NULL,
         ThresholdDirection   NVARCHAR(10) NULL,
         SubmitterGuidance    NVARCHAR(1000) NULL,
+        -- Optional override of the library KPI name/description for this account.
+        -- When set, the effective name/description shown to submitters and in reports
+        -- is the custom value; otherwise the KPI.Definition defaults are used.
+        CustomKpiName        NVARCHAR(200) NULL,
+        CustomKpiDescription NVARCHAR(1000) NULL,
         IsActive             BIT NOT NULL
             CONSTRAINT DF_KpiAssignmentTemplate_IsActive DEFAULT (1),
         CreatedOnUtc         DATETIME2(3) NOT NULL
@@ -3881,6 +3903,16 @@ BEGIN
 
     PRINT '  + KPI.AssignmentTemplate created';
 END;
+GO
+
+-- Deferred FK: KPI.Assignment → KPI.AssignmentTemplate (forward ref resolved here)
+IF NOT EXISTS (
+    SELECT 1 FROM sys.foreign_keys
+    WHERE name = 'FK_KpiAsgn_Template' AND parent_object_id = OBJECT_ID('KPI.Assignment')
+)
+    ALTER TABLE KPI.Assignment
+        ADD CONSTRAINT FK_KpiAsgn_Template FOREIGN KEY (AssignmentTemplateID)
+            REFERENCES KPI.AssignmentTemplate (AssignmentTemplateID);
 GO
 
 IF OBJECT_ID('KPI.EscalationContact', 'U') IS NULL
@@ -4146,6 +4178,7 @@ GO
 
 CREATE OR ALTER VIEW App.vKpiPeriodSchedules
 AS
+    -- Periods are now per-schedule, so the count is a simple filter on PeriodScheduleID.
     SELECT
         ps.PeriodScheduleID,
         ps.ExternalId,
@@ -4166,27 +4199,11 @@ AS
     OUTER APPLY
     (
         SELECT
-            COUNT(*)              AS GeneratedPeriodCount,
-            MIN(p.PeriodLabel)    AS FirstGeneratedPeriodLabel,
-            MAX(p.PeriodLabel)    AS LastGeneratedPeriodLabel
+            COUNT(*)           AS GeneratedPeriodCount,
+            MIN(p.PeriodLabel) AS FirstGeneratedPeriodLabel,
+            MAX(p.PeriodLabel) AS LastGeneratedPeriodLabel
         FROM KPI.Period AS p
-        WHERE (p.PeriodYear * 100 + p.PeriodMonth) >= (YEAR(ps.StartDate) * 100 + MONTH(ps.StartDate))
-          AND (
-                ps.EndDate IS NULL
-                OR (p.PeriodYear * 100 + p.PeriodMonth) <= (YEAR(ps.EndDate) * 100 + MONTH(ps.EndDate))
-              )
-          AND DATEDIFF(
-                MONTH,
-                DATEFROMPARTS(YEAR(ps.StartDate), MONTH(ps.StartDate), 1),
-                DATEFROMPARTS(p.PeriodYear, p.PeriodMonth, 1)
-              ) % CASE
-                    WHEN ps.FrequencyType = 'Monthly' THEN 1
-                    WHEN ps.FrequencyType = 'EveryNMonths' THEN ps.FrequencyInterval
-                    WHEN ps.FrequencyType = 'Quarterly' THEN 3
-                    WHEN ps.FrequencyType = 'SemiAnnual' THEN 6
-                    WHEN ps.FrequencyType = 'Annual' THEN 12
-                    ELSE 1
-                  END = 0
+        WHERE p.PeriodScheduleID = ps.PeriodScheduleID
     ) AS periods;
 GO
 
@@ -4196,12 +4213,16 @@ AS
     SELECT
         p.PeriodID,
         p.ExternalId,
+        p.PeriodScheduleID,
+        ps.ScheduleName,
+        ps.FrequencyType,
         p.PeriodLabel,
         p.PeriodYear,
         p.PeriodMonth,
         p.SubmissionOpenDate,
         p.SubmissionCloseDate,
         p.Status,
+        p.AutoTransition,
         p.Notes,
         p.CreatedOnUtc,
         p.ModifiedOnUtc,
@@ -4217,7 +4238,8 @@ AS
             THEN DATEDIFF(DAY, CAST(SYSUTCDATETIME() AS DATE), p.SubmissionCloseDate)
             ELSE NULL
         END AS DaysRemaining
-    FROM KPI.Period AS p;
+    FROM KPI.Period AS p
+    JOIN KPI.PeriodSchedule AS ps ON ps.PeriodScheduleID = p.PeriodScheduleID;
 GO
 
 CREATE OR ALTER VIEW App.vKpiAssignmentTemplates
@@ -4250,6 +4272,10 @@ AS
         t.ThresholdRed,
         COALESCE(t.ThresholdDirection, d.ThresholdDirection) AS EffectiveThresholdDirection,
         t.SubmitterGuidance,
+        t.CustomKpiName,
+        t.CustomKpiDescription,
+        COALESCE(t.CustomKpiName,        d.KPIName)        AS EffectiveKpiName,
+        COALESCE(t.CustomKpiDescription, d.KPIDescription) AS EffectiveKpiDescription,
         t.IsActive,
         ISNULL(instances.GeneratedAssignmentCount, 0) AS GeneratedAssignmentCount
     FROM KPI.AssignmentTemplate AS t
@@ -4320,6 +4346,7 @@ AS
         -- NULL OrgUnitId = account-wide assignment
         CASE WHEN a.OrgUnitId IS NULL THEN 1 ELSE 0 END AS IsAccountWide,
         a.PeriodID,
+        p.PeriodScheduleID,
         p.PeriodLabel,
         p.PeriodYear,
         p.PeriodMonth,
@@ -4332,16 +4359,22 @@ AS
         -- Effective threshold direction: assignment override > definition default
         COALESCE(a.ThresholdDirection, d.ThresholdDirection) AS EffectiveThresholdDirection,
         a.SubmitterGuidance,
+        -- Source template (NULL for manually created assignments)
+        a.AssignmentTemplateID,
+        -- Effective name / description: template override → library default
+        COALESCE(tmpl.CustomKpiName,        d.KPIName)        AS EffectiveKpiName,
+        COALESCE(tmpl.CustomKpiDescription, d.KPIDescription) AS EffectiveKpiDescription,
         a.IsActive,
         a.CreatedOnUtc,
         a.ModifiedOnUtc,
         -- Escalation contact count for this site+period
         ISNULL(esc.ContactCount, 0) AS EscalationContactCount
     FROM KPI.Assignment AS a
-    JOIN KPI.Definition AS d    ON d.KPIID     = a.KPIID
-    JOIN Dim.Account    AS acct ON acct.AccountId = a.AccountId
-    JOIN KPI.Period     AS p    ON p.PeriodID   = a.PeriodID
-    LEFT JOIN Dim.OrgUnit AS ou ON ou.OrgUnitId = a.OrgUnitId
+    JOIN KPI.Definition             AS d    ON d.KPIID       = a.KPIID
+    JOIN Dim.Account                AS acct ON acct.AccountId = a.AccountId
+    JOIN KPI.Period                 AS p    ON p.PeriodID    = a.PeriodID
+    LEFT JOIN Dim.OrgUnit           AS ou   ON ou.OrgUnitId  = a.OrgUnitId
+    LEFT JOIN KPI.AssignmentTemplate AS tmpl ON tmpl.AssignmentTemplateID = a.AssignmentTemplateID
     OUTER APPLY
     (
         SELECT COUNT(*) AS ContactCount
@@ -4420,23 +4453,43 @@ AS
                     / COUNT(sa.AssignmentID)
                  AS DECIMAL(5,1))
         END                                                     AS CompletionPct,
+        -- Exception flags for the Account Director view
+        -- IsLateRisk: period is still Open, ≤3 days remain, and more than half the work is missing
+        CAST(CASE
+            WHEN p.Status = 'Open'
+             AND DATEDIFF(DAY, CAST(SYSUTCDATETIME() AS DATE), p.SubmissionCloseDate) <= 3
+             AND SUM(CASE WHEN sub.SubmissionID IS NULL THEN 1 ELSE 0 END) * 100.0
+                 / NULLIF(COUNT(sa.AssignmentID), 0) > 50
+            THEN 1 ELSE 0
+        END AS BIT)                                             AS IsLateRisk,
+        -- IsOverdue: period has Closed with submissions still missing
+        CAST(CASE
+            WHEN p.Status = 'Closed'
+             AND SUM(CASE WHEN sub.SubmissionID IS NULL THEN 1 ELSE 0 END) > 0
+            THEN 1 ELSE 0
+        END AS BIT)                                             AS IsOverdue,
+        -- Schedule context
+        p.PeriodScheduleID,
+        sched.ScheduleName,
         -- Reminder state (keyed to site+period)
         rs.CurrentLevel         AS ReminderLevel,
         rs.LastReminderSentAt,
         rs.NextReminderDueAt,
         rs.IsResolved           AS ReminderResolved
     FROM AllSiteAssignments      AS sa
-    JOIN KPI.Period              AS p    ON p.PeriodID    = sa.PeriodID
-    JOIN Dim.OrgUnit             AS site ON site.OrgUnitId = sa.SiteOrgUnitId
-    JOIN Dim.Account             AS acct ON acct.AccountId = sa.AccountId
-    LEFT JOIN KPI.Submission     AS sub  ON sub.AssignmentID = sa.AssignmentID
+    JOIN KPI.Period              AS p     ON p.PeriodID    = sa.PeriodID
+    JOIN KPI.PeriodSchedule     AS sched ON sched.PeriodScheduleID = p.PeriodScheduleID
+    JOIN Dim.OrgUnit             AS site  ON site.OrgUnitId = sa.SiteOrgUnitId
+    JOIN Dim.Account             AS acct  ON acct.AccountId = sa.AccountId
+    LEFT JOIN KPI.Submission     AS sub   ON sub.AssignmentID = sa.AssignmentID
     LEFT JOIN Workflow.ReminderState AS rs
         ON rs.OrgUnitId = sa.SiteOrgUnitId
        AND rs.PeriodID  = sa.PeriodID
     GROUP BY
         acct.AccountId, acct.AccountCode, acct.AccountName,
         site.OrgUnitId, site.OrgUnitCode, site.OrgUnitName, site.CountryCode,
-        p.PeriodID, p.PeriodLabel, p.Status,
+        p.PeriodID, p.PeriodLabel, p.Status, p.SubmissionCloseDate, p.PeriodScheduleID,
+        sched.ScheduleName,
         rs.CurrentLevel, rs.LastReminderSentAt, rs.NextReminderDueAt, rs.IsResolved;
 GO
 
@@ -4569,16 +4622,21 @@ END;
 GO
 
 CREATE OR ALTER PROCEDURE App.usp_UpsertKpiPeriod
+    @PeriodScheduleID    INT,
     @PeriodYear          SMALLINT,
     @PeriodMonth         TINYINT,
     @SubmissionOpenDate  DATE,
     @SubmissionCloseDate DATE,
+    @AutoTransition      BIT            = 1,
     @Notes               NVARCHAR(500)  = NULL,
     @ActorUPN            NVARCHAR(320)  = NULL,
     @PeriodID            INT OUTPUT
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM KPI.PeriodSchedule WHERE PeriodScheduleID = @PeriodScheduleID)
+        THROW 50099, 'PeriodScheduleID not found.', 1;
 
     IF @SubmissionCloseDate < @SubmissionOpenDate
         THROW 50100, 'SubmissionCloseDate must be on or after SubmissionOpenDate.', 1;
@@ -4589,34 +4647,33 @@ BEGIN
 
     SET @PeriodID = (
         SELECT PeriodID FROM KPI.Period
-        WHERE PeriodYear = @PeriodYear AND PeriodMonth = @PeriodMonth
+        WHERE PeriodScheduleID = @PeriodScheduleID
+          AND PeriodYear  = @PeriodYear
+          AND PeriodMonth = @PeriodMonth
     );
 
     IF @PeriodID IS NULL
     BEGIN
         INSERT INTO KPI.Period
-            (PeriodLabel, PeriodYear, PeriodMonth,
-             SubmissionOpenDate, SubmissionCloseDate, Notes)
+            (PeriodScheduleID, PeriodLabel, PeriodYear, PeriodMonth,
+             SubmissionOpenDate, SubmissionCloseDate, AutoTransition, Notes)
         VALUES
-            (@Label, @PeriodYear, @PeriodMonth,
-             @SubmissionOpenDate, @SubmissionCloseDate, @Notes);
+            (@PeriodScheduleID, @Label, @PeriodYear, @PeriodMonth,
+             @SubmissionOpenDate, @SubmissionCloseDate, @AutoTransition, @Notes);
 
         SET @PeriodID = SCOPE_IDENTITY();
     END
     ELSE
     BEGIN
-        -- Status-aware: cannot modify a Closed or Distributed period
-        IF EXISTS (
-            SELECT 1 FROM KPI.Period
-            WHERE PeriodID = @PeriodID
-              AND Status IN ('Closed','Distributed')
-        )
-            THROW 50101, 'Cannot modify a Closed or Distributed period.', 1;
+        -- Cannot modify a Closed period
+        IF EXISTS (SELECT 1 FROM KPI.Period WHERE PeriodID = @PeriodID AND Status = 'Closed')
+            THROW 50101, 'Cannot modify a Closed period.', 1;
 
         UPDATE KPI.Period
         SET PeriodLabel         = @Label,
             SubmissionOpenDate  = @SubmissionOpenDate,
             SubmissionCloseDate = @SubmissionCloseDate,
+            AutoTransition      = @AutoTransition,
             Notes               = @Notes,
             ModifiedOnUtc       = SYSUTCDATETIME(),
             ModifiedBy          = COALESCE(@ActorUPN, SESSION_USER)
@@ -4654,26 +4711,46 @@ BEGIN
         ModifiedBy    = COALESCE(@ActorUPN, SESSION_USER)
     WHERE PeriodID = @PeriodID;
 
+    -- Look up the schedule so we can scope downstream calls
+    DECLARE @ScheduleID INT = (
+        SELECT PeriodScheduleID FROM KPI.Period WHERE PeriodID = @PeriodID
+    );
+
+    -- Materialise any templates that belong to this schedule
+    EXEC App.usp_MaterializeKpiAssignmentTemplates
+        @PeriodScheduleIDFilter = @ScheduleID,
+        @ActorUPN               = @ActorUPN;
+
+    -- Initialise reminder state rows for sites with required assignments.
+    -- Capture result set so it doesn't surface to the outer caller.
+    DECLARE @ReminderResult TABLE (ReminderStateRowsCreated INT);
+    INSERT INTO @ReminderResult
+    EXEC App.usp_InitialiseReminderState
+        @PeriodID = @PeriodID,
+        @ActorUPN = @ActorUPN;
+
     PRINT 'Period opened.';
 END;
 GO
 
 CREATE OR ALTER PROCEDURE App.usp_AssignKpi
-    @KPICode            NVARCHAR(50),
-    @AccountCode        NVARCHAR(50),
-    @OrgUnitCode        NVARCHAR(50)    = NULL,   -- NULL = account-wide
-    @OrgUnitType        NVARCHAR(20)    = 'Site',
-    @PeriodYear         SMALLINT,
-    @PeriodMonth        TINYINT,
-    @IsRequired         BIT             = 1,
-    @TargetValue        DECIMAL(18,4)   = NULL,
-    @ThresholdGreen     DECIMAL(18,4)   = NULL,
-    @ThresholdAmber     DECIMAL(18,4)   = NULL,
-    @ThresholdRed       DECIMAL(18,4)   = NULL,
-    @ThresholdDirection NVARCHAR(10)    = NULL,
-    @SubmitterGuidance  NVARCHAR(1000)  = NULL,
-    @ActorUPN           NVARCHAR(320)   = NULL,
-    @AssignmentID       INT OUTPUT
+    @KPICode              NVARCHAR(50),
+    @AccountCode          NVARCHAR(50),
+    @OrgUnitCode          NVARCHAR(50)    = NULL,   -- NULL = account-wide
+    @OrgUnitType          NVARCHAR(20)    = 'Site',
+    @PeriodScheduleID     INT,
+    @PeriodYear           SMALLINT,
+    @PeriodMonth          TINYINT,
+    @AssignmentTemplateID INT             = NULL,
+    @IsRequired           BIT             = 1,
+    @TargetValue          DECIMAL(18,4)   = NULL,
+    @ThresholdGreen       DECIMAL(18,4)   = NULL,
+    @ThresholdAmber       DECIMAL(18,4)   = NULL,
+    @ThresholdRed         DECIMAL(18,4)   = NULL,
+    @ThresholdDirection   NVARCHAR(10)    = NULL,
+    @SubmitterGuidance    NVARCHAR(1000)  = NULL,
+    @ActorUPN             NVARCHAR(320)   = NULL,
+    @AssignmentID         INT OUTPUT
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -4703,13 +4780,15 @@ BEGIN
             THROW 50112, 'OrgUnit not found or inactive for provided AccountCode + OrgUnitCode.', 1;
     END
 
-    -- Resolve Period
+    -- Resolve Period (scoped to schedule)
     DECLARE @PeriodID INT = (
         SELECT PeriodID FROM KPI.Period
-        WHERE PeriodYear = @PeriodYear AND PeriodMonth = @PeriodMonth
+        WHERE PeriodScheduleID = @PeriodScheduleID
+          AND PeriodYear       = @PeriodYear
+          AND PeriodMonth      = @PeriodMonth
     );
     IF @PeriodID IS NULL
-        THROW 50113, 'Period not found. Create the period first using App.usp_UpsertKpiPeriod.', 1;
+        THROW 50113, 'Period not found for this schedule/year/month. Create the period first using App.usp_UpsertKpiPeriod.', 1;
 
     -- Resolve actor
     DECLARE @ActorPrincipalId INT = NULL;
@@ -4736,11 +4815,11 @@ BEGIN
     IF @AssignmentID IS NULL
     BEGIN
         INSERT INTO KPI.Assignment
-            (KPIID, AccountId, OrgUnitId, PeriodID, IsRequired,
+            (KPIID, AccountId, OrgUnitId, PeriodID, AssignmentTemplateID, IsRequired,
              TargetValue, ThresholdGreen, ThresholdAmber, ThresholdRed,
              ThresholdDirection, SubmitterGuidance, AssignedByPrincipalId)
         VALUES
-            (@KPIID, @AccountId, @OrgUnitId, @PeriodID, @IsRequired,
+            (@KPIID, @AccountId, @OrgUnitId, @PeriodID, @AssignmentTemplateID, @IsRequired,
              @TargetValue, @ThresholdGreen, @ThresholdAmber, @ThresholdRed,
              @ThresholdDirection, @SubmitterGuidance, @ActorPrincipalId);
 
@@ -4897,6 +4976,7 @@ BEGIN
         USING
         (
             SELECT
+                @CurrentScheduleId AS PeriodScheduleID,
                 CONCAT(YEAR(MonthStart), '-', RIGHT('0' + CAST(MONTH(MonthStart) AS NVARCHAR(2)), 2)) AS PeriodLabel,
                 CAST(YEAR(MonthStart) AS SMALLINT) AS PeriodYear,
                 CAST(MONTH(MonthStart) AS TINYINT) AS PeriodMonth,
@@ -4919,19 +4999,20 @@ BEGIN
                 CONCAT('Generated from schedule: ', @ScheduleName) AS Notes
             FROM MonthSeries
         ) AS src
-        ON target.PeriodYear = src.PeriodYear
-       AND target.PeriodMonth = src.PeriodMonth
+        ON  target.PeriodScheduleID = src.PeriodScheduleID
+        AND target.PeriodYear       = src.PeriodYear
+        AND target.PeriodMonth      = src.PeriodMonth
         WHEN NOT MATCHED THEN
-            INSERT (PeriodLabel, PeriodYear, PeriodMonth, SubmissionOpenDate, SubmissionCloseDate, Notes)
-            VALUES (src.PeriodLabel, src.PeriodYear, src.PeriodMonth, src.SubmissionOpenDate, src.SubmissionCloseDate, src.Notes)
+            INSERT (PeriodScheduleID, PeriodLabel, PeriodYear, PeriodMonth, SubmissionOpenDate, SubmissionCloseDate, AutoTransition, Notes)
+            VALUES (src.PeriodScheduleID, src.PeriodLabel, src.PeriodYear, src.PeriodMonth, src.SubmissionOpenDate, src.SubmissionCloseDate, 1, src.Notes)
         WHEN MATCHED AND target.Status IN ('Draft', 'Open') THEN
             UPDATE SET
-                target.PeriodLabel = src.PeriodLabel,
-                target.SubmissionOpenDate = src.SubmissionOpenDate,
+                target.PeriodLabel         = src.PeriodLabel,
+                target.SubmissionOpenDate  = src.SubmissionOpenDate,
                 target.SubmissionCloseDate = src.SubmissionCloseDate,
-                target.Notes = src.Notes,
-                target.ModifiedOnUtc = SYSUTCDATETIME(),
-                target.ModifiedBy = COALESCE(@ActorUPN, SESSION_USER);
+                target.Notes               = src.Notes,
+                target.ModifiedOnUtc       = SYSUTCDATETIME(),
+                target.ModifiedBy          = COALESCE(@ActorUPN, SESSION_USER);
 
         FETCH NEXT FROM schedule_cursor INTO
             @CurrentScheduleId, @StartDate, @EndDate, @FrequencyType, @FrequencyInterval, @SubmissionOpenDay, @SubmissionCloseDay, @GenerateMonthsAhead, @ScheduleName;
@@ -4958,8 +5039,10 @@ CREATE OR ALTER PROCEDURE App.usp_UpsertKpiAssignmentTemplate
     @ThresholdAmber     DECIMAL(18,4)   = NULL,
     @ThresholdRed       DECIMAL(18,4)   = NULL,
     @ThresholdDirection NVARCHAR(10)    = NULL,
-    @SubmitterGuidance  NVARCHAR(1000)  = NULL,
-    @ActorUPN           NVARCHAR(320)   = NULL,
+    @SubmitterGuidance    NVARCHAR(1000)  = NULL,
+    @CustomKpiName        NVARCHAR(200)   = NULL,
+    @CustomKpiDescription NVARCHAR(1000)  = NULL,
+    @ActorUPN             NVARCHAR(320)   = NULL,
     @AssignmentTemplateID INT OUTPUT
 AS
 BEGIN
@@ -5047,39 +5130,44 @@ BEGIN
     BEGIN
         INSERT INTO KPI.AssignmentTemplate
             (KPIID, PeriodScheduleID, AccountId, OrgUnitId, StartPeriodYear, StartPeriodMonth, EndPeriodYear, EndPeriodMonth,
-             IsRequired, TargetValue, ThresholdGreen, ThresholdAmber, ThresholdRed, ThresholdDirection, SubmitterGuidance)
+             IsRequired, TargetValue, ThresholdGreen, ThresholdAmber, ThresholdRed, ThresholdDirection, SubmitterGuidance,
+             CustomKpiName, CustomKpiDescription)
         VALUES
             (@KPIID, @PeriodScheduleID, @AccountId, @OrgUnitId, @StartPeriodYear, @StartPeriodMonth, @EndPeriodYear, @EndPeriodMonth,
-             @IsRequired, @TargetValue, @ThresholdGreen, @ThresholdAmber, @ThresholdRed, @ThresholdDirection, @SubmitterGuidance);
+             @IsRequired, @TargetValue, @ThresholdGreen, @ThresholdAmber, @ThresholdRed, @ThresholdDirection, @SubmitterGuidance,
+             @CustomKpiName, @CustomKpiDescription);
 
         SET @AssignmentTemplateID = SCOPE_IDENTITY();
     END
     ELSE
     BEGIN
         UPDATE KPI.AssignmentTemplate
-        SET PeriodScheduleID   = @PeriodScheduleID,
-            StartPeriodYear    = @StartPeriodYear,
-            StartPeriodMonth   = @StartPeriodMonth,
-            EndPeriodYear      = @EndPeriodYear,
-            EndPeriodMonth     = @EndPeriodMonth,
-            IsRequired         = @IsRequired,
-            TargetValue        = @TargetValue,
-            ThresholdGreen     = @ThresholdGreen,
-            ThresholdAmber     = @ThresholdAmber,
-            ThresholdRed       = @ThresholdRed,
-            ThresholdDirection = @ThresholdDirection,
-            SubmitterGuidance  = @SubmitterGuidance,
-            IsActive           = 1,
-            ModifiedOnUtc      = SYSUTCDATETIME(),
-            ModifiedBy         = COALESCE(@ActorUPN, SESSION_USER)
+        SET PeriodScheduleID      = @PeriodScheduleID,
+            StartPeriodYear       = @StartPeriodYear,
+            StartPeriodMonth      = @StartPeriodMonth,
+            EndPeriodYear         = @EndPeriodYear,
+            EndPeriodMonth        = @EndPeriodMonth,
+            IsRequired            = @IsRequired,
+            TargetValue           = @TargetValue,
+            ThresholdGreen        = @ThresholdGreen,
+            ThresholdAmber        = @ThresholdAmber,
+            ThresholdRed          = @ThresholdRed,
+            ThresholdDirection    = @ThresholdDirection,
+            SubmitterGuidance     = @SubmitterGuidance,
+            CustomKpiName         = @CustomKpiName,
+            CustomKpiDescription  = @CustomKpiDescription,
+            IsActive              = 1,
+            ModifiedOnUtc         = SYSUTCDATETIME(),
+            ModifiedBy            = COALESCE(@ActorUPN, SESSION_USER)
         WHERE AssignmentTemplateID = @AssignmentTemplateID;
     END
 END;
 GO
 
 CREATE OR ALTER PROCEDURE App.usp_MaterializeKpiAssignmentTemplates
-    @AssignmentTemplateID INT           = NULL,
-    @ActorUPN             NVARCHAR(320) = NULL
+    @AssignmentTemplateID   INT           = NULL,
+    @PeriodScheduleIDFilter INT           = NULL,
+    @ActorUPN               NVARCHAR(320) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -5090,8 +5178,6 @@ BEGIN
         @TemplateScheduleId INT,
         @TemplateScheduleStartDate DATE,
         @TemplateScheduleEndDate DATE,
-        @TemplateFrequencyType NVARCHAR(20),
-        @TemplateFrequencyInterval TINYINT,
         @TemplateAccountCode NVARCHAR(50),
         @TemplateOrgUnitCode NVARCHAR(50),
         @TemplateOrgUnitType NVARCHAR(20),
@@ -5114,8 +5200,6 @@ BEGIN
             t.PeriodScheduleID,
             sched.StartDate,
             sched.EndDate,
-            sched.FrequencyType,
-            sched.FrequencyInterval,
             acct.AccountCode,
             ou.OrgUnitCode,
             COALESCE(ou.OrgUnitType, 'Site') AS OrgUnitType,
@@ -5131,18 +5215,20 @@ BEGIN
             t.ThresholdDirection,
             t.SubmitterGuidance
         FROM KPI.AssignmentTemplate AS t
-        JOIN KPI.Definition         AS d    ON d.KPIID = t.KPIID
+        JOIN KPI.Definition         AS d     ON d.KPIID              = t.KPIID
         JOIN KPI.PeriodSchedule     AS sched ON sched.PeriodScheduleID = t.PeriodScheduleID
-        JOIN Dim.Account            AS acct ON acct.AccountId = t.AccountId
-        LEFT JOIN Dim.OrgUnit       AS ou   ON ou.OrgUnitId = t.OrgUnitId
+        JOIN Dim.Account            AS acct  ON acct.AccountId       = t.AccountId
+        LEFT JOIN Dim.OrgUnit       AS ou    ON ou.OrgUnitId         = t.OrgUnitId
         WHERE t.IsActive = 1
           AND sched.IsActive = 1
-          AND (@AssignmentTemplateID IS NULL OR t.AssignmentTemplateID = @AssignmentTemplateID)
+          AND (@AssignmentTemplateID   IS NULL OR t.AssignmentTemplateID = @AssignmentTemplateID)
+          AND (@PeriodScheduleIDFilter IS NULL OR t.PeriodScheduleID    = @PeriodScheduleIDFilter)
         ORDER BY t.AssignmentTemplateID;
 
     OPEN template_cursor;
     FETCH NEXT FROM template_cursor INTO
-        @CurrentTemplateId, @TemplateKpiCode, @TemplateScheduleId, @TemplateScheduleStartDate, @TemplateScheduleEndDate, @TemplateFrequencyType, @TemplateFrequencyInterval, @TemplateAccountCode, @TemplateOrgUnitCode, @TemplateOrgUnitType,
+        @CurrentTemplateId, @TemplateKpiCode, @TemplateScheduleId, @TemplateScheduleStartDate, @TemplateScheduleEndDate,
+        @TemplateAccountCode, @TemplateOrgUnitCode, @TemplateOrgUnitType,
         @TemplateStartYear, @TemplateStartMonth, @TemplateEndYear, @TemplateEndMonth, @TemplateIsRequired,
         @TemplateTargetValue, @TemplateThresholdGreen, @TemplateThresholdAmber, @TemplateThresholdRed,
         @TemplateThresholdDirection, @TemplateSubmitterGuidance;
@@ -5152,36 +5238,19 @@ BEGIN
         DECLARE @CurrentPeriodYear SMALLINT;
         DECLARE @CurrentPeriodMonth TINYINT;
 
+        -- Periods already belong to the right schedule — no frequency modulo needed
         DECLARE period_cursor CURSOR LOCAL FAST_FORWARD FOR
             SELECT PeriodYear, PeriodMonth
             FROM KPI.Period
-            WHERE (PeriodYear * 100 + PeriodMonth) >= (
+            WHERE PeriodScheduleID = @TemplateScheduleId
+              AND (PeriodYear * 100 + PeriodMonth) >= (
                     COALESCE(@TemplateStartYear, YEAR(@TemplateScheduleStartDate)) * 100
                     + COALESCE(@TemplateStartMonth, MONTH(@TemplateScheduleStartDate))
                   )
               AND (
-                    COALESCE(@TemplateEndYear, YEAR(@TemplateScheduleEndDate)) IS NULL
-                    OR (PeriodYear * 100 + PeriodMonth) <= (
-                        COALESCE(@TemplateEndYear, YEAR(@TemplateScheduleEndDate)) * 100
-                        + COALESCE(@TemplateEndMonth, MONTH(@TemplateScheduleEndDate))
-                    )
+                    @TemplateEndYear IS NULL
+                    OR (PeriodYear * 100 + PeriodMonth) <= (@TemplateEndYear * 100 + @TemplateEndMonth)
                   )
-              AND (
-                    DATEDIFF(
-                        MONTH,
-                        DATEFROMPARTS(YEAR(@TemplateScheduleStartDate), MONTH(@TemplateScheduleStartDate), 1),
-                        DATEFROMPARTS(PeriodYear, PeriodMonth, 1)
-                    )
-                    %
-                    CASE
-                        WHEN @TemplateFrequencyType = 'Monthly' THEN 1
-                        WHEN @TemplateFrequencyType = 'EveryNMonths' THEN @TemplateFrequencyInterval
-                        WHEN @TemplateFrequencyType = 'Quarterly' THEN 3
-                        WHEN @TemplateFrequencyType = 'SemiAnnual' THEN 6
-                        WHEN @TemplateFrequencyType = 'Annual' THEN 12
-                        ELSE 1
-                    END
-                  ) = 0
             ORDER BY PeriodYear, PeriodMonth;
 
         OPEN period_cursor;
@@ -5191,21 +5260,23 @@ BEGIN
         BEGIN
             DECLARE @GeneratedAssignmentId INT;
             EXEC App.usp_AssignKpi
-                @KPICode = @TemplateKpiCode,
-                @AccountCode = @TemplateAccountCode,
-                @OrgUnitCode = @TemplateOrgUnitCode,
-                @OrgUnitType = @TemplateOrgUnitType,
-                @PeriodYear = @CurrentPeriodYear,
-                @PeriodMonth = @CurrentPeriodMonth,
-                @IsRequired = @TemplateIsRequired,
-                @TargetValue = @TemplateTargetValue,
-                @ThresholdGreen = @TemplateThresholdGreen,
-                @ThresholdAmber = @TemplateThresholdAmber,
-                @ThresholdRed = @TemplateThresholdRed,
-                @ThresholdDirection = @TemplateThresholdDirection,
-                @SubmitterGuidance = @TemplateSubmitterGuidance,
-                @ActorUPN = @ActorUPN,
-                @AssignmentID = @GeneratedAssignmentId OUTPUT;
+                @KPICode              = @TemplateKpiCode,
+                @AccountCode          = @TemplateAccountCode,
+                @OrgUnitCode          = @TemplateOrgUnitCode,
+                @OrgUnitType          = @TemplateOrgUnitType,
+                @PeriodScheduleID     = @TemplateScheduleId,
+                @PeriodYear           = @CurrentPeriodYear,
+                @PeriodMonth          = @CurrentPeriodMonth,
+                @AssignmentTemplateID = @CurrentTemplateId,
+                @IsRequired           = @TemplateIsRequired,
+                @TargetValue          = @TemplateTargetValue,
+                @ThresholdGreen       = @TemplateThresholdGreen,
+                @ThresholdAmber       = @TemplateThresholdAmber,
+                @ThresholdRed         = @TemplateThresholdRed,
+                @ThresholdDirection   = @TemplateThresholdDirection,
+                @SubmitterGuidance    = @TemplateSubmitterGuidance,
+                @ActorUPN             = @ActorUPN,
+                @AssignmentID         = @GeneratedAssignmentId OUTPUT;
 
             FETCH NEXT FROM period_cursor INTO @CurrentPeriodYear, @CurrentPeriodMonth;
         END
@@ -5214,7 +5285,8 @@ BEGIN
         DEALLOCATE period_cursor;
 
         FETCH NEXT FROM template_cursor INTO
-            @CurrentTemplateId, @TemplateKpiCode, @TemplateScheduleId, @TemplateScheduleStartDate, @TemplateScheduleEndDate, @TemplateFrequencyType, @TemplateFrequencyInterval, @TemplateAccountCode, @TemplateOrgUnitCode, @TemplateOrgUnitType,
+            @CurrentTemplateId, @TemplateKpiCode, @TemplateScheduleId, @TemplateScheduleStartDate, @TemplateScheduleEndDate,
+            @TemplateAccountCode, @TemplateOrgUnitCode, @TemplateOrgUnitType,
             @TemplateStartYear, @TemplateStartMonth, @TemplateEndYear, @TemplateEndMonth, @TemplateIsRequired,
             @TemplateTargetValue, @TemplateThresholdGreen, @TemplateThresholdAmber, @TemplateThresholdRed,
             @TemplateThresholdDirection, @TemplateSubmitterGuidance;
@@ -5253,6 +5325,7 @@ GO
 CREATE OR ALTER PROCEDURE App.usp_SetEscalationContact
     @AccountCode        NVARCHAR(50),
     @SiteCode           NVARCHAR(50),
+    @PeriodScheduleID   INT,
     @PeriodYear         SMALLINT,
     @PeriodMonth        TINYINT,
     @EscalationLevel    TINYINT,          -- 1, 2, or 3
@@ -5279,10 +5352,12 @@ BEGIN
 
     DECLARE @PeriodID INT = (
         SELECT PeriodID FROM KPI.Period
-        WHERE PeriodYear = @PeriodYear AND PeriodMonth = @PeriodMonth
+        WHERE PeriodScheduleID = @PeriodScheduleID
+          AND PeriodYear       = @PeriodYear
+          AND PeriodMonth      = @PeriodMonth
     );
     IF @PeriodID IS NULL
-        THROW 50123, 'Period not found.', 1;
+        THROW 50123, 'Period not found for this schedule/year/month.', 1;
 
     DECLARE @PrincipalId INT = (SELECT UserId FROM Sec.[User] WHERE UPN = @PrincipalUPN);
     IF @PrincipalId IS NULL
@@ -5604,6 +5679,76 @@ BEGIN
 END;
 GO
 
+CREATE OR ALTER PROCEDURE App.usp_ProcessScheduledPeriods
+    @ActorUPN   NVARCHAR(320) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @Today DATE = CAST(SYSUTCDATETIME() AS DATE);
+    DECLARE @PeriodsOpened INT = 0;
+    DECLARE @PeriodsClosed INT = 0;
+
+    -- 1. Open Draft periods whose submission window has started (AutoTransition = 1)
+    DECLARE @PeriodIDToOpen INT;
+
+    DECLARE open_cursor CURSOR LOCAL FAST_FORWARD FOR
+        SELECT PeriodID
+        FROM KPI.Period
+        WHERE Status        = 'Draft'
+          AND AutoTransition = 1
+          AND SubmissionOpenDate <= @Today
+        ORDER BY PeriodScheduleID, PeriodYear, PeriodMonth;
+
+    OPEN open_cursor;
+    FETCH NEXT FROM open_cursor INTO @PeriodIDToOpen;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        EXEC App.usp_OpenPeriod @PeriodID = @PeriodIDToOpen, @ActorUPN = @ActorUPN;
+        SET @PeriodsOpened = @PeriodsOpened + 1;
+        FETCH NEXT FROM open_cursor INTO @PeriodIDToOpen;
+    END
+
+    CLOSE open_cursor;
+    DEALLOCATE open_cursor;
+
+    -- 2. Close Open periods whose submission window has expired (AutoTransition = 1)
+    DECLARE @PeriodIDToClose INT;
+
+    DECLARE close_cursor CURSOR LOCAL FAST_FORWARD FOR
+        SELECT PeriodID
+        FROM KPI.Period
+        WHERE Status         = 'Open'
+          AND AutoTransition = 1
+          AND SubmissionCloseDate < @Today
+        ORDER BY PeriodScheduleID, PeriodYear, PeriodMonth;
+
+    OPEN close_cursor;
+    FETCH NEXT FROM close_cursor INTO @PeriodIDToClose;
+
+    DECLARE @CloseResult TABLE (SubmissionsForceLockedOnClose INT);
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        DELETE FROM @CloseResult;
+        INSERT INTO @CloseResult
+        EXEC App.usp_ClosePeriod @PeriodID = @PeriodIDToClose, @ActorUPN = @ActorUPN;
+        SET @PeriodsClosed = @PeriodsClosed + 1;
+        FETCH NEXT FROM close_cursor INTO @PeriodIDToClose;
+    END
+
+    CLOSE close_cursor;
+    DEALLOCATE close_cursor;
+
+    -- 3. Roll the generation horizon for all active schedules
+    EXEC App.usp_GenerateKpiPeriods @ActorUPN = @ActorUPN;
+
+    -- 4. Return summary for Power Automate / caller
+    SELECT @PeriodsOpened AS PeriodsOpened, @PeriodsClosed AS PeriodsClosed;
+END;
+GO
+
 -- Reporting views ------------------------------------------------------------
 CREATE OR ALTER VIEW Reporting.vw_PBICustomerSecurity
 AS
@@ -5688,6 +5833,11 @@ AS
         per.SubmissionOpenDate,
         per.SubmissionCloseDate,
         per.Status,
+        per.AutoTransition,
+        -- Schedule context
+        ps.PeriodScheduleID,
+        ps.ScheduleName,
+        ps.FrequencyType,
         -- Convenience flags
         CAST(
             CASE WHEN per.Status = 'Open'
@@ -5702,7 +5852,8 @@ AS
         END                             AS DaysRemainingToClose,
         -- Calendar sort key (YYYYMM integer)
         per.PeriodYear * 100 + per.PeriodMonth AS PeriodSortKey
-    FROM KPI.Period AS per;
+    FROM KPI.Period          AS per
+    JOIN KPI.PeriodSchedule  AS ps ON ps.PeriodScheduleID = per.PeriodScheduleID;
 GO
 
 CREATE OR ALTER VIEW Reporting.vw_PBIKPIDefinition
@@ -5728,10 +5879,11 @@ AS
     SELECT
         asgn.AssignmentID,
         asgn.ExternalId                                         AS AssignmentKey,
-        -- KPI
+        -- KPI (effective name resolves template override → library default)
         d.ExternalId                                            AS KPIDefinitionKey,
         d.KPICode,
-        d.KPIName,
+        COALESCE(tmpl.CustomKpiName, d.KPIName)                 AS KPIName,
+        d.KPIName                                               AS LibraryKPIName,
         d.Category                                              AS KPICategory,
         d.Unit                                                  AS KPIUnit,
         d.DataType,
@@ -5742,6 +5894,8 @@ AS
         per.PeriodYear,
         per.PeriodMonth,
         per.Status                                              AS PeriodStatus,
+        per.PeriodScheduleID,
+        ps.ScheduleName,
         -- Account and Site
         asgn.AccountId,
         acct.AccountCode,
@@ -5758,11 +5912,13 @@ AS
         asgn.ThresholdRed,
         COALESCE(asgn.ThresholdDirection, d.ThresholdDirection) AS EffectiveThresholdDirection,
         asgn.SubmitterGuidance
-    FROM KPI.Assignment         AS asgn
-    JOIN KPI.Definition         AS d    ON d.KPIID      = asgn.KPIID
-    JOIN KPI.Period              AS per  ON per.PeriodID = asgn.PeriodID
-    JOIN Dim.Account             AS acct ON acct.AccountId = asgn.AccountId
-    LEFT JOIN Dim.OrgUnit        AS ou   ON ou.OrgUnitId = asgn.OrgUnitId
+    FROM KPI.Assignment              AS asgn
+    JOIN KPI.Definition              AS d    ON d.KPIID              = asgn.KPIID
+    JOIN KPI.Period                  AS per  ON per.PeriodID         = asgn.PeriodID
+    JOIN KPI.PeriodSchedule          AS ps   ON ps.PeriodScheduleID  = per.PeriodScheduleID
+    JOIN Dim.Account                 AS acct ON acct.AccountId       = asgn.AccountId
+    LEFT JOIN Dim.OrgUnit            AS ou   ON ou.OrgUnitId         = asgn.OrgUnitId
+    LEFT JOIN KPI.AssignmentTemplate AS tmpl ON tmpl.AssignmentTemplateID = asgn.AssignmentTemplateID
     WHERE asgn.IsActive = 1;
 GO
 
@@ -5780,13 +5936,16 @@ AS
         per.PeriodMonth,
         per.PeriodYear * 100 + per.PeriodMonth                  AS PeriodSortKey,
         per.Status                                              AS PeriodStatus,
-        -- KPI (denormalised)
+        -- KPI (denormalised; effective name resolves template override → library default)
         d.KPICode,
-        d.KPIName,
+        COALESCE(tmpl.CustomKpiName, d.KPIName)                 AS KPIName,
         d.Category                                              AS KPICategory,
         d.Unit                                                  AS KPIUnit,
         d.DataType,
         d.CollectionType,
+        -- Schedule context
+        per.PeriodScheduleID,
+        ps.ScheduleName,
         -- Assignment context
         asgn.AccountId,
         acct.AccountCode,
@@ -5852,13 +6011,15 @@ AS
                 END
             ELSE 5
         END AS RAGSortOrder
-    FROM KPI.Submission          AS s
-    JOIN KPI.Assignment          AS asgn ON asgn.AssignmentID = s.AssignmentID
-                                         AND asgn.IsActive = 1
-    JOIN KPI.Definition          AS d    ON d.KPIID = asgn.KPIID
-    JOIN KPI.Period               AS per  ON per.PeriodID = asgn.PeriodID
-    JOIN Dim.Account              AS acct ON acct.AccountId = asgn.AccountId
-    LEFT JOIN Dim.OrgUnit         AS ou   ON ou.OrgUnitId = asgn.OrgUnitId;
+    FROM KPI.Submission              AS s
+    JOIN KPI.Assignment              AS asgn ON asgn.AssignmentID      = s.AssignmentID
+                                            AND asgn.IsActive          = 1
+    JOIN KPI.Definition              AS d    ON d.KPIID                = asgn.KPIID
+    JOIN KPI.Period                  AS per  ON per.PeriodID           = asgn.PeriodID
+    JOIN KPI.PeriodSchedule          AS ps   ON ps.PeriodScheduleID    = per.PeriodScheduleID
+    JOIN Dim.Account                 AS acct ON acct.AccountId         = asgn.AccountId
+    LEFT JOIN Dim.OrgUnit            AS ou   ON ou.OrgUnitId           = asgn.OrgUnitId
+    LEFT JOIN KPI.AssignmentTemplate AS tmpl ON tmpl.AssignmentTemplateID = asgn.AssignmentTemplateID;
 GO
 
 CREATE OR ALTER VIEW Reporting.vw_PBIAssignmentStatus
@@ -5874,13 +6035,16 @@ AS
         per.PeriodMonth,
         per.PeriodYear * 100 + per.PeriodMonth                  AS PeriodSortKey,
         per.Status                                              AS PeriodStatus,
-        -- KPI
+        -- KPI (effective name resolves template override → library default)
         d.KPICode,
-        d.KPIName,
+        COALESCE(tmpl.CustomKpiName, d.KPIName)                 AS KPIName,
         d.Category                                              AS KPICategory,
         d.Unit                                                  AS KPIUnit,
         d.DataType,
         d.CollectionType,
+        -- Schedule context
+        per.PeriodScheduleID,
+        ps.ScheduleName,
         -- Assignment context
         asgn.AccountId,
         acct.AccountCode,
@@ -5946,12 +6110,14 @@ AS
                 END
             ELSE 5
         END AS RAGSortOrder
-    FROM KPI.Assignment          AS asgn
-    LEFT JOIN KPI.Submission     AS s    ON s.AssignmentID = asgn.AssignmentID
-    JOIN KPI.Definition          AS d    ON d.KPIID = asgn.KPIID
-    JOIN KPI.Period               AS per  ON per.PeriodID = asgn.PeriodID
-    JOIN Dim.Account              AS acct ON acct.AccountId = asgn.AccountId
-    LEFT JOIN Dim.OrgUnit         AS ou   ON ou.OrgUnitId = asgn.OrgUnitId
+    FROM KPI.Assignment              AS asgn
+    LEFT JOIN KPI.Submission         AS s    ON s.AssignmentID           = asgn.AssignmentID
+    JOIN KPI.Definition              AS d    ON d.KPIID                  = asgn.KPIID
+    JOIN KPI.Period                  AS per  ON per.PeriodID             = asgn.PeriodID
+    JOIN KPI.PeriodSchedule          AS ps   ON ps.PeriodScheduleID      = per.PeriodScheduleID
+    JOIN Dim.Account                 AS acct ON acct.AccountId           = asgn.AccountId
+    LEFT JOIN Dim.OrgUnit            AS ou   ON ou.OrgUnitId             = asgn.OrgUnitId
+    LEFT JOIN KPI.AssignmentTemplate AS tmpl ON tmpl.AssignmentTemplateID = asgn.AssignmentTemplateID
     WHERE asgn.IsActive = 1;
 GO
 

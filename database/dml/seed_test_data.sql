@@ -810,18 +810,18 @@ EXEC App.usp_UpsertKpiDefinition @KPICode = 'C-001', @KPIName = 'Regulatory Audi
 EXEC App.usp_UpsertKpiDefinition @KPICode = 'C-002', @KPIName = 'Security Incidents Reported', @KPIDescription = N'Number of security-related incidents (theft, unauthorised access, data breach) formally reported in the period.', @Category = 'Compliance', @Unit = 'count', @DataType = 'Numeric', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
 EXEC App.usp_UpsertKpiDefinition @KPICode = 'C-003', @KPIName = 'Certification Compliance Rate', @KPIDescription = N'Percentage of required operational certifications (ISO, TAPA, GDP) that are current and valid.', @Category = 'Compliance', @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
 
-DECLARE @Period0101 INT;
-DECLARE @Period0202 INT;
-DECLARE @Period0203 INT;
-DECLARE @Period0204 INT;
-DECLARE @Period0205 INT;
-DECLARE @Period0206 INT;
+DECLARE @QtrPeriod0101 INT;       -- Jan 2026 on quarterly schedule
+DECLARE @MthPeriod0202 INT;       -- Feb 2026 on monthly schedule
+DECLARE @BiMthPeriod0202 INT;     -- Feb 2026 on bi-monthly schedule
+DECLARE @MthPeriod0203 INT;       -- Mar 2026 on monthly schedule
+DECLARE @MthPeriod0204 INT;       -- Apr 2026 on monthly schedule (current)
+DECLARE @MthPeriod0205 INT;
+DECLARE @MthPeriod0206 INT;
 DECLARE @MonthlyScheduleId INT;
 DECLARE @QuarterlyScheduleId INT;
 DECLARE @BiMonthlyScheduleId INT;
 DECLARE @KpiAssignmentTemplateId INT;
 DECLARE @ClosePeriodResult TABLE (SubmissionsForceLockedOnClose INT);
-DECLARE @ReminderInitResult TABLE (ReminderStateRowsCreated INT);
 
 EXEC App.usp_UpsertKpiPeriodSchedule
     @ScheduleName = N'Monthly Operations Reporting',
@@ -863,33 +863,42 @@ EXEC App.usp_GenerateKpiPeriods @PeriodScheduleID = @MonthlyScheduleId;
 EXEC App.usp_GenerateKpiPeriods @PeriodScheduleID = @QuarterlyScheduleId;
 EXEC App.usp_GenerateKpiPeriods @PeriodScheduleID = @BiMonthlyScheduleId;
 
-SELECT @Period0101 = PeriodID FROM KPI.Period WHERE PeriodYear = 2026 AND PeriodMonth = 1;
-SELECT @Period0202 = PeriodID FROM KPI.Period WHERE PeriodYear = 2026 AND PeriodMonth = 2;
-SELECT @Period0203 = PeriodID FROM KPI.Period WHERE PeriodYear = 2026 AND PeriodMonth = 3;
-SELECT @Period0204 = PeriodID FROM KPI.Period WHERE PeriodYear = 2026 AND PeriodMonth = 4;
-SELECT @Period0205 = PeriodID FROM KPI.Period WHERE PeriodYear = 2026 AND PeriodMonth = 5;
-SELECT @Period0206 = PeriodID FROM KPI.Period WHERE PeriodYear = 2026 AND PeriodMonth = 6;
+-- Resolve period IDs — must scope by schedule since the same year/month can
+-- exist independently in multiple schedules
+SELECT @QtrPeriod0101   = PeriodID FROM KPI.Period WHERE PeriodScheduleID = @QuarterlyScheduleId  AND PeriodYear = 2026 AND PeriodMonth = 1;
+SELECT @MthPeriod0202   = PeriodID FROM KPI.Period WHERE PeriodScheduleID = @MonthlyScheduleId    AND PeriodYear = 2026 AND PeriodMonth = 2;
+SELECT @BiMthPeriod0202 = PeriodID FROM KPI.Period WHERE PeriodScheduleID = @BiMonthlyScheduleId  AND PeriodYear = 2026 AND PeriodMonth = 2;
+SELECT @MthPeriod0203   = PeriodID FROM KPI.Period WHERE PeriodScheduleID = @MonthlyScheduleId    AND PeriodYear = 2026 AND PeriodMonth = 3;
+SELECT @MthPeriod0204   = PeriodID FROM KPI.Period WHERE PeriodScheduleID = @MonthlyScheduleId    AND PeriodYear = 2026 AND PeriodMonth = 4;
+SELECT @MthPeriod0205   = PeriodID FROM KPI.Period WHERE PeriodScheduleID = @MonthlyScheduleId    AND PeriodYear = 2026 AND PeriodMonth = 5;
+SELECT @MthPeriod0206   = PeriodID FROM KPI.Period WHERE PeriodScheduleID = @MonthlyScheduleId    AND PeriodYear = 2026 AND PeriodMonth = 6;
 
-IF EXISTS (SELECT 1 FROM KPI.Period WHERE PeriodID = @Period0101 AND Status = 'Draft')
-    EXEC App.usp_OpenPeriod @PeriodID = @Period0101;
-IF EXISTS (SELECT 1 FROM KPI.Period WHERE PeriodID = @Period0202 AND Status = 'Draft')
-    EXEC App.usp_OpenPeriod @PeriodID = @Period0202;
-IF EXISTS (SELECT 1 FROM KPI.Period WHERE PeriodID = @Period0203 AND Status = 'Draft')
-    EXEC App.usp_OpenPeriod @PeriodID = @Period0203;
-IF EXISTS (SELECT 1 FROM KPI.Period WHERE PeriodID = @Period0204 AND Status = 'Draft')
-    EXEC App.usp_OpenPeriod @PeriodID = @Period0204;
+-- Open periods (usp_OpenPeriod auto-materializes templates and initialises reminder state)
+IF EXISTS (SELECT 1 FROM KPI.Period WHERE PeriodID = @QtrPeriod0101 AND Status = 'Draft')
+    EXEC App.usp_OpenPeriod @PeriodID = @QtrPeriod0101;
+IF EXISTS (SELECT 1 FROM KPI.Period WHERE PeriodID = @MthPeriod0202 AND Status = 'Draft')
+    EXEC App.usp_OpenPeriod @PeriodID = @MthPeriod0202;
+IF EXISTS (SELECT 1 FROM KPI.Period WHERE PeriodID = @BiMthPeriod0202 AND Status = 'Draft')
+    EXEC App.usp_OpenPeriod @PeriodID = @BiMthPeriod0202;
+IF EXISTS (SELECT 1 FROM KPI.Period WHERE PeriodID = @MthPeriod0203 AND Status = 'Draft')
+    EXEC App.usp_OpenPeriod @PeriodID = @MthPeriod0203;
+IF EXISTS (SELECT 1 FROM KPI.Period WHERE PeriodID = @MthPeriod0204 AND Status = 'Draft')
+    EXEC App.usp_OpenPeriod @PeriodID = @MthPeriod0204;
 
 -- Keep seeded submission periods writable regardless of when the seed runs.
 -- The submit proc validates against the period's submission close date, so
 -- historical sample periods need a temporary window around the current run.
 UPDATE KPI.Period
-SET SubmissionOpenDate = DATEADD(DAY, -30, CAST(@Now AS DATE)),
-    SubmissionCloseDate = DATEADD(DAY, 30, CAST(@Now AS DATE)),
-    ModifiedOnUtc = @Now,
-    ModifiedBy = 'seed_test_data'
+SET SubmissionOpenDate  = DATEADD(DAY, -30, CAST(@Now AS DATE)),
+    SubmissionCloseDate = DATEADD(DAY, 30,  CAST(@Now AS DATE)),
+    ModifiedOnUtc       = @Now,
+    ModifiedBy          = 'seed_test_data'
 WHERE Status = 'Open'
-  AND PeriodID IN (@Period0101, @Period0202, @Period0203, @Period0204);
+  AND PeriodID IN (@QtrPeriod0101, @MthPeriod0202, @BiMthPeriod0202, @MthPeriod0203, @MthPeriod0204);
 
+-- DHL uses their own terminology: library calls this "Lost Time Injury Rate" but
+-- DHL refers to it as "Injury Frequency Rate" in their internal scorecards.
+-- CustomKpiName / CustomKpiDescription override the library name on reports and forms.
 EXEC App.usp_UpsertKpiAssignmentTemplate
     @KPICode = 'S-001',
     @PeriodScheduleID = @MonthlyScheduleId,
@@ -902,6 +911,8 @@ EXEC App.usp_UpsertKpiAssignmentTemplate
     @ThresholdRed = NULL,
     @ThresholdDirection = NULL,
     @SubmitterGuidance = N'Enter the annualised LTIR for the month. Formula: (lost-time injuries × 200,000) / total hours worked.',
+    @CustomKpiName = N'Injury Frequency Rate',
+    @CustomKpiDescription = N'DHL internal name for Lost Time Injury Rate. Reports the annualised IFR per 100 FTE.',
     @AssignmentTemplateID = @KpiAssignmentTemplateId OUTPUT;
 
 EXEC App.usp_UpsertKpiAssignmentTemplate
@@ -1046,11 +1057,8 @@ EXEC App.usp_UpsertKpiAssignmentTemplate
     @SubmitterGuidance = N'Percentage of required certifications that remain current and valid.',
     @AssignmentTemplateID = @KpiAssignmentTemplateId OUTPUT;
 
-EXEC App.usp_MaterializeKpiAssignmentTemplates;
-
-DECLARE @CurrentPeriodID INT = (
-    SELECT PeriodID FROM KPI.Period WHERE PeriodYear = 2026 AND PeriodMonth = 4
-);
+-- Note: usp_MaterializeKpiAssignmentTemplates is called automatically inside
+-- usp_OpenPeriod for each schedule. No standalone call needed.
 
 DECLARE @SeedSubmission TABLE
 (
@@ -1162,32 +1170,35 @@ BEGIN
     DELETE FROM @SeedSubmission WHERE Id = @SeedSubmissionId;
 END;
 
-IF EXISTS (SELECT 1 FROM KPI.Period WHERE PeriodID = @Period0101 AND Status = 'Open')
+-- Close historical periods so the current period (Apr) remains the only Open one.
+-- usp_InitialiseReminderState was already called automatically inside usp_OpenPeriod
+-- for each period; no standalone call needed here.
+IF EXISTS (SELECT 1 FROM KPI.Period WHERE PeriodID = @QtrPeriod0101 AND Status = 'Open')
 BEGIN
     DELETE FROM @ClosePeriodResult;
     INSERT INTO @ClosePeriodResult (SubmissionsForceLockedOnClose)
-    EXEC App.usp_ClosePeriod @PeriodID = @Period0101;
+    EXEC App.usp_ClosePeriod @PeriodID = @QtrPeriod0101;
 END
 
-IF EXISTS (SELECT 1 FROM KPI.Period WHERE PeriodID = @Period0202 AND Status = 'Open')
+IF EXISTS (SELECT 1 FROM KPI.Period WHERE PeriodID = @MthPeriod0202 AND Status = 'Open')
 BEGIN
     DELETE FROM @ClosePeriodResult;
     INSERT INTO @ClosePeriodResult (SubmissionsForceLockedOnClose)
-    EXEC App.usp_ClosePeriod @PeriodID = @Period0202;
+    EXEC App.usp_ClosePeriod @PeriodID = @MthPeriod0202;
 END
 
-IF EXISTS (SELECT 1 FROM KPI.Period WHERE PeriodID = @Period0203 AND Status = 'Open')
+IF EXISTS (SELECT 1 FROM KPI.Period WHERE PeriodID = @BiMthPeriod0202 AND Status = 'Open')
 BEGIN
     DELETE FROM @ClosePeriodResult;
     INSERT INTO @ClosePeriodResult (SubmissionsForceLockedOnClose)
-    EXEC App.usp_ClosePeriod @PeriodID = @Period0203;
+    EXEC App.usp_ClosePeriod @PeriodID = @BiMthPeriod0202;
 END
 
-IF @CurrentPeriodID IS NOT NULL
+IF EXISTS (SELECT 1 FROM KPI.Period WHERE PeriodID = @MthPeriod0203 AND Status = 'Open')
 BEGIN
-    DELETE FROM @ReminderInitResult;
-    INSERT INTO @ReminderInitResult (ReminderStateRowsCreated)
-    EXEC App.usp_InitialiseReminderState @PeriodID = @CurrentPeriodID;
-END;
+    DELETE FROM @ClosePeriodResult;
+    INSERT INTO @ClosePeriodResult (SubmissionsForceLockedOnClose)
+    EXEC App.usp_ClosePeriod @PeriodID = @MthPeriod0203;
+END
 
 PRINT 'Seed.sql completed';

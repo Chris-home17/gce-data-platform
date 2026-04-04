@@ -321,6 +321,10 @@ export interface KpiAssignmentTemplate {
   externalId: string
   kpiCode: string
   kpiName: string
+  customKpiName: string | null
+  customKpiDescription: string | null
+  effectiveKpiName: string | null
+  effectiveKpiDescription: string | null
   category: string | null
   periodScheduleId: number | null
   scheduleName: string | null
@@ -501,5 +505,7 @@ export interface CreateKpiAssignmentTemplateInput {
   thresholdRed?: number | null
   thresholdDirection?: 'Higher' | 'Lower' | null
   submitterGuidance?: string
+  customKpiName?: string | null
+  customKpiDescription?: string | null
   materializeNow: boolean
 }
