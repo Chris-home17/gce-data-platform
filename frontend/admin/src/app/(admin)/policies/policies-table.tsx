@@ -101,14 +101,15 @@ const columns: ColumnDef<Policy, unknown>[] = [
     accessorKey: 'scopeType',
     header: 'Scope',
     cell: ({ row }) => {
-      const { scopeType, orgUnitType, orgUnitCode } = row.original
+      const { scopeType, orgUnitType, orgUnitCode, expandPerOrgUnit } = row.original
       if (scopeType === 'ORGUNIT') {
         return (
           <div className="flex items-center gap-1.5">
             <Badge variant="secondary" className="text-xs">Org Unit</Badge>
             <span className="font-mono text-xs text-muted-foreground">
-              {orgUnitType}/{orgUnitCode}
+              {orgUnitType}/{orgUnitCode ?? '*'}
             </span>
+            {expandPerOrgUnit && <Badge variant="outline" className="text-xs">Per unit</Badge>}
           </div>
         )
       }

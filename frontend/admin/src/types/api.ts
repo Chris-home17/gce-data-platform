@@ -97,6 +97,7 @@ export interface Policy {
   scopeType: 'NONE' | 'ORGUNIT'
   orgUnitType: string | null
   orgUnitCode: string | null
+  expandPerOrgUnit: boolean
   isActive: boolean
 }
 
@@ -107,6 +108,7 @@ export interface CreatePolicyInput {
   scopeType: 'NONE' | 'ORGUNIT'
   orgUnitType?: string
   orgUnitCode?: string
+  expandPerOrgUnit: boolean
   applyNow: boolean
 }
 
@@ -342,6 +344,7 @@ export interface KpiAssignmentTemplate {
 /** From App.vSiteCompletionSummary (screen K-04) */
 export interface SiteCompletion {
   accountCode: string
+  accountName: string
   siteCode: string
   siteName: string
   periodLabel: string

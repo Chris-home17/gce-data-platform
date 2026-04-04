@@ -410,21 +410,40 @@ BEGIN
   (
       AccountRolePolicyId INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
       PolicyName          NVARCHAR(200) NOT NULL,
-      -- Templates support tokens: {AccountCode} and {AccountName}
+      -- Templates support tokens: {AccountCode}, {AccountName}, {OrgUnitCode}, and {OrgUnitName}
       RoleCodeTemplate    NVARCHAR(100) NOT NULL,  -- e.g. '{AccountCode}_GAD'
       RoleNameTemplate    NVARCHAR(200) NOT NULL,  -- e.g. '{AccountName} Global Account Director'
       ScopeType           NVARCHAR(15)  NOT NULL CONSTRAINT CK_AccRolePolicy_Scope CHECK (ScopeType IN ('NONE','ORGUNIT')),
-      OrgUnitType         NVARCHAR(20)  NULL,      -- for ORGUNIT mode (future)
+      OrgUnitType         NVARCHAR(20)  NULL,
       OrgUnitCode         NVARCHAR(50)  NULL,
+      ExpandPerOrgUnit    BIT NOT NULL CONSTRAINT DF_AccRolePolicy_ExpandPerOrgUnit DEFAULT(0),
       IsActive            BIT NOT NULL CONSTRAINT DF_AccRolePolicy_IsActive DEFAULT(1),
       CreatedOnUtc        DATETIME2 NOT NULL CONSTRAINT DF_AccRolePolicy_Created DEFAULT (SYSUTCDATETIME()),
       ModifiedOnUtc       DATETIME2 NOT NULL CONSTRAINT DF_AccRolePolicy_Mod DEFAULT (SYSUTCDATETIME())
   );
 
-  CREATE UNIQUE INDEX UX_AccountRolePolicy_Unique
-    ON Sec.AccountRolePolicy (RoleCodeTemplate, ScopeType, OrgUnitType, OrgUnitCode)
-    WHERE IsActive = 1;
 END;
+
+IF COL_LENGTH('Sec.AccountRolePolicy', 'ExpandPerOrgUnit') IS NULL
+BEGIN
+    ALTER TABLE Sec.AccountRolePolicy
+        ADD ExpandPerOrgUnit BIT NOT NULL
+            CONSTRAINT DF_AccRolePolicy_ExpandPerOrgUnit DEFAULT(0);
+END;
+
+IF EXISTS (
+    SELECT 1
+    FROM sys.indexes
+    WHERE object_id = OBJECT_ID('Sec.AccountRolePolicy')
+      AND name = 'UX_AccountRolePolicy_Unique'
+)
+BEGIN
+    DROP INDEX UX_AccountRolePolicy_Unique ON Sec.AccountRolePolicy;
+END;
+
+CREATE UNIQUE INDEX UX_AccountRolePolicy_Unique
+  ON Sec.AccountRolePolicy (RoleCodeTemplate, ScopeType, OrgUnitType, OrgUnitCode, ExpandPerOrgUnit)
+  WHERE IsActive = 1;
 GO
 
 IF OBJECT_ID('Sec.AccountAccessPolicy', 'U') IS NULL
@@ -2165,31 +2184,109 @@ BEGIN
             (
                 AccountRolePolicyId INT,
                 PolicyName          NVARCHAR(200),
-                RoleCode            NVARCHAR(100),
-                RoleName            NVARCHAR(200),
                 ScopeType           NVARCHAR(15),
                 OrgUnitType         NVARCHAR(20),
-                OrgUnitCode         NVARCHAR(50)
+                OrgUnitCode         NVARCHAR(50),
+                ExpandPerOrgUnit    BIT,
+                RoleCodeTemplate    NVARCHAR(100),
+                RoleNameTemplate    NVARCHAR(200)
             );
 
-            INSERT INTO @Pol (AccountRolePolicyId, PolicyName, RoleCode, RoleName, ScopeType, OrgUnitType, OrgUnitCode)
+            INSERT INTO @Pol (AccountRolePolicyId, PolicyName, ScopeType, OrgUnitType, OrgUnitCode, ExpandPerOrgUnit, RoleCodeTemplate, RoleNameTemplate)
             SELECT
                 arp.AccountRolePolicyId,
                 arp.PolicyName,
-                REPLACE(REPLACE(arp.RoleCodeTemplate, '{AccountCode}', @AccountCode), '{AccountName}', @AccountName),
-                REPLACE(REPLACE(arp.RoleNameTemplate, '{AccountCode}', @AccountCode), '{AccountName}', @AccountName),
                 arp.ScopeType,
                 arp.OrgUnitType,
-                arp.OrgUnitCode
+                arp.OrgUnitCode,
+                arp.ExpandPerOrgUnit,
+                arp.RoleCodeTemplate,
+                arp.RoleNameTemplate
             FROM Sec.AccountRolePolicy AS arp
             WHERE arp.IsActive = 1;
+
+            DECLARE @ExpandedPol TABLE
+            (
+                AccountRolePolicyId INT,
+                PolicyName          NVARCHAR(200),
+                RoleCode            NVARCHAR(100),
+                RoleName            NVARCHAR(200),
+                ScopeType           NVARCHAR(15),
+                OrgUnitId           INT NULL
+            );
+
+            INSERT INTO @ExpandedPol (AccountRolePolicyId, PolicyName, RoleCode, RoleName, ScopeType, OrgUnitId)
+            SELECT
+                p.AccountRolePolicyId,
+                p.PolicyName,
+                REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                    p.RoleCodeTemplate,
+                    '{AccountCode}', @AccountCode),
+                    '{ACCOUNTCODE}', @AccountCode),
+                    '{AccountName}', @AccountName),
+                    '{ACCOUNTNAME}', @AccountName),
+                    '{OrgUnitCode}', ''),
+                    '{ORGUNITCODE}', ''),
+                    '{OrgUnitName}', ''),
+                    '{ORGUNITNAME}', ''),
+                REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                    p.RoleNameTemplate,
+                    '{AccountCode}', @AccountCode),
+                    '{ACCOUNTCODE}', @AccountCode),
+                    '{AccountName}', @AccountName),
+                    '{ACCOUNTNAME}', @AccountName),
+                    '{OrgUnitCode}', ''),
+                    '{ORGUNITCODE}', ''),
+                    '{OrgUnitName}', ''),
+                    '{ORGUNITNAME}', ''),
+                p.ScopeType,
+                NULL
+            FROM @Pol AS p
+            WHERE p.ScopeType = 'NONE';
+
+            INSERT INTO @ExpandedPol (AccountRolePolicyId, PolicyName, RoleCode, RoleName, ScopeType, OrgUnitId)
+            SELECT
+                p.AccountRolePolicyId,
+                p.PolicyName,
+                REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                    p.RoleCodeTemplate,
+                    '{AccountCode}', @AccountCode),
+                    '{ACCOUNTCODE}', @AccountCode),
+                    '{AccountName}', @AccountName),
+                    '{ACCOUNTNAME}', @AccountName),
+                    '{OrgUnitCode}', ou.OrgUnitCode),
+                    '{ORGUNITCODE}', ou.OrgUnitCode),
+                    '{OrgUnitName}', ou.OrgUnitName),
+                    '{ORGUNITNAME}', ou.OrgUnitName),
+                REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                    p.RoleNameTemplate,
+                    '{AccountCode}', @AccountCode),
+                    '{ACCOUNTCODE}', @AccountCode),
+                    '{AccountName}', @AccountName),
+                    '{ACCOUNTNAME}', @AccountName),
+                    '{OrgUnitCode}', ou.OrgUnitCode),
+                    '{ORGUNITCODE}', ou.OrgUnitCode),
+                    '{OrgUnitName}', ou.OrgUnitName),
+                    '{ORGUNITNAME}', ou.OrgUnitName),
+                p.ScopeType,
+                ou.OrgUnitId
+            FROM @Pol AS p
+            JOIN Dim.OrgUnit AS ou
+              ON ou.AccountId = @AccountId
+             AND ou.OrgUnitType = p.OrgUnitType
+             AND (
+                    (p.ExpandPerOrgUnit = 1 AND (p.OrgUnitCode IS NULL OR ou.OrgUnitCode = p.OrgUnitCode))
+                    OR
+                    (p.ExpandPerOrgUnit = 0 AND ou.OrgUnitCode = p.OrgUnitCode)
+                )
+            WHERE p.ScopeType = 'ORGUNIT';
 
             -- Upsert missing roles using App.UpsertRole
             DECLARE @RoleId INT, @RoleCode NVARCHAR(100), @RoleName NVARCHAR(200);
 
             DECLARE RoleCur CURSOR LOCAL FAST_FORWARD FOR
                 SELECT p.RoleCode, p.RoleName
-                FROM @Pol AS p
+                FROM @ExpandedPol AS p
                 WHERE NOT EXISTS (SELECT 1 FROM Sec.Role AS r WHERE r.RoleCode = p.RoleCode);
 
             OPEN RoleCur;
@@ -2209,28 +2306,11 @@ BEGIN
                 'ACCOUNT',
                 @AccountId,
                 CASE WHEN p.ScopeType = 'NONE' THEN 'NONE' ELSE 'ORGUNIT' END,
-                resolved.OrgUnitId
-            FROM @Pol AS p
+                p.OrgUnitId
+            FROM @ExpandedPol AS p
             JOIN Sec.Role AS r
               ON r.RoleCode = p.RoleCode
-            OUTER APPLY
-            (
-                SELECT
-                    CASE
-                        WHEN p.ScopeType = 'ORGUNIT'
-                        THEN (
-                            SELECT TOP (1) ou.OrgUnitId
-                            FROM Dim.OrgUnit AS ou
-                            WHERE ou.AccountId = @AccountId
-                              AND ou.OrgUnitType = p.OrgUnitType
-                              AND ou.OrgUnitCode = p.OrgUnitCode
-                            ORDER BY ou.OrgUnitId
-                        )
-                        ELSE NULL
-                    END AS OrgUnitId
-            ) AS resolved
-            WHERE (p.ScopeType = 'NONE' OR resolved.OrgUnitId IS NOT NULL)
-              AND NOT EXISTS
+            WHERE NOT EXISTS
             (
                 SELECT 1
                 FROM Sec.PrincipalAccessGrant AS existing
@@ -2239,7 +2319,7 @@ BEGIN
                   AND existing.AccountId = @AccountId
                   AND existing.ScopeType = CASE WHEN p.ScopeType='NONE' THEN 'NONE' ELSE 'ORGUNIT' END
                   AND ISNULL(existing.OrgUnitId, -1) =
-                      ISNULL(resolved.OrgUnitId, -1)
+                      ISNULL(p.OrgUnitId, -1)
             );
         END
     END;

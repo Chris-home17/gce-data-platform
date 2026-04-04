@@ -31,10 +31,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-
-const ORG_UNIT_TYPES = ['Region', 'SubRegion', 'Cluster', 'Country', 'Area', 'Branch', 'Site'] as const
 import { Switch } from '@/components/ui/switch'
 import { api } from '@/lib/api'
+
+const ORG_UNIT_TYPES = ['Region', 'SubRegion', 'Cluster', 'Country', 'Area', 'Branch', 'Site'] as const
 
 const schema = z
   .object({
@@ -48,18 +48,57 @@ const schema = z
     scopeType: z.enum(['NONE', 'ORGUNIT']),
     orgUnitType: z.enum(ORG_UNIT_TYPES).optional(),
     orgUnitCode: z.string().optional(),
+    expandPerOrgUnit: z.boolean(),
     applyNow: z.boolean(),
   })
   .refine(
     (data) => {
       if (data.scopeType === 'ORGUNIT') {
-        return !!data.orgUnitType && !!data.orgUnitCode
+        if (!data.orgUnitType) {
+          return false
+        }
+
+        if (data.expandPerOrgUnit) {
+          return true
+        }
+
+        return !!data.orgUnitCode
       }
       return true
     },
     {
-      message: 'OrgUnit Type and Code are required for ORGUNIT scope',
+      message: 'OrgUnit Type is required. OrgUnit Code is required unless per-org-unit expansion is enabled.',
       path: ['orgUnitType'],
+    }
+  )
+  .refine(
+    (data) => {
+      if (!data.expandPerOrgUnit) {
+        return true
+      }
+
+      const hasOrgUnitCodeToken = /\{ORGUNITCODE\}|\{OrgUnitCode\}/.test(data.roleCodeTemplate)
+      const hasOrgUnitNameToken = /\{ORGUNITNAME\}|\{OrgUnitName\}/.test(data.roleCodeTemplate)
+      return hasOrgUnitCodeToken || hasOrgUnitNameToken
+    },
+    {
+      message: 'Role code template must include {OrgUnitCode} or {OrgUnitName} when expansion is enabled.',
+      path: ['roleCodeTemplate'],
+    }
+  )
+  .refine(
+    (data) => {
+      if (!data.expandPerOrgUnit) {
+        return true
+      }
+
+      const hasOrgUnitCodeToken = /\{OrgUnitCode\}|\{ORGUNITCODE\}/.test(data.roleNameTemplate)
+      const hasOrgUnitNameToken = /\{OrgUnitName\}|\{ORGUNITNAME\}/.test(data.roleNameTemplate)
+      return hasOrgUnitCodeToken || hasOrgUnitNameToken
+    },
+    {
+      message: 'Role name template must include {OrgUnitCode} or {OrgUnitName} when expansion is enabled.',
+      path: ['roleNameTemplate'],
     }
   )
 
@@ -78,11 +117,13 @@ export function NewPolicyDialog() {
       scopeType: 'NONE',
       orgUnitType: undefined,
       orgUnitCode: '',
+      expandPerOrgUnit: false,
       applyNow: true,
     },
   })
 
   const scopeType = form.watch('scopeType')
+  const expandPerOrgUnit = form.watch('expandPerOrgUnit')
 
   const mutation = useMutation({
     mutationFn: (values: FormValues) =>
@@ -92,11 +133,15 @@ export function NewPolicyDialog() {
         roleNameTemplate: values.roleNameTemplate,
         scopeType: values.scopeType,
         orgUnitType: values.scopeType === 'ORGUNIT' ? values.orgUnitType : undefined,
-        orgUnitCode: values.scopeType === 'ORGUNIT' ? values.orgUnitCode : undefined,
+        orgUnitCode: values.scopeType === 'ORGUNIT' && !values.expandPerOrgUnit ? values.orgUnitCode : undefined,
+        expandPerOrgUnit: values.scopeType === 'ORGUNIT' ? values.expandPerOrgUnit : false,
         applyNow: values.applyNow,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['policies'] })
+      queryClient.invalidateQueries({ queryKey: ['roles'] })
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      queryClient.invalidateQueries({ queryKey: ['users'] })
       setOpen(false)
       form.reset()
     },
@@ -168,7 +213,13 @@ export function NewPolicyDialog() {
 
               <p className="text-xs text-muted-foreground -mt-2">
                 Use <code className="font-mono bg-muted px-1 rounded">{'{AccountCode}'}</code> and{' '}
-                <code className="font-mono bg-muted px-1 rounded">{'{AccountName}'}</code> as tokens — they are replaced per account when policies are applied.
+                <code className="font-mono bg-muted px-1 rounded">{'{AccountName}'}</code> as tokens.
+                {scopeType === 'ORGUNIT' && (
+                  <>
+                    {' '}Per-org-unit policies can also use <code className="font-mono bg-muted px-1 rounded">{'{OrgUnitCode}'}</code> and{' '}
+                    <code className="font-mono bg-muted px-1 rounded">{'{OrgUnitName}'}</code>.
+                  </>
+                )}
               </p>
 
               <FormField
@@ -194,43 +245,66 @@ export function NewPolicyDialog() {
               />
 
               {scopeType === 'ORGUNIT' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <FormField
-                    control={form.control}
-                    name="orgUnitType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Org Unit Type</FormLabel>
-                        <Select value={field.value} onValueChange={field.onChange}>
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      control={form.control}
+                      name="orgUnitType"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Org Unit Type</FormLabel>
+                          <Select value={field.value} onValueChange={field.onChange}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select type…" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {ORG_UNIT_TYPES.map((t) => (
+                                <SelectItem key={t} value={t}>{t}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="orgUnitCode"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Org Unit Code</FormLabel>
                           <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select type…" />
-                            </SelectTrigger>
+                            <Input
+                              placeholder={expandPerOrgUnit ? 'Optional exact code filter' : 'Required exact code'}
+                              {...field}
+                            />
                           </FormControl>
-                          <SelectContent>
-                            {ORG_UNIT_TYPES.map((t) => (
-                              <SelectItem key={t} value={t}>{t}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
                   <FormField
                     control={form.control}
-                    name="orgUnitCode"
+                    name="expandPerOrgUnit"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Org Unit Code</FormLabel>
+                      <FormItem className="flex items-center justify-between rounded-md border px-3 py-2">
+                        <div>
+                          <FormLabel className="text-sm">Create one role per matching org unit</FormLabel>
+                          <FormDescription className="text-xs">
+                            For example, one supervisor role per site. When enabled, the code filter becomes optional.
+                          </FormDescription>
+                        </div>
                         <FormControl>
-                          <Input placeholder="HQ" {...field} />
+                          <Switch checked={field.value} onCheckedChange={field.onChange} />
                         </FormControl>
-                        <FormMessage />
                       </FormItem>
                     )}
                   />
-                </div>
+                </>
               )}
 
               <FormField

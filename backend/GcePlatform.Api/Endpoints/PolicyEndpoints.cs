@@ -23,6 +23,7 @@ public static class PolicyEndpoints
                     ScopeType,
                     OrgUnitType,
                     OrgUnitCode,
+                    CAST(ExpandPerOrgUnit AS bit) AS ExpandPerOrgUnit,
                     IsActive
                 FROM Sec.AccountRolePolicy
                 ORDER BY PolicyName");
@@ -44,6 +45,7 @@ public static class PolicyEndpoints
                     ScopeType,
                     OrgUnitType,
                     OrgUnitCode,
+                    CAST(ExpandPerOrgUnit AS bit) AS ExpandPerOrgUnit,
                     IsActive
                 FROM Sec.AccountRolePolicy
                 WHERE AccountRolePolicyId = @Id",
@@ -61,19 +63,37 @@ public static class PolicyEndpoints
 
             // Validate ORGUNIT scope has the required fields
             if (request.ScopeType == "ORGUNIT" &&
-                (string.IsNullOrWhiteSpace(request.OrgUnitType) || string.IsNullOrWhiteSpace(request.OrgUnitCode)))
+                (string.IsNullOrWhiteSpace(request.OrgUnitType)
+                    || (!request.ExpandPerOrgUnit && string.IsNullOrWhiteSpace(request.OrgUnitCode))))
             {
                 return Results.BadRequest(new ApiError(
                     "INVALID_SCOPE",
-                    "OrgUnitType and OrgUnitCode are required when ScopeType is ORGUNIT."));
+                    request.ExpandPerOrgUnit
+                        ? "OrgUnitType is required when ScopeType is ORGUNIT and expansion is enabled."
+                        : "OrgUnitType and OrgUnitCode are required when ScopeType is ORGUNIT."));
+            }
+
+            if (request.ScopeType != "ORGUNIT" && request.ExpandPerOrgUnit)
+            {
+                return Results.BadRequest(new ApiError(
+                    "INVALID_EXPANSION",
+                    "ExpandPerOrgUnit can only be enabled when ScopeType is ORGUNIT."));
+            }
+
+            if (request.ExpandPerOrgUnit &&
+                (!ContainsOrgUnitToken(request.RoleCodeTemplate) || !ContainsOrgUnitToken(request.RoleNameTemplate)))
+            {
+                return Results.BadRequest(new ApiError(
+                    "ORG_UNIT_TOKEN_REQUIRED",
+                    "Per-org-unit expansion requires both role templates to include {OrgUnitCode} or {OrgUnitName}."));
             }
 
             var newId = await conn.QuerySingleAsync<int>(@"
                 INSERT INTO Sec.AccountRolePolicy
-                    (PolicyName, RoleCodeTemplate, RoleNameTemplate, ScopeType, OrgUnitType, OrgUnitCode, IsActive)
+                    (PolicyName, RoleCodeTemplate, RoleNameTemplate, ScopeType, OrgUnitType, OrgUnitCode, ExpandPerOrgUnit, IsActive)
                 OUTPUT INSERTED.AccountRolePolicyId
                 VALUES
-                    (@PolicyName, @RoleCodeTemplate, @RoleNameTemplate, @ScopeType, @OrgUnitType, @OrgUnitCode, 1)",
+                    (@PolicyName, @RoleCodeTemplate, @RoleNameTemplate, @ScopeType, @OrgUnitType, @OrgUnitCode, @ExpandPerOrgUnit, 1)",
                 new
                 {
                     request.PolicyName,
@@ -82,6 +102,7 @@ public static class PolicyEndpoints
                     request.ScopeType,
                     OrgUnitType = request.ScopeType == "ORGUNIT" ? request.OrgUnitType : null,
                     OrgUnitCode = request.ScopeType == "ORGUNIT" ? request.OrgUnitCode : null,
+                    request.ExpandPerOrgUnit,
                 });
 
             if (request.ApplyNow)
@@ -89,7 +110,7 @@ public static class PolicyEndpoints
 
             var created = await conn.QuerySingleAsync<AccountRolePolicyDto>(@"
                 SELECT AccountRolePolicyId, PolicyName, RoleCodeTemplate, RoleNameTemplate,
-                       ScopeType, OrgUnitType, OrgUnitCode, IsActive
+                       ScopeType, OrgUnitType, OrgUnitCode, CAST(ExpandPerOrgUnit AS bit) AS ExpandPerOrgUnit, IsActive
                 FROM Sec.AccountRolePolicy
                 WHERE AccountRolePolicyId = @Id",
                 new { Id = newId });
@@ -149,6 +170,7 @@ public static class PolicyEndpoints
                 ScopeType,
                 OrgUnitType,
                 OrgUnitCode,
+                CAST(ExpandPerOrgUnit AS bit) AS ExpandPerOrgUnit,
                 IsActive
             FROM Sec.AccountRolePolicy
             WHERE AccountRolePolicyId = @PolicyId",
@@ -165,137 +187,136 @@ public static class PolicyEndpoints
 
         foreach (var account in accounts)
         {
-            var roleCode = policy.RoleCodeTemplate
-                .Replace("{AccountCode}", account.AccountCode, StringComparison.OrdinalIgnoreCase)
-                .Replace("{AccountName}", account.AccountName, StringComparison.OrdinalIgnoreCase);
-            var roleName = policy.RoleNameTemplate
-                .Replace("{AccountCode}", account.AccountCode, StringComparison.OrdinalIgnoreCase)
-                .Replace("{AccountName}", account.AccountName, StringComparison.OrdinalIgnoreCase);
-            // Primary lookup: by name (the unique constraint).
-            // Finding by name first means the subsequent UPDATE of PrincipalName
-            // is always a no-op for the name column — no duplicate key risk.
-            int? roleId = await conn.QuerySingleOrDefaultAsync<int?>(@"
-                SELECT p.PrincipalId
-                FROM Sec.Principal AS p
-                WHERE p.PrincipalType = 'Role'
-                  AND p.PrincipalName = @RoleName;",
-                new { RoleName = roleName });
-
-            // Fallback: look up by role code in case the template name changed.
-            if (roleId is null)
-            {
-                roleId = await conn.QuerySingleOrDefaultAsync<int?>(@"
-                    SELECT r.RoleId
-                    FROM Sec.Role AS r
-                    WHERE r.RoleCode = @RoleCode;",
-                    new { RoleCode = roleCode });
-            }
-
-            // Still not found — create a new principal.
-            if (roleId is null)
-            {
-                try
-                {
-                    roleId = await conn.QuerySingleAsync<int>(@"
-                        INSERT INTO Sec.Principal (PrincipalType, PrincipalName)
-                        OUTPUT INSERTED.PrincipalId
-                        VALUES ('Role', @RoleName);",
-                        new { RoleName = roleName });
-                }
-                catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number is 2601 or 2627)
-                {
-                    // Race condition: fetch the row that just beat us.
-                    roleId = await conn.QuerySingleOrDefaultAsync<int?>(@"
-                        SELECT p.PrincipalId
-                        FROM Sec.Principal AS p
-                        WHERE p.PrincipalType = 'Role'
-                          AND p.PrincipalName = @RoleName;",
-                        new { RoleName = roleName });
-
-                    if (roleId is null)
-                        throw;
-                }
-            }
-
-            await conn.ExecuteAsync(@"
-                UPDATE pr
-                SET pr.PrincipalName = @RoleName,
-                    pr.IsActive = 1,
-                    pr.ModifiedOnUtc = SYSUTCDATETIME(),
-                    pr.ModifiedBy = 'policy_refresh'
-                FROM Sec.Principal AS pr
-                WHERE pr.PrincipalId = @RoleId;",
-                new { RoleId = roleId, RoleName = roleName });
-
-            if (await conn.ExecuteScalarAsync<int>(@"
-                SELECT COUNT(1)
-                FROM Sec.Role
-                WHERE RoleId = @RoleId;",
-                new { RoleId = roleId }) == 0)
-            {
-                await conn.ExecuteAsync(@"
-                    INSERT INTO Sec.Role (RoleId, RoleCode, RoleName, Description)
-                    VALUES (@RoleId, @RoleCode, @RoleName, NULL);",
-                    new { RoleId = roleId, RoleCode = roleCode, RoleName = roleName });
-            }
-            else
-            {
-                await conn.ExecuteAsync(@"
-                    UPDATE Sec.Role
-                    SET RoleCode = @RoleCode,
-                        RoleName = @RoleName,
-                        ModifiedOnUtc = SYSUTCDATETIME(),
-                        ModifiedBy = 'policy_refresh'
-                    WHERE RoleId = @RoleId;",
-                    new { RoleId = roleId, RoleCode = roleCode, RoleName = roleName });
-            }
-
-            int? orgUnitId = null;
-            if (policy.ScopeType == "ORGUNIT")
-            {
-                orgUnitId = await conn.QuerySingleOrDefaultAsync<int?>(@"
-                    SELECT TOP (1) ou.OrgUnitId
+            var targetOrgUnits = policy.ScopeType == "ORGUNIT"
+                ? (await conn.QueryAsync<(int OrgUnitId, string OrgUnitCode, string OrgUnitName)>(@"
+                    SELECT ou.OrgUnitId, ou.OrgUnitCode, ou.OrgUnitName
                     FROM Dim.OrgUnit AS ou
                     WHERE ou.AccountId = @AccountId
                       AND ou.OrgUnitType = @OrgUnitType
-                      AND ou.OrgUnitCode = @OrgUnitCode
+                      AND (@OrgUnitCode IS NULL OR ou.OrgUnitCode = @OrgUnitCode)
                     ORDER BY ou.OrgUnitId;",
                     new
                     {
                         account.AccountId,
                         policy.OrgUnitType,
                         policy.OrgUnitCode,
-                    });
+                    })).ToList()
+                : new List<(int OrgUnitId, string OrgUnitCode, string OrgUnitName)> { default };
 
-                if (orgUnitId is null)
-                    continue;
-            }
+            if (policy.ScopeType == "ORGUNIT" && targetOrgUnits.Count == 0)
+                continue;
 
-            await conn.ExecuteAsync(@"
-                INSERT INTO Sec.PrincipalAccessGrant (PrincipalId, AccessType, AccountId, ScopeType, OrgUnitId)
-                SELECT
-                    @RoleId,
-                    'ACCOUNT',
-                    @AccountId,
-                    @ScopeType,
-                    @OrgUnitId
-                WHERE NOT EXISTS
-                (
-                    SELECT 1
-                    FROM Sec.PrincipalAccessGrant AS existing
-                    WHERE existing.PrincipalId = @RoleId
-                      AND existing.AccessType = 'ACCOUNT'
-                      AND existing.AccountId = @AccountId
-                      AND existing.ScopeType = @ScopeType
-                      AND ISNULL(existing.OrgUnitId, -1) = ISNULL(@OrgUnitId, -1)
-                );",
-                new
+            foreach (var targetOrgUnit in targetOrgUnits)
+            {
+                var resolvedOrgUnitId = policy.ScopeType == "ORGUNIT" ? targetOrgUnit.OrgUnitId : (int?)null;
+                var roleCode = ExpandPolicyTemplate(policy.RoleCodeTemplate, account.AccountCode, account.AccountName, targetOrgUnit.OrgUnitCode, targetOrgUnit.OrgUnitName);
+                var roleName = ExpandPolicyTemplate(policy.RoleNameTemplate, account.AccountCode, account.AccountName, targetOrgUnit.OrgUnitCode, targetOrgUnit.OrgUnitName);
+
+                // Primary lookup: by name (the unique constraint).
+                // Finding by name first means the subsequent UPDATE of PrincipalName
+                // is always a no-op for the name column — no duplicate key risk.
+                int? roleId = await conn.QuerySingleOrDefaultAsync<int?>(@"
+                    SELECT p.PrincipalId
+                    FROM Sec.Principal AS p
+                    WHERE p.PrincipalType = 'Role'
+                      AND p.PrincipalName = @RoleName;",
+                    new { RoleName = roleName });
+
+                // Fallback: look up by role code in case the template name changed.
+                if (roleId is null)
                 {
-                    RoleId = roleId,
-                    account.AccountId,
-                    ScopeType = policy.ScopeType == "ORGUNIT" ? "ORGUNIT" : "NONE",
-                    OrgUnitId = orgUnitId,
-                });
+                    roleId = await conn.QuerySingleOrDefaultAsync<int?>(@"
+                        SELECT r.RoleId
+                        FROM Sec.Role AS r
+                        WHERE r.RoleCode = @RoleCode;",
+                        new { RoleCode = roleCode });
+                }
+
+                // Still not found — create a new principal.
+                if (roleId is null)
+                {
+                    try
+                    {
+                        roleId = await conn.QuerySingleAsync<int>(@"
+                            INSERT INTO Sec.Principal (PrincipalType, PrincipalName)
+                            OUTPUT INSERTED.PrincipalId
+                            VALUES ('Role', @RoleName);",
+                            new { RoleName = roleName });
+                    }
+                    catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number is 2601 or 2627)
+                    {
+                        // Race condition: fetch the row that just beat us.
+                        roleId = await conn.QuerySingleOrDefaultAsync<int?>(@"
+                            SELECT p.PrincipalId
+                            FROM Sec.Principal AS p
+                            WHERE p.PrincipalType = 'Role'
+                              AND p.PrincipalName = @RoleName;",
+                            new { RoleName = roleName });
+
+                        if (roleId is null)
+                            throw;
+                    }
+                }
+
+                await conn.ExecuteAsync(@"
+                    UPDATE pr
+                    SET pr.PrincipalName = @RoleName,
+                        pr.IsActive = 1,
+                        pr.ModifiedOnUtc = SYSUTCDATETIME(),
+                        pr.ModifiedBy = 'policy_refresh'
+                    FROM Sec.Principal AS pr
+                    WHERE pr.PrincipalId = @RoleId;",
+                    new { RoleId = roleId, RoleName = roleName });
+
+                if (await conn.ExecuteScalarAsync<int>(@"
+                    SELECT COUNT(1)
+                    FROM Sec.Role
+                    WHERE RoleId = @RoleId;",
+                    new { RoleId = roleId }) == 0)
+                {
+                    await conn.ExecuteAsync(@"
+                        INSERT INTO Sec.Role (RoleId, RoleCode, RoleName, Description)
+                        VALUES (@RoleId, @RoleCode, @RoleName, NULL);",
+                        new { RoleId = roleId, RoleCode = roleCode, RoleName = roleName });
+                }
+                else
+                {
+                    await conn.ExecuteAsync(@"
+                        UPDATE Sec.Role
+                        SET RoleCode = @RoleCode,
+                            RoleName = @RoleName,
+                            ModifiedOnUtc = SYSUTCDATETIME(),
+                            ModifiedBy = 'policy_refresh'
+                        WHERE RoleId = @RoleId;",
+                        new { RoleId = roleId, RoleCode = roleCode, RoleName = roleName });
+                }
+
+                await conn.ExecuteAsync(@"
+                    INSERT INTO Sec.PrincipalAccessGrant (PrincipalId, AccessType, AccountId, ScopeType, OrgUnitId)
+                    SELECT
+                        @RoleId,
+                        'ACCOUNT',
+                        @AccountId,
+                        @ScopeType,
+                        @OrgUnitId
+                    WHERE NOT EXISTS
+                    (
+                        SELECT 1
+                        FROM Sec.PrincipalAccessGrant AS existing
+                        WHERE existing.PrincipalId = @RoleId
+                          AND existing.AccessType = 'ACCOUNT'
+                          AND existing.AccountId = @AccountId
+                          AND existing.ScopeType = @ScopeType
+                          AND ISNULL(existing.OrgUnitId, -1) = ISNULL(@OrgUnitId, -1)
+                    );",
+                    new
+                    {
+                        RoleId = roleId,
+                        account.AccountId,
+                        ScopeType = policy.ScopeType == "ORGUNIT" ? "ORGUNIT" : "NONE",
+                        OrgUnitId = resolvedOrgUnitId,
+                    });
+            }
         }
     }
 
@@ -305,13 +326,33 @@ public static class PolicyEndpoints
             ;WITH Expanded AS
             (
                 SELECT DISTINCT
-                    REPLACE(REPLACE(REPLACE(REPLACE(pol.RoleCodeTemplate,
-                        '{AccountCode}', a.AccountCode),
-                        '{ACCOUNTCODE}', a.AccountCode),
-                        '{AccountName}', a.AccountName),
-                        '{ACCOUNTNAME}', a.AccountName) AS RoleCode
+                    CASE
+                        WHEN pol.ScopeType = 'ORGUNIT' AND pol.ExpandPerOrgUnit = 1
+                            THEN REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                                pol.RoleCodeTemplate,
+                                '{AccountCode}', a.AccountCode),
+                                '{ACCOUNTCODE}', a.AccountCode),
+                                '{AccountName}', a.AccountName),
+                                '{ACCOUNTNAME}', a.AccountName),
+                                '{OrgUnitCode}', ou.OrgUnitCode),
+                                '{ORGUNITCODE}', ou.OrgUnitCode),
+                                '{OrgUnitName}', ou.OrgUnitName),
+                                '{ORGUNITNAME}', ou.OrgUnitName)
+                        ELSE REPLACE(REPLACE(REPLACE(REPLACE(
+                                pol.RoleCodeTemplate,
+                                '{AccountCode}', a.AccountCode),
+                                '{ACCOUNTCODE}', a.AccountCode),
+                                '{AccountName}', a.AccountName),
+                                '{ACCOUNTNAME}', a.AccountName)
+                    END AS RoleCode
                 FROM Sec.AccountRolePolicy AS pol
                 CROSS JOIN Dim.Account AS a
+                LEFT JOIN Dim.OrgUnit AS ou
+                    ON pol.ScopeType = 'ORGUNIT'
+                   AND pol.ExpandPerOrgUnit = 1
+                   AND ou.AccountId = a.AccountId
+                   AND ou.OrgUnitType = pol.OrgUnitType
+                   AND (pol.OrgUnitCode IS NULL OR ou.OrgUnitCode = pol.OrgUnitCode)
                 WHERE pol.AccountRolePolicyId = @PolicyId
             )
             UPDATE pr
@@ -324,5 +365,23 @@ public static class PolicyEndpoints
             JOIN Expanded AS e
                 ON e.RoleCode = r.RoleCode;",
             new { PolicyId = policyId });
+    }
+
+    private static bool ContainsOrgUnitToken(string template) =>
+        template.Contains("{OrgUnitCode}", StringComparison.OrdinalIgnoreCase)
+        || template.Contains("{OrgUnitName}", StringComparison.OrdinalIgnoreCase);
+
+    private static string ExpandPolicyTemplate(
+        string template,
+        string accountCode,
+        string accountName,
+        string? orgUnitCode,
+        string? orgUnitName)
+    {
+        return template
+            .Replace("{AccountCode}", accountCode, StringComparison.OrdinalIgnoreCase)
+            .Replace("{AccountName}", accountName, StringComparison.OrdinalIgnoreCase)
+            .Replace("{OrgUnitCode}", orgUnitCode ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("{OrgUnitName}", orgUnitName ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 }

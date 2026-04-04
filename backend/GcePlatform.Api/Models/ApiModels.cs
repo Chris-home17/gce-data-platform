@@ -342,6 +342,7 @@ public record AccountRolePolicyDto(
     string   ScopeType,
     string?  OrgUnitType,
     string?  OrgUnitCode,
+    bool     ExpandPerOrgUnit,
     bool     IsActive
 );
 
@@ -352,6 +353,7 @@ public record CreateAccountRolePolicyRequest(
     string   ScopeType,
     string?  OrgUnitType,
     string?  OrgUnitCode,
+    bool     ExpandPerOrgUnit,
     bool     ApplyNow
 );
 
