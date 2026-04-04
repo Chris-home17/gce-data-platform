@@ -180,6 +180,38 @@ public record KpiAssignmentDto(
     bool     IsActive
 );
 
+// KPI Effective Assignment  (App.vEffectiveKpiAssignments — submission-facing)
+// Site-specific assignments shadow account-wide ones for the same KPI + period.
+// Account-wide assignments are expanded to one row per active site in the account.
+// ---------------------------------------------------------------------------
+
+public record EffectiveKpiAssignmentDto(
+    int      AssignmentId,
+    Guid     ExternalId,
+    string   KpiCode,
+    string   KpiName,
+    string   EffectiveKpiName,
+    string?  EffectiveKpiDescription,
+    string?  Category,
+    string   AccountCode,
+    string   AccountName,
+    string   SiteCode,
+    string   SiteName,
+    bool     IsAccountWide,
+    string   PeriodLabel,
+    int      PeriodYear,
+    int      PeriodMonth,
+    string   PeriodStatus,
+    bool     IsRequired,
+    decimal? TargetValue,
+    decimal? ThresholdGreen,
+    decimal? ThresholdAmber,
+    decimal? ThresholdRed,
+    string   EffectiveThresholdDirection,
+    string?  SubmitterGuidance,
+    bool     IsActive
+);
+
 public record KpiAssignmentTemplateDto(
     int       AssignmentTemplateId,
     Guid      ExternalId,

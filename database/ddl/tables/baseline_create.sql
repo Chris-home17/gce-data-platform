@@ -4385,11 +4385,128 @@ AS
     ) AS esc;
 GO
 
+CREATE OR ALTER VIEW App.vEffectiveKpiAssignments
+AS
+    -- Resolution view: for each (site, KPI, period), a site-specific assignment
+    -- shadows any account-wide assignment for the same KPI + period.
+    -- Account-wide assignments are expanded to each active site in the account,
+    -- but suppressed wherever a site-specific override already exists.
+    --
+    -- Use this view for submission-facing queries.
+    -- Use vKpiAssignments for the admin management screen (shows raw rows).
+
+    -- Branch 1: site-specific assignments — always authoritative for their own site.
+    SELECT
+        a.AssignmentID,
+        a.ExternalId,
+        a.KPIID,
+        d.KPICode,
+        d.KPIName,
+        d.Category,
+        d.DataType,
+        d.CollectionType,
+        a.AccountId,
+        acct.AccountCode,
+        acct.AccountName,
+        ou.OrgUnitId,
+        ou.OrgUnitCode                                                    AS SiteCode,
+        ou.OrgUnitName                                                    AS SiteName,
+        ou.CountryCode,
+        CAST(0 AS BIT)                                                    AS IsAccountWide,
+        a.PeriodID,
+        p.PeriodScheduleID,
+        p.PeriodLabel,
+        p.PeriodYear,
+        p.PeriodMonth,
+        p.Status                                                          AS PeriodStatus,
+        a.IsRequired,
+        a.TargetValue,
+        a.ThresholdGreen,
+        a.ThresholdAmber,
+        a.ThresholdRed,
+        COALESCE(a.ThresholdDirection, d.ThresholdDirection)              AS EffectiveThresholdDirection,
+        a.SubmitterGuidance,
+        a.AssignmentTemplateID,
+        COALESCE(tmpl.CustomKpiName,        d.KPIName)                    AS EffectiveKpiName,
+        COALESCE(tmpl.CustomKpiDescription, d.KPIDescription)             AS EffectiveKpiDescription,
+        a.IsActive,
+        a.CreatedOnUtc,
+        a.ModifiedOnUtc
+    FROM KPI.Assignment              AS a
+    JOIN KPI.Definition              AS d    ON d.KPIID        = a.KPIID
+    JOIN Dim.Account                 AS acct ON acct.AccountId = a.AccountId
+    JOIN KPI.Period                  AS p    ON p.PeriodID     = a.PeriodID
+    JOIN Dim.OrgUnit                 AS ou   ON ou.OrgUnitId   = a.OrgUnitId  -- INNER: site rows only
+    LEFT JOIN KPI.AssignmentTemplate AS tmpl ON tmpl.AssignmentTemplateID = a.AssignmentTemplateID
+    WHERE a.OrgUnitId IS NOT NULL
+
+    UNION ALL
+
+    -- Branch 2: account-wide assignments, expanded to each active site in the account.
+    -- Suppressed for any site that already has an active site-specific assignment
+    -- for the same KPIID + PeriodID (site-specific takes precedence).
+    SELECT
+        a.AssignmentID,
+        a.ExternalId,
+        a.KPIID,
+        d.KPICode,
+        d.KPIName,
+        d.Category,
+        d.DataType,
+        d.CollectionType,
+        a.AccountId,
+        acct.AccountCode,
+        acct.AccountName,
+        site.OrgUnitId,
+        site.OrgUnitCode                                                  AS SiteCode,
+        site.OrgUnitName                                                  AS SiteName,
+        site.CountryCode,
+        CAST(1 AS BIT)                                                    AS IsAccountWide,
+        a.PeriodID,
+        p.PeriodScheduleID,
+        p.PeriodLabel,
+        p.PeriodYear,
+        p.PeriodMonth,
+        p.Status                                                          AS PeriodStatus,
+        a.IsRequired,
+        a.TargetValue,
+        a.ThresholdGreen,
+        a.ThresholdAmber,
+        a.ThresholdRed,
+        COALESCE(a.ThresholdDirection, d.ThresholdDirection)              AS EffectiveThresholdDirection,
+        a.SubmitterGuidance,
+        a.AssignmentTemplateID,
+        COALESCE(tmpl.CustomKpiName,        d.KPIName)                    AS EffectiveKpiName,
+        COALESCE(tmpl.CustomKpiDescription, d.KPIDescription)             AS EffectiveKpiDescription,
+        a.IsActive,
+        a.CreatedOnUtc,
+        a.ModifiedOnUtc
+    FROM KPI.Assignment              AS a
+    JOIN KPI.Definition              AS d    ON d.KPIID        = a.KPIID
+    JOIN Dim.Account                 AS acct ON acct.AccountId = a.AccountId
+    JOIN KPI.Period                  AS p    ON p.PeriodID     = a.PeriodID
+    JOIN Dim.OrgUnit                 AS site
+        ON  site.AccountId   = a.AccountId
+        AND site.OrgUnitType = 'Site'
+        AND site.IsActive    = 1
+    LEFT JOIN KPI.AssignmentTemplate AS tmpl ON tmpl.AssignmentTemplateID = a.AssignmentTemplateID
+    WHERE a.OrgUnitId IS NULL
+      AND NOT EXISTS (
+            SELECT 1
+            FROM   KPI.Assignment AS sa
+            WHERE  sa.KPIID     = a.KPIID
+              AND  sa.OrgUnitId = site.OrgUnitId
+              AND  sa.PeriodID  = a.PeriodID
+              AND  sa.IsActive  = 1
+      );
+GO
+
 CREATE OR ALTER VIEW App.vSiteCompletionSummary
 AS
     -- Expand both site-specific and account-wide assignments to individual site rows.
     -- Account-wide assignments share a single submission row; if submitted it counts
     -- as complete for every site in the account.
+    -- Site-specific assignments shadow account-wide ones for the same KPI + period.
     WITH AllSiteAssignments AS
     (
         -- 1. Site-specific: one row per assignment, scoped to its own site
@@ -4407,7 +4524,8 @@ AS
 
         UNION ALL
 
-        -- 2. Account-wide: expand to every active Site under the same account
+        -- 2. Account-wide: expand to every active Site under the same account.
+        -- Suppressed where a site-specific assignment exists for the same KPI + period.
         SELECT
             a.AssignmentID,
             a.PeriodID,
@@ -4420,6 +4538,13 @@ AS
             AND site.IsActive    = 1
         WHERE a.IsActive    = 1
           AND a.OrgUnitId   IS NULL       -- account-wide flag
+          AND NOT EXISTS (
+                SELECT 1 FROM KPI.Assignment AS sa
+                WHERE  sa.KPIID     = a.KPIID
+                  AND  sa.OrgUnitId = site.OrgUnitId
+                  AND  sa.PeriodID  = a.PeriodID
+                  AND  sa.IsActive  = 1
+          )
     )
     SELECT
         acct.AccountId,

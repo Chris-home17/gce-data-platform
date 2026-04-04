@@ -60,6 +60,9 @@ GO
 IF OBJECT_ID('App.vSiteCompletionSummary', 'V') IS NOT NULL
     DROP VIEW App.vSiteCompletionSummary;
 GO
+IF OBJECT_ID('App.vEffectiveKpiAssignments', 'V') IS NOT NULL
+    DROP VIEW App.vEffectiveKpiAssignments;
+GO
 IF OBJECT_ID('App.vKpiAssignments', 'V') IS NOT NULL
     DROP VIEW App.vKpiAssignments;
 GO

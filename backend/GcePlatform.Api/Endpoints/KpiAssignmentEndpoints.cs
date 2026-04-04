@@ -162,6 +162,51 @@ public static class KpiAssignmentEndpoints
             return Results.NoContent();
         }).RequireAuthorization();
 
+        // GET /kpi/effective-assignments?periodId=&accountId=&siteCode=
+        // Returns the resolved assignment set for submission-facing screens:
+        // site-specific assignments shadow account-wide ones for the same KPI + period,
+        // and account-wide assignments are expanded to one row per active site.
+        app.MapGet("/kpi/effective-assignments", async (int? periodId, int? accountId, string? siteCode, DbConnectionFactory db) =>
+        {
+            using var conn = db.CreateConnection();
+            var items = await conn.QueryAsync<EffectiveKpiAssignmentDto>(@"
+                SELECT
+                    AssignmentId,
+                    ExternalId,
+                    KpiCode,
+                    KpiName,
+                    EffectiveKpiName,
+                    EffectiveKpiDescription,
+                    Category,
+                    AccountCode,
+                    AccountName,
+                    SiteCode,
+                    SiteName,
+                    CAST(IsAccountWide AS bit) AS IsAccountWide,
+                    PeriodLabel,
+                    PeriodYear,
+                    PeriodMonth,
+                    PeriodStatus,
+                    IsRequired,
+                    TargetValue,
+                    ThresholdGreen,
+                    ThresholdAmber,
+                    ThresholdRed,
+                    EffectiveThresholdDirection,
+                    SubmitterGuidance,
+                    IsActive
+                FROM App.vEffectiveKpiAssignments
+                WHERE (@PeriodId  IS NULL OR PeriodId   = @PeriodId)
+                  AND (@AccountId IS NULL OR AccountId  = @AccountId)
+                  AND (@SiteCode  IS NULL OR SiteCode   = @SiteCode)
+                  AND IsActive = 1
+                ORDER BY AccountCode, SiteCode, KpiCode",
+                new { PeriodId = periodId, AccountId = accountId, SiteCode = siteCode });
+
+            var list = items.ToList();
+            return Results.Ok(new ApiList<EffectiveKpiAssignmentDto>(list, list.Count));
+        }).RequireAuthorization();
+
         // GET /kpi/assignments?periodId=&accountId=&siteCode=
         app.MapGet("/kpi/assignments", async (int? periodId, int? accountId, string? siteCode, DbConnectionFactory db) =>
         {
