@@ -27,7 +27,6 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
@@ -70,6 +69,17 @@ type FormValues = z.infer<typeof schema>
 function parseOptionalNumber(value: string): number | null {
   const n = parseFloat(value)
   return isNaN(n) ? null : n
+}
+
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 pt-2">
+      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+        {children}
+      </span>
+      <div className="flex-1 border-t" />
+    </div>
+  )
 }
 
 export function NewAssignmentSheet() {
@@ -206,23 +216,10 @@ export function NewAssignmentSheet() {
         </SheetHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="mt-6 space-y-5">
-            <div className="space-y-2">
-              <Label>Category</Label>
-              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All categories</SelectItem>
-                  {categories.map((category) => (
-                    <SelectItem key={category} value={category!}>
-                      {category}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="mt-6 space-y-4">
+
+            {/* ── KPI ─────────────────────────────────────────── */}
+            <SectionHeading>KPI</SectionHeading>
 
             <FormField
               control={form.control}
@@ -230,6 +227,24 @@ export function NewAssignmentSheet() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>KPI</FormLabel>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                      <SelectTrigger className="h-8 w-44 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All categories</SelectItem>
+                        {categories.map((category) => (
+                          <SelectItem key={category} value={category!}>
+                            {category}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-xs text-muted-foreground">
+                      {filteredKpis.length} KPI{filteredKpis.length !== 1 ? 's' : ''}
+                    </span>
+                  </div>
                   <Select value={field.value} onValueChange={field.onChange}>
                     <FormControl>
                       <SelectTrigger>
@@ -242,7 +257,7 @@ export function NewAssignmentSheet() {
                           value={kpiSearch}
                           onChange={(e) => setKpiSearch(e.target.value)}
                           onKeyDown={(e) => e.stopPropagation()}
-                          placeholder="Type to filter KPIs"
+                          placeholder="Search KPIs…"
                         />
                       </div>
                       {filteredKpis.map((k) => (
@@ -258,13 +273,13 @@ export function NewAssignmentSheet() {
                       )}
                     </SelectContent>
                   </Select>
-                  <FormDescription>
-                    {filteredKpis.length} KPI{filteredKpis.length !== 1 ? 's' : ''} match the current filter.
-                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
+
+            {/* ── Scope ───────────────────────────────────────── */}
+            <SectionHeading>Scope</SectionHeading>
 
             <FormField
               control={form.control}
@@ -319,34 +334,6 @@ export function NewAssignmentSheet() {
                     />
                   </FormControl>
                 </FormItem>
-                )}
-              />
-
-            <FormField
-              control={form.control}
-              name="periodScheduleId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Schedule</FormLabel>
-                  <Select value={field.value ? String(field.value) : ''} onValueChange={(value) => field.onChange(parseInt(value, 10))}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a cadence schedule" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {activeSchedules.map((schedule) => (
-                        <SelectItem key={schedule.periodScheduleId} value={String(schedule.periodScheduleId)}>
-                          {schedule.scheduleName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormDescription>
-                    This schedule controls when instances are generated for the KPI.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
               )}
             />
 
@@ -384,6 +371,55 @@ export function NewAssignmentSheet() {
               />
             )}
 
+            <FormField
+              control={form.control}
+              name="periodScheduleId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Schedule</FormLabel>
+                  <Select value={field.value ? String(field.value) : ''} onValueChange={(value) => field.onChange(parseInt(value, 10))}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a cadence schedule" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {activeSchedules.map((schedule) => (
+                        <SelectItem key={schedule.periodScheduleId} value={String(schedule.periodScheduleId)}>
+                          {schedule.scheduleName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    Controls when instances are generated for this KPI.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="isRequired"
+              render={({ field }) => (
+                <FormItem className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <div>
+                    <FormLabel className="text-sm">Required</FormLabel>
+                    <FormDescription className="text-xs">
+                      Submitters must provide a value for this KPI each period.
+                    </FormDescription>
+                  </div>
+                  <FormControl>
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+
+            {/* ── Thresholds ──────────────────────────────────── */}
+            <SectionHeading>Thresholds</SectionHeading>
+
             <div className="grid grid-cols-2 gap-3">
               <FormField
                 control={form.control}
@@ -404,7 +440,7 @@ export function NewAssignmentSheet() {
                 name="thresholdDirection"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Threshold direction</FormLabel>
+                    <FormLabel>Direction</FormLabel>
                     <Select value={field.value ?? 'none'} onValueChange={field.onChange}>
                       <FormControl>
                         <SelectTrigger>
@@ -465,6 +501,9 @@ export function NewAssignmentSheet() {
               />
             </div>
 
+            {/* ── Display ─────────────────────────────────────── */}
+            <SectionHeading>Display</SectionHeading>
+
             <FormField
               control={form.control}
               name="overrideKpiName"
@@ -482,7 +521,6 @@ export function NewAssignmentSheet() {
                       onCheckedChange={(value) => {
                         field.onChange(value)
                         if (value && selectedKpi) {
-                          // Pre-fill with library values so the user can edit from a known baseline
                           form.setValue('customKpiName', selectedKpi.kpiName)
                           form.setValue('customKpiDescription', '')
                         } else if (!value) {
@@ -537,14 +575,22 @@ export function NewAssignmentSheet() {
               name="submitterGuidance"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Submitter guidance</FormLabel>
+                  <FormLabel>Submitter guidance <span className="text-muted-foreground font-normal">(optional)</span></FormLabel>
                   <FormControl>
-                    <Input placeholder="Instructions shown to submitters" {...field} />
+                    <Textarea
+                      placeholder="Instructions shown to submitters when entering this KPI"
+                      className="resize-none"
+                      rows={3}
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
+
+            {/* ── Options ─────────────────────────────────────── */}
+            <SectionHeading>Options</SectionHeading>
 
             <FormField
               control={form.control}
