@@ -3631,7 +3631,8 @@ BEGIN
         -- Data shape
         DataType        NVARCHAR(20)        NOT NULL
             CONSTRAINT CK_KpiDef_DataType
-                CHECK (DataType IN ('Numeric','Percentage','Boolean','Text','Currency')),
+                CHECK (DataType IN ('Numeric','Percentage','Boolean','Text','Currency','DropDown')),
+        AllowMultiValue BIT                 NOT NULL CONSTRAINT DF_KpiDef_AllowMultiValue DEFAULT (0),
         -- How values are collected
         CollectionType  NVARCHAR(20)        NOT NULL
             CONSTRAINT CK_KpiDef_CollectionType
@@ -3656,6 +3657,26 @@ BEGIN
     CREATE INDEX        IX_KpiDef_IsActive   ON KPI.Definition (IsActive);
 
     PRINT '  + KPI.Definition created';
+END;
+GO
+
+IF OBJECT_ID('KPI.DropDownOption', 'U') IS NULL
+BEGIN
+    CREATE TABLE KPI.DropDownOption
+    (
+        DropDownOptionID INT IDENTITY(1,1)  NOT NULL PRIMARY KEY,
+        KPIID            INT                NOT NULL,
+        OptionValue      NVARCHAR(200)      NOT NULL,
+        SortOrder        INT                NOT NULL CONSTRAINT DF_KpiDDOpt_Sort DEFAULT (0),
+        IsActive         BIT                NOT NULL CONSTRAINT DF_KpiDDOpt_Active DEFAULT (1),
+        CONSTRAINT FK_KpiDDOpt_Definition FOREIGN KEY (KPIID)
+            REFERENCES KPI.Definition (KPIID) ON DELETE CASCADE,
+        CONSTRAINT UQ_KpiDDOpt_Value UNIQUE (KPIID, OptionValue)
+    );
+
+    CREATE INDEX IX_KpiDDOpt_KPIID ON KPI.DropDownOption (KPIID) WHERE IsActive = 1;
+
+    PRINT '  + KPI.DropDownOption created';
 END;
 GO
 
@@ -3905,6 +3926,25 @@ BEGIN
 END;
 GO
 
+IF OBJECT_ID('KPI.AssignmentTemplateDropDownOption', 'U') IS NULL
+BEGIN
+    CREATE TABLE KPI.AssignmentTemplateDropDownOption
+    (
+        TemplateDropDownOptionID INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+        AssignmentTemplateID     INT               NOT NULL,
+        OptionValue              NVARCHAR(200)     NOT NULL,
+        SortOrder                INT               NOT NULL CONSTRAINT DF_KpiTplDDOpt_Sort DEFAULT (0),
+        CONSTRAINT FK_KpiTplDDOpt_Template FOREIGN KEY (AssignmentTemplateID)
+            REFERENCES KPI.AssignmentTemplate (AssignmentTemplateID) ON DELETE CASCADE,
+        CONSTRAINT UQ_KpiTplDDOpt_Value UNIQUE (AssignmentTemplateID, OptionValue)
+    );
+
+    CREATE INDEX IX_KpiTplDDOpt_Template ON KPI.AssignmentTemplateDropDownOption (AssignmentTemplateID);
+
+    PRINT '  + KPI.AssignmentTemplateDropDownOption created';
+END;
+GO
+
 -- Deferred FK: KPI.Assignment → KPI.AssignmentTemplate (forward ref resolved here)
 IF NOT EXISTS (
     SELECT 1 FROM sys.foreign_keys
@@ -3970,9 +4010,10 @@ BEGIN
         SubmittedByPrincipalId  INT                 NULL,   -- NULL for automated
         SubmittedAt             DATETIME2           NOT NULL
             CONSTRAINT DF_KpiSub_SubmittedAt DEFAULT (SYSUTCDATETIME()),
-        -- Value: numeric or text depending on KPI.Definition.DataType
+        -- Value: numeric, text, or boolean depending on KPI.Definition.DataType
         SubmissionValue         DECIMAL(18,4)       NULL,
-        SubmissionText          NVARCHAR(1000)      NULL,
+        SubmissionText          NVARCHAR(1000)      NULL,  -- also used for DropDown selections
+        SubmissionBoolean       BIT                 NULL,  -- used when DataType = 'Boolean'
         SubmissionNotes         NVARCHAR(500)       NULL,
         -- Source
         SourceType              NVARCHAR(20)        NOT NULL
@@ -4042,6 +4083,32 @@ BEGIN
     CREATE INDEX IX_KpiSubAudit_ChangedAt  ON KPI.SubmissionAudit (ChangedAt);
 
     PRINT '  + KPI.SubmissionAudit created';
+END;
+GO
+
+IF OBJECT_ID('KPI.SubmissionToken', 'U') IS NULL
+BEGIN
+    CREATE TABLE KPI.SubmissionToken
+    (
+        TokenId         UNIQUEIDENTIFIER    NOT NULL
+            CONSTRAINT PK_KpiSubToken  PRIMARY KEY
+            CONSTRAINT DF_KpiSubToken_TokenId  DEFAULT NEWID(),
+        SiteOrgUnitId   INT                 NOT NULL,
+        AccountId       INT                 NOT NULL,  -- denormalised; always = OrgUnit.AccountId
+        PeriodId        INT                 NOT NULL,
+        ExpiresAtUtc    DATETIME2           NOT NULL,
+        CreatedBy       NVARCHAR(128)       NOT NULL,
+        CreatedAtUtc    DATETIME2           NOT NULL
+            CONSTRAINT DF_KpiSubToken_CreatedAt  DEFAULT SYSUTCDATETIME(),
+        RevokedAtUtc    DATETIME2           NULL,
+        CONSTRAINT FK_KpiSubToken_Site   FOREIGN KEY (SiteOrgUnitId) REFERENCES Dim.OrgUnit  (OrgUnitId),
+        CONSTRAINT FK_KpiSubToken_Acct   FOREIGN KEY (AccountId)     REFERENCES Dim.Account  (AccountId),
+        CONSTRAINT FK_KpiSubToken_Period FOREIGN KEY (PeriodId)      REFERENCES KPI.Period   (PeriodID)
+    );
+
+    CREATE INDEX IX_KpiSubToken_SitePeriod ON KPI.SubmissionToken (SiteOrgUnitId, PeriodId);
+
+    PRINT '  + KPI.SubmissionToken created';
 END;
 GO
 
@@ -4120,10 +4187,12 @@ BEGIN
         JOIN deleted   AS d ON i.SubmissionID = d.SubmissionID
         WHERE d.LockState <> 'Unlocked'
           AND (
-                ISNULL(CAST(i.SubmissionValue AS NVARCHAR(50)),  '') <>
-                ISNULL(CAST(d.SubmissionValue AS NVARCHAR(50)),  '')
+                ISNULL(CAST(i.SubmissionValue   AS NVARCHAR(50)),  '') <>
+                ISNULL(CAST(d.SubmissionValue   AS NVARCHAR(50)),  '')
              OR ISNULL(i.SubmissionText,  '') <> ISNULL(d.SubmissionText,  '')
              OR ISNULL(i.SubmissionNotes, '') <> ISNULL(d.SubmissionNotes, '')
+             OR ISNULL(CAST(i.SubmissionBoolean AS NVARCHAR(5)), '') <>
+                ISNULL(CAST(d.SubmissionBoolean AS NVARCHAR(5)), '')
              OR i.SourceType <> d.SourceType
           )
     )
@@ -4131,15 +4200,22 @@ BEGIN
         THROW 50200, 'Cannot modify a locked submission. Value and source columns are immutable once locked.', 1;
     END
 
-    -- Apply the update for permitted changes:
-    -- LockState transitions, IsValid, ValidationNotes, ModifiedOnUtc
+    -- Pass through all mutable columns (INSTEAD OF replaces the statement,
+    -- so every column that can be written must be listed explicitly here)
     UPDATE s
-    SET s.LockState             = i.LockState,
-        s.LockedAt              = i.LockedAt,
-        s.LockedByPrincipalId   = i.LockedByPrincipalId,
-        s.IsValid               = i.IsValid,
-        s.ValidationNotes       = i.ValidationNotes,
-        s.ModifiedOnUtc         = SYSUTCDATETIME()
+    SET s.SubmittedByPrincipalId = i.SubmittedByPrincipalId,
+        s.SubmittedAt            = i.SubmittedAt,
+        s.SubmissionValue        = i.SubmissionValue,
+        s.SubmissionText         = i.SubmissionText,
+        s.SubmissionBoolean      = i.SubmissionBoolean,
+        s.SubmissionNotes        = i.SubmissionNotes,
+        s.SourceType             = i.SourceType,
+        s.LockState              = i.LockState,
+        s.LockedAt               = i.LockedAt,
+        s.LockedByPrincipalId    = i.LockedByPrincipalId,
+        s.IsValid                = i.IsValid,
+        s.ValidationNotes        = i.ValidationNotes,
+        s.ModifiedOnUtc          = SYSUTCDATETIME()
     FROM KPI.Submission AS s
     JOIN inserted AS i ON s.SubmissionID = i.SubmissionID;
 END;
@@ -4158,6 +4234,7 @@ AS
         d.Category,
         d.Unit,
         d.DataType,
+        d.AllowMultiValue,
         d.CollectionType,
         d.ThresholdDirection,
         d.SourceSystemRef,
@@ -4165,12 +4242,18 @@ AS
         d.CreatedOnUtc,
         d.ModifiedOnUtc,
         -- How many accounts currently have this KPI assigned (active assignments only)
-        ISNULL(assignments.AssignmentCount, 0) AS AssignmentCount
+        ISNULL(assignments.AssignmentCount, 0) AS AssignmentCount,
+        -- Drop-down options as a pipe-delimited list (NULL for non-DropDown types)
+        CASE WHEN d.DataType = 'DropDown' THEN (
+            SELECT STRING_AGG(opt.OptionValue, '||') WITHIN GROUP (ORDER BY opt.SortOrder)
+            FROM KPI.DropDownOption AS opt
+            WHERE opt.KPIID = d.KPIID AND opt.IsActive = 1
+        ) ELSE NULL END AS DropDownOptionsRaw
     FROM KPI.Definition AS d
     OUTER APPLY
     (
         SELECT COUNT(*) AS AssignmentCount
-        FROM KPI.Assignment AS a        -- forward reference: created in migration 006
+        FROM KPI.Assignment AS a
         WHERE a.KPIID     = d.KPIID
           AND a.IsActive  = 1
     ) AS assignments;
@@ -4651,6 +4734,7 @@ AS
         -- Submission values
         sub.SubmissionValue,
         sub.SubmissionText,
+        sub.SubmissionBoolean,
         sub.SubmissionNotes,
         sub.SourceType,
         -- Submitter
@@ -4698,18 +4782,22 @@ GO
 
 -- KPI admin and submission procedures ---------------------------------------
 CREATE OR ALTER PROCEDURE App.usp_UpsertKpiDefinition
-    @KPICode            NVARCHAR(50),
-    @KPIName            NVARCHAR(200),
-    @KPIDescription     NVARCHAR(1000)  = NULL,
-    @Category           NVARCHAR(100)   = NULL,
-    @Unit               NVARCHAR(50)    = NULL,
-    @DataType           NVARCHAR(20)    = 'Numeric',
-    @CollectionType     NVARCHAR(20)    = 'Manual',
-    @ThresholdDirection NVARCHAR(10)    = NULL,
-    @SourceSystemRef    NVARCHAR(200)   = NULL,
-    @IsActive           BIT             = 1,
-    @ActorUPN           NVARCHAR(320)   = NULL,
-    @KPIID              INT OUTPUT
+    @KPICode                NVARCHAR(50),
+    @KPIName                NVARCHAR(200),
+    @KPIDescription         NVARCHAR(1000)  = NULL,
+    @Category               NVARCHAR(100)   = NULL,
+    @Unit                   NVARCHAR(50)    = NULL,
+    @DataType               NVARCHAR(20)    = 'Numeric',
+    @AllowMultiValue        BIT             = 0,
+    @CollectionType         NVARCHAR(20)    = 'Manual',
+    @ThresholdDirection     NVARCHAR(10)    = NULL,
+    @SourceSystemRef        NVARCHAR(200)   = NULL,
+    @IsActive               BIT             = 1,
+    -- Drop-down options: pipe-delimited string, e.g. 'Option A||Option B||Option C'
+    -- Pass NULL to leave existing options unchanged; pass empty string '' to clear all options
+    @DropDownOptionsPipe    NVARCHAR(MAX)   = NULL,
+    @ActorUPN               NVARCHAR(320)   = NULL,
+    @KPIID                  INT OUTPUT
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -4720,10 +4808,10 @@ BEGIN
     BEGIN
         INSERT INTO KPI.Definition
             (KPICode, KPIName, KPIDescription, Category, Unit,
-             DataType, CollectionType, ThresholdDirection, SourceSystemRef, IsActive)
+             DataType, AllowMultiValue, CollectionType, ThresholdDirection, SourceSystemRef, IsActive)
         VALUES
             (@KPICode, @KPIName, @KPIDescription, @Category, @Unit,
-             @DataType, @CollectionType, @ThresholdDirection, @SourceSystemRef, @IsActive);
+             @DataType, @AllowMultiValue, @CollectionType, @ThresholdDirection, @SourceSystemRef, @IsActive);
 
         SET @KPIID = SCOPE_IDENTITY();
     END
@@ -4735,6 +4823,7 @@ BEGIN
             Category           = @Category,
             Unit               = @Unit,
             DataType           = @DataType,
+            AllowMultiValue    = @AllowMultiValue,
             CollectionType     = @CollectionType,
             ThresholdDirection = @ThresholdDirection,
             SourceSystemRef    = @SourceSystemRef,
@@ -4742,6 +4831,28 @@ BEGIN
             ModifiedOnUtc      = SYSUTCDATETIME(),
             ModifiedBy         = COALESCE(@ActorUPN, SESSION_USER)
         WHERE KPIID = @KPIID;
+    END
+
+    -- Sync drop-down options when provided (NULL = don't touch, '' = clear all)
+    IF @DropDownOptionsPipe IS NOT NULL
+    BEGIN
+        -- Remove all existing options and replace with the provided set
+        DELETE FROM KPI.DropDownOption WHERE KPIID = @KPIID;
+
+        IF LEN(@DropDownOptionsPipe) > 0
+        BEGIN
+            INSERT INTO KPI.DropDownOption (KPIID, OptionValue, SortOrder)
+            SELECT
+                @KPIID,
+                LTRIM(RTRIM(value)),
+                ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) - 1   -- 0-based sort order
+            FROM STRING_SPLIT(@DropDownOptionsPipe, '|')
+            WHERE LEN(LTRIM(RTRIM(value))) > 0
+              -- De-duplicate: skip values already inserted (STRING_SPLIT may include empty tokens from '||')
+              AND LTRIM(RTRIM(value)) NOT IN (
+                  SELECT OptionValue FROM KPI.DropDownOption WHERE KPIID = @KPIID
+              );
+        END
     END
 END;
 GO
@@ -5316,7 +5427,9 @@ BEGIN
         @TemplateThresholdAmber DECIMAL(18,4),
         @TemplateThresholdRed DECIMAL(18,4),
         @TemplateThresholdDirection NVARCHAR(10),
-        @TemplateSubmitterGuidance NVARCHAR(1000);
+        @TemplateSubmitterGuidance NVARCHAR(1000),
+        -- Used when expanding account-wide templates to per-site assignments
+        @SiteOrgUnitCode NVARCHAR(50);
 
     DECLARE template_cursor CURSOR LOCAL FAST_FORWARD FOR
         SELECT
@@ -5384,24 +5497,72 @@ BEGIN
         WHILE @@FETCH_STATUS = 0
         BEGIN
             DECLARE @GeneratedAssignmentId INT;
-            EXEC App.usp_AssignKpi
-                @KPICode              = @TemplateKpiCode,
-                @AccountCode          = @TemplateAccountCode,
-                @OrgUnitCode          = @TemplateOrgUnitCode,
-                @OrgUnitType          = @TemplateOrgUnitType,
-                @PeriodScheduleID     = @TemplateScheduleId,
-                @PeriodYear           = @CurrentPeriodYear,
-                @PeriodMonth          = @CurrentPeriodMonth,
-                @AssignmentTemplateID = @CurrentTemplateId,
-                @IsRequired           = @TemplateIsRequired,
-                @TargetValue          = @TemplateTargetValue,
-                @ThresholdGreen       = @TemplateThresholdGreen,
-                @ThresholdAmber       = @TemplateThresholdAmber,
-                @ThresholdRed         = @TemplateThresholdRed,
-                @ThresholdDirection   = @TemplateThresholdDirection,
-                @SubmitterGuidance    = @TemplateSubmitterGuidance,
-                @ActorUPN             = @ActorUPN,
-                @AssignmentID         = @GeneratedAssignmentId OUTPUT;
+
+            IF @TemplateOrgUnitCode IS NULL
+            BEGIN
+                -- Account-wide template: expand to one per-site assignment for every active site
+                DECLARE site_cursor CURSOR LOCAL FAST_FORWARD FOR
+                    SELECT ou.OrgUnitCode
+                    FROM Dim.OrgUnit AS ou
+                    JOIN Dim.Account AS acct ON acct.AccountId = ou.AccountId
+                    WHERE acct.AccountCode = @TemplateAccountCode
+                      AND ou.OrgUnitType   = 'Site'
+                      AND ou.IsActive      = 1;
+
+                OPEN site_cursor;
+                FETCH NEXT FROM site_cursor INTO @SiteOrgUnitCode;
+
+                WHILE @@FETCH_STATUS = 0
+                BEGIN
+                    SET @GeneratedAssignmentId = NULL;
+                    EXEC App.usp_AssignKpi
+                        @KPICode              = @TemplateKpiCode,
+                        @AccountCode          = @TemplateAccountCode,
+                        @OrgUnitCode          = @SiteOrgUnitCode,
+                        @OrgUnitType          = 'Site',
+                        @PeriodScheduleID     = @TemplateScheduleId,
+                        @PeriodYear           = @CurrentPeriodYear,
+                        @PeriodMonth          = @CurrentPeriodMonth,
+                        @AssignmentTemplateID = @CurrentTemplateId,
+                        @IsRequired           = @TemplateIsRequired,
+                        @TargetValue          = @TemplateTargetValue,
+                        @ThresholdGreen       = @TemplateThresholdGreen,
+                        @ThresholdAmber       = @TemplateThresholdAmber,
+                        @ThresholdRed         = @TemplateThresholdRed,
+                        @ThresholdDirection   = @TemplateThresholdDirection,
+                        @SubmitterGuidance    = @TemplateSubmitterGuidance,
+                        @ActorUPN             = @ActorUPN,
+                        @AssignmentID         = @GeneratedAssignmentId OUTPUT;
+
+                    FETCH NEXT FROM site_cursor INTO @SiteOrgUnitCode;
+                END
+
+                CLOSE site_cursor;
+                DEALLOCATE site_cursor;
+            END
+            ELSE
+            BEGIN
+                -- Site-specific template: single assignment
+                SET @GeneratedAssignmentId = NULL;
+                EXEC App.usp_AssignKpi
+                    @KPICode              = @TemplateKpiCode,
+                    @AccountCode          = @TemplateAccountCode,
+                    @OrgUnitCode          = @TemplateOrgUnitCode,
+                    @OrgUnitType          = @TemplateOrgUnitType,
+                    @PeriodScheduleID     = @TemplateScheduleId,
+                    @PeriodYear           = @CurrentPeriodYear,
+                    @PeriodMonth          = @CurrentPeriodMonth,
+                    @AssignmentTemplateID = @CurrentTemplateId,
+                    @IsRequired           = @TemplateIsRequired,
+                    @TargetValue          = @TemplateTargetValue,
+                    @ThresholdGreen       = @TemplateThresholdGreen,
+                    @ThresholdAmber       = @TemplateThresholdAmber,
+                    @ThresholdRed         = @TemplateThresholdRed,
+                    @ThresholdDirection   = @TemplateThresholdDirection,
+                    @SubmitterGuidance    = @TemplateSubmitterGuidance,
+                    @ActorUPN             = @ActorUPN,
+                    @AssignmentID         = @GeneratedAssignmentId OUTPUT;
+            END
 
             FETCH NEXT FROM period_cursor INTO @CurrentPeriodYear, @CurrentPeriodMonth;
         END
@@ -5509,11 +5670,13 @@ CREATE OR ALTER PROCEDURE App.usp_SubmitKpi
     @AssignmentExternalId   UNIQUEIDENTIFIER,
     @SubmitterUPN           NVARCHAR(320),
     @SubmissionValue        DECIMAL(18,4)   = NULL,
-    @SubmissionText         NVARCHAR(1000)  = NULL,
+    @SubmissionText         NVARCHAR(1000)  = NULL,  -- also used for DropDown selections
+    @SubmissionBoolean      BIT             = NULL,  -- used when DataType = 'Boolean'
     @SubmissionNotes        NVARCHAR(500)   = NULL,
     @SourceType             NVARCHAR(20)    = 'Manual',
     @LockOnSubmit           BIT             = 1,   -- set to 0 for draft saves
     @ChangeReason           NVARCHAR(500)   = NULL,
+    @BypassLock             BIT             = 0,   -- set to 1 for KpiAdmin post-close edits
     @SubmissionID           INT OUTPUT
 AS
 BEGIN
@@ -5549,13 +5712,13 @@ BEGIN
     FROM KPI.Period
     WHERE PeriodID = @PeriodID;
 
-    IF @PeriodStatus <> 'Open'
+    IF @BypassLock = 0 AND @PeriodStatus <> 'Open'
     BEGIN
         ROLLBACK;
         THROW 50202, 'Submissions are not accepted: period is not Open.', 1;
     END
 
-    IF CAST(SYSUTCDATETIME() AS DATE) > @CloseDate
+    IF @BypassLock = 0 AND CAST(SYSUTCDATETIME() AS DATE) > @CloseDate
     BEGIN
         ROLLBACK;
         THROW 50203, 'Submissions are not accepted: the submission window has closed.', 1;
@@ -5581,10 +5744,21 @@ BEGIN
     FROM KPI.Submission
     WHERE AssignmentID = @AssignmentID;
 
-    IF @ExistingSubmissionID IS NOT NULL AND @ExistingLockState <> 'Unlocked'
+    IF @ExistingSubmissionID IS NOT NULL AND @ExistingLockState <> 'Unlocked' AND @BypassLock = 0
     BEGIN
         ROLLBACK;
         THROW 50205, 'This KPI submission is locked and cannot be modified.', 1;
+    END
+
+    -- KpiAdmin bypass: unlock the existing submission so the trigger allows value changes
+    IF @BypassLock = 1 AND @ExistingSubmissionID IS NOT NULL AND @ExistingLockState <> 'Unlocked'
+    BEGIN
+        UPDATE KPI.Submission
+        SET LockState           = 'Unlocked',
+            LockedAt            = NULL,
+            LockedByPrincipalId = NULL,
+            ModifiedOnUtc       = SYSUTCDATETIME()
+        WHERE SubmissionID = @ExistingSubmissionID;
     END
 
     DECLARE @NewLockState NVARCHAR(25) =
@@ -5602,11 +5776,11 @@ BEGIN
         -- First submission for this assignment
         INSERT INTO KPI.Submission
             (AssignmentID, SubmittedByPrincipalId, SubmittedAt,
-             SubmissionValue, SubmissionText, SubmissionNotes,
+             SubmissionValue, SubmissionText, SubmissionBoolean, SubmissionNotes,
              SourceType, LockState, LockedAt, LockedByPrincipalId)
         VALUES
             (@AssignmentID, @SubmitterPrincipalId, SYSUTCDATETIME(),
-             @SubmissionValue, @SubmissionText, @SubmissionNotes,
+             @SubmissionValue, @SubmissionText, @SubmissionBoolean, @SubmissionNotes,
              @SourceType, @NewLockState, @LockedAt, @LockedByPrincipalId);
 
         SET @SubmissionID = SCOPE_IDENTITY();
@@ -5633,6 +5807,7 @@ BEGIN
         UPDATE KPI.Submission
         SET SubmissionValue       = @SubmissionValue,
             SubmissionText        = @SubmissionText,
+            SubmissionBoolean     = @SubmissionBoolean,
             SubmissionNotes       = @SubmissionNotes,
             SourceType            = @SourceType,
             LockState             = @NewLockState,

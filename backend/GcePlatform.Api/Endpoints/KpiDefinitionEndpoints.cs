@@ -22,10 +22,12 @@ public static class KpiDefinitionEndpoints
                     Category,
                     Unit,
                     DataType,
+                    AllowMultiValue,
                     CollectionType,
                     ThresholdDirection,
                     IsActive,
-                    AssignmentCount
+                    AssignmentCount,
+                    DropDownOptionsRaw
                 FROM App.vKpiDefinitions
                 ORDER BY KpiCode");
 
@@ -47,10 +49,12 @@ public static class KpiDefinitionEndpoints
                     Category,
                     Unit,
                     DataType,
+                    AllowMultiValue,
                     CollectionType,
                     ThresholdDirection,
                     IsActive,
-                    AssignmentCount
+                    AssignmentCount,
+                    DropDownOptionsRaw
                 FROM App.vKpiDefinitions
                 WHERE KpiId = @Id",
                 new { Id = id });
@@ -78,27 +82,35 @@ public static class KpiDefinitionEndpoints
         {
             using var conn = db.CreateConnection();
 
+            // Convert option list to pipe-delimited string expected by the stored proc
+            string? optionsPipe = request.DropDownOptions is null
+                ? null
+                : string.Join("||", request.DropDownOptions.Where(o => !string.IsNullOrWhiteSpace(o)));
+
             var p = new DynamicParameters();
-            p.Add("@KpiCode", request.KpiCode.ToUpperInvariant());
-            p.Add("@KpiName", request.KpiName);
-            p.Add("@KpiDescription", request.KpiDescription);
-            p.Add("@Category", request.Category);
-            p.Add("@Unit", request.Unit);
-            p.Add("@DataType", request.DataType);
-            p.Add("@CollectionType", request.CollectionType);
-            p.Add("@ThresholdDirection", request.ThresholdDirection);
-            p.Add("@IsActive", true);
-            p.Add("@KpiId", dbType: System.Data.DbType.Int32,
+            p.Add("@KpiCode",             request.KpiCode.ToUpperInvariant());
+            p.Add("@KpiName",             request.KpiName);
+            p.Add("@KpiDescription",      request.KpiDescription);
+            p.Add("@Category",            request.Category);
+            p.Add("@Unit",                request.Unit);
+            p.Add("@DataType",            request.DataType);
+            p.Add("@AllowMultiValue",     request.AllowMultiValue);
+            p.Add("@CollectionType",      request.CollectionType);
+            p.Add("@ThresholdDirection",  request.ThresholdDirection);
+            p.Add("@DropDownOptionsPipe", optionsPipe);
+            p.Add("@IsActive",            true);
+            p.Add("@KPIID", dbType: System.Data.DbType.Int32,
                   direction: System.Data.ParameterDirection.Output);
 
             await conn.ExecuteAsync("App.usp_UpsertKpiDefinition", p,
                 commandType: System.Data.CommandType.StoredProcedure);
 
-            var newId = p.Get<int>("@KpiId");
+            var newId = p.Get<int>("@KPIID");
 
             var created = await conn.QuerySingleAsync<KpiDefinitionDto>(@"
                 SELECT KpiId, ExternalId, KpiCode, KpiName, KpiDescription, Category, Unit,
-                       DataType, CollectionType, ThresholdDirection, IsActive, AssignmentCount
+                       DataType, AllowMultiValue, CollectionType, ThresholdDirection,
+                       IsActive, AssignmentCount, DropDownOptionsRaw
                 FROM App.vKpiDefinitions
                 WHERE KpiId = @Id",
                 new { Id = newId });

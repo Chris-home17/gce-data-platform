@@ -317,6 +317,9 @@ GO
 IF OBJECT_ID('KPI.SubmissionAudit', 'U') IS NOT NULL
     DROP TABLE KPI.SubmissionAudit;
 GO
+IF OBJECT_ID('KPI.SubmissionToken', 'U') IS NOT NULL
+    DROP TABLE KPI.SubmissionToken;
+GO
 IF OBJECT_ID('KPI.Submission', 'U') IS NOT NULL
     DROP TABLE KPI.Submission;
 GO
@@ -325,6 +328,9 @@ IF OBJECT_ID('KPI.EscalationContact', 'U') IS NOT NULL
 GO
 IF OBJECT_ID('KPI.Assignment', 'U') IS NOT NULL
     DROP TABLE KPI.Assignment;
+GO
+IF OBJECT_ID('KPI.AssignmentTemplateDropDownOption', 'U') IS NOT NULL
+    DROP TABLE KPI.AssignmentTemplateDropDownOption;
 GO
 IF OBJECT_ID('KPI.AssignmentTemplate', 'U') IS NOT NULL
     DROP TABLE KPI.AssignmentTemplate;
@@ -364,6 +370,9 @@ IF OBJECT_ID('KPI.Period', 'U') IS NOT NULL
 GO
 IF OBJECT_ID('KPI.PeriodSchedule', 'U') IS NOT NULL
     DROP TABLE KPI.PeriodSchedule;
+GO
+IF OBJECT_ID('KPI.DropDownOption', 'U') IS NOT NULL
+    DROP TABLE KPI.DropDownOption;
 GO
 IF OBJECT_ID('KPI.Definition', 'U') IS NOT NULL
     DROP TABLE KPI.Definition;

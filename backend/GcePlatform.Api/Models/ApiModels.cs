@@ -138,21 +138,27 @@ public record KpiDefinitionDto(
     string? Category,
     string? Unit,
     string  DataType,
+    bool    AllowMultiValue,
     string  CollectionType,
     string? ThresholdDirection,
     bool    IsActive,
-    int     AssignmentCount
+    int     AssignmentCount,
+    // Pipe-delimited option list for DropDown KPIs; null for other types
+    string? DropDownOptionsRaw
 );
 
 public record CreateKpiDefinitionRequest(
-    string  KpiCode,
-    string  KpiName,
-    string? KpiDescription,
-    string? Category,
-    string? Unit,
-    string  DataType,
-    string  CollectionType,
-    string? ThresholdDirection
+    string   KpiCode,
+    string   KpiName,
+    string?  KpiDescription,
+    string?  Category,
+    string?  Unit,
+    string   DataType,
+    bool     AllowMultiValue,
+    string   CollectionType,
+    string?  ThresholdDirection,
+    // DropDown options — null to skip, empty list to clear
+    IEnumerable<string>? DropDownOptions
 );
 
 // ---------------------------------------------------------------------------
@@ -284,7 +290,9 @@ public record SiteCompletionDto(
     string   AccountName,
     string   SiteCode,
     string   SiteName,
+    int      SiteOrgUnitId,
     string   PeriodLabel,
+    int      PeriodId,
     int      TotalRequired,
     int      TotalSubmitted,
     int      TotalLocked,
@@ -393,6 +401,126 @@ public record CreateAccountRolePolicyRequest(
     string?  OrgUnitCode,
     bool     ExpandPerOrgUnit,
     bool     ApplyNow
+);
+
+// ---------------------------------------------------------------------------
+// KPI Submission
+// ---------------------------------------------------------------------------
+
+public record SubmitKpiRequest(
+    Guid     AssignmentExternalId,
+    decimal? SubmissionValue,
+    string?  SubmissionText,    // also used for DropDown selection(s)
+    bool?    SubmissionBoolean, // used when DataType = 'Boolean'
+    string?  SubmissionNotes,
+    bool     LockOnSubmit,
+    string?  ChangeReason,
+    bool     BypassLock
+);
+
+public record KpiSubmissionDto(
+    int      SubmissionId,
+    Guid     AssignmentExternalId,
+    decimal? SubmissionValue,
+    string?  SubmissionText,
+    bool?    SubmissionBoolean,
+    string?  SubmissionNotes,
+    string   LockState,
+    string   SubmittedByUpn,
+    DateTime SubmittedAt
+);
+
+// Admin drill-down: all assignments for a site+period with submission state
+public record SiteSubmissionDetailDto(
+    int       AssignmentId,
+    Guid      ExternalId,        // used to call the unlock endpoint
+    string    KpiCode,
+    string    KpiName,
+    string    EffectiveKpiName,
+    string?   Category,
+    string    DataType,
+    bool      IsRequired,
+    decimal?  TargetValue,
+    decimal?  ThresholdGreen,
+    decimal?  ThresholdAmber,
+    decimal?  ThresholdRed,
+    string?   EffectiveThresholdDirection,
+    int?      SubmissionId,
+    decimal?  SubmissionValue,
+    string?   SubmissionText,
+    bool?     SubmissionBoolean,
+    string?   SubmissionNotes,
+    string?   LockState,
+    string?   SubmittedByUpn,
+    DateTime? SubmittedAt,
+    bool      IsSubmitted,
+    string?   RagStatus
+);
+
+// ---------------------------------------------------------------------------
+// KPI Submission Token
+// ---------------------------------------------------------------------------
+
+public record CreateSubmissionTokenRequest(
+    int  SiteOrgUnitId,
+    int  PeriodId
+);
+
+public record SubmissionTokenDto(
+    Guid     TokenId,
+    string   SiteCode,
+    string   SiteName,
+    string   AccountCode,
+    string   AccountName,
+    string   PeriodLabel,
+    string   PeriodStatus,
+    DateTime PeriodCloseDate,
+    DateTime ExpiresAtUtc,
+    string   CreatedBy,
+    DateTime CreatedAtUtc,
+    DateTime? RevokedAtUtc
+);
+
+public record AssignmentWithSubmissionDto(
+    int      AssignmentId,
+    Guid     ExternalId,
+    string   KpiCode,
+    string   KpiName,
+    string   EffectiveKpiName,
+    string?  EffectiveKpiDescription,
+    string?  Category,
+    string   DataType,
+    bool     AllowMultiValue,
+    // Effective drop-down options: template override if present, else definition defaults.
+    // Pipe-delimited; null for non-DropDown types.
+    string?  DropDownOptionsRaw,
+    bool     IsRequired,
+    decimal? TargetValue,
+    decimal? ThresholdGreen,
+    decimal? ThresholdAmber,
+    decimal? ThresholdRed,
+    string?  EffectiveThresholdDirection,
+    string?  SubmitterGuidance,
+    int?     SubmissionId,
+    decimal? SubmissionValue,
+    string?  SubmissionText,
+    bool?    SubmissionBoolean,
+    string?  SubmissionNotes,
+    string?  LockState,
+    bool     IsSubmitted
+);
+
+public record SubmissionTokenContextDto(
+    Guid     TokenId,
+    string   SiteCode,
+    string   SiteName,
+    string   AccountCode,
+    string   AccountName,
+    string   PeriodLabel,
+    string   PeriodStatus,
+    DateTime PeriodCloseDate,
+    DateTime ExpiresAtUtc,
+    IEnumerable<AssignmentWithSubmissionDto> Assignments
 );
 
 // ---------------------------------------------------------------------------

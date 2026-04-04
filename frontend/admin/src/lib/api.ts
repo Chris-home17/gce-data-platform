@@ -29,6 +29,7 @@ import type {
   CreateRoleInput,
   CreateSharedGeoUnitInput,
   CreateSourceMappingInput,
+  CreateSubmissionTokenInput,
   CreateUserInput,
   CreateDelegationInput,
   Delegation,
@@ -48,7 +49,11 @@ import type {
   SharedGeoUnit,
   Site,
   SiteCompletion,
+  SiteSubmissionDetail,
   SourceMapping,
+  SubmissionToken,
+  SubmissionTokenContext,
+  SubmitKpiInput,
   User,
 } from '@/types/api'
 
@@ -408,12 +413,46 @@ export const api = {
       },
     },
     monitoring: {
-      list(params?: { periodId?: number; accountId?: number }): Promise<ApiList<SiteCompletion>> {
+      list(params?: { periodId?: number; accountId?: number; siteOrgUnitId?: number }): Promise<ApiList<SiteCompletion>> {
         const qs = new URLSearchParams()
         if (params?.periodId) qs.set('periodId', String(params.periodId))
         if (params?.accountId) qs.set('accountId', String(params.accountId))
+        if (params?.siteOrgUnitId) qs.set('siteOrgUnitId', String(params.siteOrgUnitId))
         const query = qs.toString()
         return apiFetch(`/kpi/monitoring${query ? `?${query}` : ''}`)
+      },
+    },
+    submissions: {
+      submit(data: SubmitKpiInput): Promise<{ submissionId: number }> {
+        return apiFetch('/kpi/submissions', { method: 'POST', body: JSON.stringify(data) })
+      },
+      bulkSubmit(data: SubmitKpiInput[]): Promise<Array<{ assignmentExternalId: string; submissionId: number | null; success: boolean; error: string | null }>> {
+        return apiFetch('/kpi/submissions/bulk', { method: 'POST', body: JSON.stringify(data) })
+      },
+      listForSite(params: { siteOrgUnitId: number; periodId: number }): Promise<ApiList<SiteSubmissionDetail>> {
+        const qs = new URLSearchParams({ siteOrgUnitId: String(params.siteOrgUnitId), periodId: String(params.periodId) })
+        return apiFetch(`/kpi/site-submissions?${qs}`)
+      },
+      unlock(assignmentExternalId: string): Promise<void> {
+        return apiFetch(`/kpi/submissions/${assignmentExternalId}/unlock`, { method: 'PATCH' })
+      },
+    },
+    submissionTokens: {
+      list(params?: { siteOrgUnitId?: number; periodId?: number }): Promise<ApiList<SubmissionToken>> {
+        const qs = new URLSearchParams()
+        if (params?.siteOrgUnitId) qs.set('siteOrgUnitId', String(params.siteOrgUnitId))
+        if (params?.periodId) qs.set('periodId', String(params.periodId))
+        const query = qs.toString()
+        return apiFetch(`/kpi/submission-tokens${query ? `?${query}` : ''}`)
+      },
+      create(data: CreateSubmissionTokenInput): Promise<SubmissionToken> {
+        return apiFetch('/kpi/submission-tokens', { method: 'POST', body: JSON.stringify(data) })
+      },
+      getContext(tokenId: string): Promise<SubmissionTokenContext> {
+        return apiFetch(`/kpi/submission-tokens/${tokenId}`)
+      },
+      revoke(tokenId: string): Promise<void> {
+        return apiFetch(`/kpi/submission-tokens/${tokenId}`, { method: 'DELETE' })
       },
     },
   },

@@ -100,6 +100,8 @@ try
     app.MapKpiDefinitionEndpoints();
     app.MapKpiAssignmentEndpoints();
     app.MapKpiMonitoringEndpoints();
+    app.MapKpiSubmissionEndpoints();
+    app.MapKpiSubmissionTokenEndpoints();
     app.MapSourceMappingEndpoints();
     app.MapCoverageEndpoints();
     app.MapGrantEndpoints();

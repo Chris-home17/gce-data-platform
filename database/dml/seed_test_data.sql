@@ -391,6 +391,7 @@ DECLARE @UserSeed TABLE
 INSERT INTO @UserSeed
     (UPN, DisplayName, EntraObjectId, UserType, IsActive, InvitedBy, InviteDaysAgo, LastLoginDaysAgo)
 VALUES
+    ('dev@gce-platform.local',     'Dev User',        '00000000-0000-0000-0000-000000000001', 'Internal', 1, NULL,                              NULL,  0),
     ('allison.tate@fabrikam.com',  'Allison Tate',   '11111111-1111-1111-1111-111111111101', 'Internal', 1, NULL,                              NULL,  1),
     ('hassan.khan@fabrikam.com',   'Hassan Khan',    '11111111-1111-1111-1111-111111111102', 'Internal', 1, NULL,                              NULL,  2),
     ('bruno.martens@fabrikam.com', 'Bruno Martens',  '11111111-1111-1111-1111-111111111103', 'Internal', 1, NULL,                              NULL,  3),

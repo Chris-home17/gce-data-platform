@@ -273,11 +273,14 @@ export interface KpiDefinition {
   kpiName: string
   category: string
   unit: string
-  dataType: string
+  dataType: 'Numeric' | 'Percentage' | 'Boolean' | 'Text' | 'Currency' | 'DropDown' | string
+  allowMultiValue: boolean
   collectionType: string
   thresholdDirection: 'Higher' | 'Lower' | null
   isActive: boolean
   assignmentCount: number
+  /** Pipe-delimited option list for DropDown KPIs; null for other types */
+  dropDownOptionsRaw: string | null
 }
 
 /** From KPI.Period via App.vKpiPeriods (screen K-02) */
@@ -351,7 +354,9 @@ export interface SiteCompletion {
   accountName: string
   siteCode: string
   siteName: string
+  siteOrgUnitId: number
   periodLabel: string
+  periodId: number
   totalRequired: number
   totalSubmitted: number
   totalLocked: number
@@ -359,6 +364,33 @@ export interface SiteCompletion {
   completionPct: number
   reminderLevel: number | null
   reminderResolved: boolean
+}
+
+/** Admin drill-down: assignment + submission state for a site+period */
+export interface SiteSubmissionDetail {
+  assignmentId: number
+  externalId: string
+  kpiCode: string
+  kpiName: string
+  effectiveKpiName: string
+  category: string | null
+  dataType: string
+  isRequired: boolean
+  targetValue: number | null
+  thresholdGreen: number | null
+  thresholdAmber: number | null
+  thresholdRed: number | null
+  effectiveThresholdDirection: string | null
+  submissionId: number | null
+  submissionValue: number | null
+  submissionText: string | null
+  submissionBoolean: boolean | null
+  submissionNotes: string | null
+  lockState: 'Unlocked' | 'Locked' | 'LockedByAuto' | 'LockedByPeriodClose' | null
+  submittedByUpn: string | null
+  submittedAt: string | null
+  isSubmitted: boolean
+  ragStatus: 'Green' | 'Amber' | 'Red' | null
 }
 
 // ---------------------------------------------------------------------------
@@ -408,9 +440,11 @@ export interface CreateKpiDefinitionInput {
   kpiDescription?: string
   category?: string
   unit?: string
-  dataType: 'Numeric' | 'Percentage' | 'Boolean' | 'Text' | 'Currency'
+  dataType: 'Numeric' | 'Percentage' | 'Boolean' | 'Text' | 'Currency' | 'DropDown'
+  allowMultiValue?: boolean
   collectionType: 'Manual' | 'Automated' | 'BulkUpload'
   thresholdDirection?: 'Higher' | 'Lower' | null
+  dropDownOptions?: string[]
 }
 
 export type GrantType = 'GLOBAL_ALL' | 'GLOBAL_PACKAGE' | 'FULL_ACCOUNT' | 'PATH_PREFIX' | 'COUNTRY_ALL'
@@ -508,4 +542,80 @@ export interface CreateKpiAssignmentTemplateInput {
   customKpiName?: string | null
   customKpiDescription?: string | null
   materializeNow: boolean
+}
+
+// ---------------------------------------------------------------------------
+// KPI Submission types
+// ---------------------------------------------------------------------------
+
+export interface SubmitKpiInput {
+  assignmentExternalId: string
+  submissionValue?: number | null
+  submissionText?: string | null       // also used for DropDown selection(s)
+  submissionBoolean?: boolean | null   // used when dataType === 'Boolean'
+  submissionNotes?: string | null
+  lockOnSubmit: boolean
+  changeReason?: string | null
+  bypassLock: boolean
+}
+
+export interface AssignmentWithSubmission {
+  assignmentId: number
+  externalId: string
+  kpiCode: string
+  kpiName: string
+  effectiveKpiName: string
+  effectiveKpiDescription: string | null
+  category: string | null
+  dataType: 'Numeric' | 'Percentage' | 'Currency' | 'Boolean' | 'Text' | 'DropDown' | string
+  allowMultiValue: boolean
+  /** Pipe-delimited effective option list for DropDown KPIs */
+  dropDownOptionsRaw: string | null
+  isRequired: boolean
+  targetValue: number | null
+  thresholdGreen: number | null
+  thresholdAmber: number | null
+  thresholdRed: number | null
+  effectiveThresholdDirection: string | null
+  submitterGuidance: string | null
+  submissionId: number | null
+  submissionValue: number | null
+  submissionText: string | null
+  submissionBoolean: boolean | null
+  submissionNotes: string | null
+  lockState: 'Unlocked' | 'Locked' | 'LockedByAuto' | 'LockedByPeriodClose' | null
+  isSubmitted: boolean
+}
+
+export interface SubmissionTokenContext {
+  tokenId: string
+  siteCode: string
+  siteName: string
+  accountCode: string
+  accountName: string
+  periodLabel: string
+  periodStatus: string
+  periodCloseDate: string
+  expiresAtUtc: string
+  assignments: AssignmentWithSubmission[]
+}
+
+export interface SubmissionToken {
+  tokenId: string
+  siteCode: string
+  siteName: string
+  accountCode: string
+  accountName: string
+  periodLabel: string
+  periodStatus: string
+  periodCloseDate: string
+  expiresAtUtc: string
+  createdBy: string
+  createdAtUtc: string
+  revokedAtUtc: string | null
+}
+
+export interface CreateSubmissionTokenInput {
+  siteOrgUnitId: number
+  periodId: number
 }

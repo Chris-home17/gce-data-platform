@@ -6,17 +6,17 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Loader2, Plus } from 'lucide-react'
+import { Loader2, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog'
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet'
 import {
   Form,
   FormControl,
@@ -34,6 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { api } from '@/lib/api'
 
 const schema = z.object({
@@ -46,15 +47,29 @@ const schema = z.object({
   kpiDescription: z.string().max(1000).optional(),
   category: z.string().max(100).optional(),
   unit: z.string().max(50).optional(),
-  dataType: z.enum(['Numeric', 'Percentage', 'Boolean', 'Text', 'Currency']),
+  dataType: z.enum(['Numeric', 'Percentage', 'Boolean', 'Text', 'Currency', 'DropDown']),
+  allowMultiValue: z.boolean().default(false),
   collectionType: z.enum(['Manual', 'Automated', 'BulkUpload']),
   thresholdDirection: z.enum(['Higher', 'Lower', 'none']).optional(),
 })
 
 type FormValues = z.infer<typeof schema>
 
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 pt-2">
+      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+        {children}
+      </span>
+      <div className="flex-1 border-t" />
+    </div>
+  )
+}
+
 export function NewDefinitionDialog() {
   const [open, setOpen] = useState(false)
+  const [dropDownOptions, setDropDownOptions] = useState<string[]>([])
+  const [newOption, setNewOption] = useState('')
   const queryClient = useQueryClient()
 
   const form = useForm<FormValues>({
@@ -66,10 +81,14 @@ export function NewDefinitionDialog() {
       category: '',
       unit: '',
       dataType: 'Numeric',
+      allowMultiValue: false,
       collectionType: 'Manual',
       thresholdDirection: 'none',
     },
   })
+
+  const watchedDataType = form.watch('dataType')
+  const isDropDown = watchedDataType === 'DropDown'
 
   const mutation = useMutation({
     mutationFn: (values: FormValues) =>
@@ -80,40 +99,63 @@ export function NewDefinitionDialog() {
         kpiDescription: values.kpiDescription || undefined,
         category: values.category || undefined,
         unit: values.unit || undefined,
+        dropDownOptions: isDropDown ? dropDownOptions : undefined,
       }),
     onSuccess: (def) => {
       queryClient.invalidateQueries({ queryKey: ['kpi', 'definitions'] })
       toast.success(`KPI "${def.kpiCode}" created.`)
       setOpen(false)
       form.reset()
+      setDropDownOptions([])
+      setNewOption('')
     },
     onError: (err: Error) => toast.error(err.message ?? 'Failed to create KPI definition.'),
   })
 
   function handleOpenChange(value: boolean) {
-    if (!value) { form.reset(); mutation.reset() }
+    if (!value) {
+      form.reset()
+      mutation.reset()
+      setDropDownOptions([])
+      setNewOption('')
+    }
     setOpen(value)
   }
 
+  function addOption() {
+    const trimmed = newOption.trim()
+    if (!trimmed || dropDownOptions.includes(trimmed)) return
+    setDropDownOptions((prev) => [...prev, trimmed])
+    setNewOption('')
+  }
+
+  function removeOption(idx: number) {
+    setDropDownOptions((prev) => prev.filter((_, i) => i !== idx))
+  }
+
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
+      <SheetTrigger asChild>
         <Button>
           <Plus className="mr-2 h-4 w-4" />
           New KPI
         </Button>
-      </DialogTrigger>
+      </SheetTrigger>
 
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>New KPI Definition</DialogTitle>
-          <DialogDescription>
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>New KPI Definition</SheetTitle>
+          <SheetDescription>
             Add a KPI to the platform catalogue. Thresholds are set per assignment, not here.
-          </DialogDescription>
-        </DialogHeader>
+          </SheetDescription>
+        </SheetHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="space-y-4">
+          <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="mt-6 space-y-4">
+
+            {/* ── Identity ─────────────────────────────── */}
+            <SectionHeading>Identity</SectionHeading>
+
             <div className="grid grid-cols-2 gap-3">
               <FormField
                 control={form.control}
@@ -175,6 +217,9 @@ export function NewDefinitionDialog() {
               )}
             />
 
+            {/* ── Data shape ───────────────────────────── */}
+            <SectionHeading>Data shape</SectionHeading>
+
             <div className="grid grid-cols-2 gap-3">
               <FormField
                 control={form.control}
@@ -185,7 +230,7 @@ export function NewDefinitionDialog() {
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                       <SelectContent>
-                        {(['Numeric', 'Percentage', 'Boolean', 'Text', 'Currency'] as const).map((v) => (
+                        {(['Numeric', 'Percentage', 'Boolean', 'Text', 'Currency', 'DropDown'] as const).map((v) => (
                           <SelectItem key={v} value={v}>{v}</SelectItem>
                         ))}
                       </SelectContent>
@@ -209,13 +254,86 @@ export function NewDefinitionDialog() {
               />
             </div>
 
+            {/* ── DropDown-specific ────────────────────── */}
+            {isDropDown && (
+              <>
+                <FormField
+                  control={form.control}
+                  name="allowMultiValue"
+                  render={({ field }) => (
+                    <FormItem className="flex items-center justify-between rounded-md border px-3 py-2.5 space-y-0">
+                      <div>
+                        <FormLabel className="font-medium">Allow multiple selections</FormLabel>
+                        <FormDescription className="text-xs">
+                          Users can pick more than one option when submitting.
+                        </FormDescription>
+                      </div>
+                      <FormControl>
+                        <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium leading-none">Options</p>
+                  <p className="text-xs text-muted-foreground">
+                    Choices shown when filling in this KPI. Can be overridden per assignment template.
+                  </p>
+
+                  {dropDownOptions.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {dropDownOptions.map((opt, idx) => (
+                        <span
+                          key={idx}
+                          className="inline-flex items-center gap-1 rounded-md border bg-background px-2 py-0.5 text-xs"
+                        >
+                          {opt}
+                          <button
+                            type="button"
+                            onClick={() => removeOption(idx)}
+                            className="text-muted-foreground hover:text-destructive transition-colors"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex gap-2">
+                    <Input
+                      value={newOption}
+                      onChange={(e) => setNewOption(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addOption() } }}
+                      placeholder="Add an option…"
+                      className="text-sm h-8"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 shrink-0"
+                      onClick={addOption}
+                      disabled={!newOption.trim()}
+                    >
+                      Add
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* ── Collection ───────────────────────────── */}
+            <SectionHeading>Collection</SectionHeading>
+
             <div className="grid grid-cols-2 gap-3">
               <FormField
                 control={form.control}
                 name="collectionType"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Collection</FormLabel>
+                    <FormLabel>Collection type</FormLabel>
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                       <SelectContent>
@@ -233,7 +351,7 @@ export function NewDefinitionDialog() {
                 name="thresholdDirection"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Default Direction</FormLabel>
+                    <FormLabel>Default direction</FormLabel>
                     <Select value={field.value ?? 'none'} onValueChange={field.onChange}>
                       <FormControl><SelectTrigger><SelectValue placeholder="—" /></SelectTrigger></FormControl>
                       <SelectContent>
@@ -249,18 +367,21 @@ export function NewDefinitionDialog() {
               />
             </div>
 
-            <DialogFooter>
+            <SheetFooter className="pt-2">
               <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={mutation.isPending}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={mutation.isPending}>
+              <Button
+                type="submit"
+                disabled={mutation.isPending || (isDropDown && dropDownOptions.length === 0)}
+              >
                 {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {mutation.isPending ? 'Creating…' : 'Create KPI'}
               </Button>
-            </DialogFooter>
+            </SheetFooter>
           </form>
         </Form>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   )
 }

@@ -1,8 +1,10 @@
 'use client'
 
-import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { AlertCircle, CheckCircle2, Lock, AlertTriangle } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { useQuery, useMutation } from '@tanstack/react-query'
+import { useRouter } from 'next/navigation'
+import { AlertCircle, CheckCircle2, Lock, AlertTriangle, MoreHorizontal, Link2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { cn, formatPercent } from '@/lib/utils'
 import {
@@ -12,6 +14,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { DataTable } from '@/components/shared/data-table'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { SiteCompletion } from '@/types/api'
@@ -67,6 +76,53 @@ function CompletionBar({ pct }: { pct: number }) {
         {formatPercent(pct)}
       </span>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Row actions — 3-dot menu
+// ---------------------------------------------------------------------------
+
+function SiteActions({ row }: { row: SiteCompletion }) {
+  const mutation = useMutation({
+    mutationFn: () =>
+      api.kpi.submissionTokens.create({
+        siteOrgUnitId: row.siteOrgUnitId,
+        periodId:      row.periodId,
+      }),
+    onSuccess: (token) => {
+      const url = `${window.location.origin}/kpi/complete?token=${token.tokenId}`
+      navigator.clipboard.writeText(url).then(
+        () => toast.success('Link copied to clipboard', { description: `${row.siteName} · ${row.periodLabel}` }),
+        () => toast.error('Could not copy', { description: url }),
+      )
+    },
+    onError: (err: Error) => toast.error('Could not generate link', { description: err.message }),
+  })
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0 data-[state=open]:bg-muted"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+          <span className="sr-only">Actions</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          onClick={(e) => { e.stopPropagation(); mutation.mutate() }}
+          disabled={mutation.isPending}
+        >
+          <Link2 className="mr-2 h-4 w-4" />
+          {mutation.isPending ? 'Generating…' : 'Copy submission link'}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -143,6 +199,11 @@ const monitoringColumns: ColumnDef<SiteCompletion, unknown>[] = [
     },
     meta: { className: 'w-24' },
   },
+  {
+    id: 'actions',
+    cell: ({ row }) => <SiteActions row={row.original} />,
+    meta: { className: 'w-10' },
+  },
 ]
 
 // ---------------------------------------------------------------------------
@@ -150,7 +211,9 @@ const monitoringColumns: ColumnDef<SiteCompletion, unknown>[] = [
 // ---------------------------------------------------------------------------
 
 export function MonitoringView() {
-  const [selectedPeriodLabel, setSelectedPeriodLabel] = useState<string>('')
+  const router = useRouter()
+  // Track selected period by ID (not label) — multiple periods can share the same label
+  const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(null)
   const [selectedAccountCode, setSelectedAccountCode] = useState<string>('all')
 
   const { data: periodsData } = useQuery({
@@ -163,26 +226,27 @@ export function MonitoringView() {
     queryFn: () => api.accounts.list(),
   })
 
-  // Default to the first Open period when data loads
   const sortedPeriods = useMemo(() => {
     const periods = [...(periodsData?.items ?? [])].sort((a, b) => {
       const priority = { Open: 0, Draft: 1, Closed: 2, Distributed: 3 }
       return (priority[a.status] ?? 4) - (priority[b.status] ?? 4)
         || (b.periodYear * 100 + b.periodMonth) - (a.periodYear * 100 + a.periodMonth)
     })
-    // Auto-select first period
-    if (periods.length > 0 && !selectedPeriodLabel) {
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      setTimeout(() => setSelectedPeriodLabel(periods[0].periodLabel), 0)
-    }
     return periods
-  }, [periodsData, selectedPeriodLabel])
+  }, [periodsData])
 
-  const selectedPeriod = sortedPeriods.find((p) => p.periodLabel === selectedPeriodLabel)
-  const selectedAccount = accountsData?.items.find((account) => account.accountCode === selectedAccountCode)
+  // Auto-select the first period once data loads
+  useEffect(() => {
+    if (sortedPeriods.length > 0 && selectedPeriodId === null) {
+      setSelectedPeriodId(sortedPeriods[0].periodId)
+    }
+  }, [sortedPeriods, selectedPeriodId])
+
+  const selectedPeriod = sortedPeriods.find((p) => p.periodId === selectedPeriodId) ?? null
+  const selectedAccount = accountsData?.items.find((a) => a.accountCode === selectedAccountCode)
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['kpi', 'monitoring', selectedPeriod?.periodId, selectedAccount?.accountId ?? 'all'],
+    queryKey: ['kpi', 'monitoring', selectedPeriodId, selectedAccount?.accountId ?? 'all'],
     queryFn: () =>
       selectedPeriod
         ? api.kpi.monitoring.list({
@@ -190,7 +254,7 @@ export function MonitoringView() {
             accountId: selectedAccount?.accountId,
           })
         : Promise.resolve({ items: [], totalCount: 0 }),
-    enabled: !!selectedPeriod,
+    enabled: selectedPeriodId !== null,
   })
 
   // Aggregate stats across all sites in the selected period
@@ -220,13 +284,16 @@ export function MonitoringView() {
       {/* Period selector */}
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-sm font-medium">Period</span>
-        <Select value={selectedPeriodLabel} onValueChange={setSelectedPeriodLabel}>
+        <Select
+          value={selectedPeriodId !== null ? String(selectedPeriodId) : ''}
+          onValueChange={(v) => setSelectedPeriodId(Number(v))}
+        >
           <SelectTrigger className="w-52">
             <SelectValue placeholder="Select a period" />
           </SelectTrigger>
           <SelectContent>
             {sortedPeriods.map((p) => (
-              <SelectItem key={p.periodId} value={p.periodLabel}>
+              <SelectItem key={p.periodId} value={String(p.periodId)}>
                 {p.periodLabel}
                 <span className="ml-2 text-xs text-muted-foreground">({p.status})</span>
               </SelectItem>
@@ -300,6 +367,7 @@ export function MonitoringView() {
         isLoading={isLoading || !selectedPeriod}
         pageSize={25}
         skeletonRowCount={10}
+        onRowClick={(row) => router.push(`/kpi/monitoring/${row.siteOrgUnitId}/${row.periodId}`)}
       />
     </div>
   )
