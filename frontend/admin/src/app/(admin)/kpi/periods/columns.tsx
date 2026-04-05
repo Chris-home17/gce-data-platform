@@ -8,6 +8,10 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { formatDate } from '@/lib/utils'
 import type { KpiPeriod } from '@/types/api'
 
+function formatScheduleRef(period: KpiPeriod) {
+  return `SCH-${period.periodScheduleId}`
+}
+
 export interface PeriodColumnHandlers {
   onOpen: (period: KpiPeriod) => void
   onClose: (period: KpiPeriod) => void
@@ -21,7 +25,12 @@ export function createPeriodColumns(handlers: PeriodColumnHandlers): ColumnDef<K
       accessorKey: 'periodLabel',
       header: 'Period',
       cell: ({ row }) => (
-        <span className="font-mono font-medium">{row.original.periodLabel}</span>
+        <div>
+          <p className="font-mono font-medium">{row.original.periodLabel}</p>
+          <p className="text-xs text-muted-foreground">
+            {formatScheduleRef(row.original)} · {row.original.scheduleName}
+          </p>
+        </div>
       ),
     },
     {

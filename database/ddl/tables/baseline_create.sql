@@ -3997,12 +3997,35 @@ BEGIN
 
     CREATE UNIQUE INDEX UX_KpiPeriodSchedule_ExternalId
         ON KPI.PeriodSchedule (ExternalId);
-    CREATE UNIQUE INDEX UX_KpiPeriodSchedule_Name
+    CREATE INDEX IX_KpiPeriodSchedule_Name
         ON KPI.PeriodSchedule (ScheduleName);
     CREATE INDEX IX_KpiPeriodSchedule_IsActive
         ON KPI.PeriodSchedule (IsActive);
 
     PRINT '  + KPI.PeriodSchedule created';
+END;
+GO
+
+IF EXISTS (
+    SELECT 1
+    FROM sys.indexes
+    WHERE object_id = OBJECT_ID('KPI.PeriodSchedule')
+      AND name = 'UX_KpiPeriodSchedule_Name'
+)
+BEGIN
+    DROP INDEX UX_KpiPeriodSchedule_Name ON KPI.PeriodSchedule;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.indexes
+    WHERE object_id = OBJECT_ID('KPI.PeriodSchedule')
+      AND name = 'IX_KpiPeriodSchedule_Name'
+)
+BEGIN
+    CREATE INDEX IX_KpiPeriodSchedule_Name
+        ON KPI.PeriodSchedule (ScheduleName);
 END;
 GO
 
@@ -5340,37 +5363,12 @@ BEGIN
     IF (@FrequencyType <> 'EveryNMonths' AND @FrequencyInterval IS NOT NULL)
         THROW 50122, 'FrequencyInterval must be NULL unless FrequencyType is EveryNMonths.', 1;
 
-    SET @PeriodScheduleID = (
-        SELECT PeriodScheduleID
-        FROM KPI.PeriodSchedule
-        WHERE ScheduleName = @ScheduleName
-    );
+    INSERT INTO KPI.PeriodSchedule
+        (ScheduleName, FrequencyType, FrequencyInterval, StartDate, EndDate, SubmissionOpenDay, SubmissionCloseDay, GenerateMonthsAhead, Notes)
+    VALUES
+        (@ScheduleName, @FrequencyType, @FrequencyInterval, @StartDate, @EndDate, @SubmissionOpenDay, @SubmissionCloseDay, @GenerateMonthsAhead, @Notes);
 
-    IF @PeriodScheduleID IS NULL
-    BEGIN
-        INSERT INTO KPI.PeriodSchedule
-            (ScheduleName, FrequencyType, FrequencyInterval, StartDate, EndDate, SubmissionOpenDay, SubmissionCloseDay, GenerateMonthsAhead, Notes)
-        VALUES
-            (@ScheduleName, @FrequencyType, @FrequencyInterval, @StartDate, @EndDate, @SubmissionOpenDay, @SubmissionCloseDay, @GenerateMonthsAhead, @Notes);
-
-        SET @PeriodScheduleID = SCOPE_IDENTITY();
-    END
-    ELSE
-    BEGIN
-        UPDATE KPI.PeriodSchedule
-        SET FrequencyType       = @FrequencyType,
-            FrequencyInterval   = @FrequencyInterval,
-            StartDate           = @StartDate,
-            EndDate             = @EndDate,
-            SubmissionOpenDay   = @SubmissionOpenDay,
-            SubmissionCloseDay  = @SubmissionCloseDay,
-            GenerateMonthsAhead = @GenerateMonthsAhead,
-            Notes               = @Notes,
-            IsActive            = 1,
-            ModifiedOnUtc       = SYSUTCDATETIME(),
-            ModifiedBy          = COALESCE(@ActorUPN, SESSION_USER)
-        WHERE PeriodScheduleID = @PeriodScheduleID;
-    END
+    SET @PeriodScheduleID = SCOPE_IDENTITY();
 END;
 GO
 

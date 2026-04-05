@@ -327,6 +327,8 @@ export interface KpiDefinition {
 export interface KpiPeriod {
   periodId: number
   externalId: string
+  periodScheduleId: number
+  scheduleName: string
   periodLabel: string
   periodYear: number
   periodMonth: number
@@ -349,6 +351,9 @@ export interface KpiAssignment {
   siteCode: string | null
   siteName: string | null
   isAccountWide: boolean
+  periodId: number
+  periodScheduleId: number
+  scheduleName: string
   periodLabel: string
   isRequired: boolean
   targetValue: number | null

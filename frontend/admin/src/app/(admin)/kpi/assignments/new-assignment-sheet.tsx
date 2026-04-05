@@ -71,6 +71,10 @@ function parseOptionalNumber(value: string): number | null {
   return isNaN(n) ? null : n
 }
 
+function formatScheduleRef(periodScheduleId: number) {
+  return `SCH-${periodScheduleId}`
+}
+
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-3 pt-2">
@@ -386,7 +390,7 @@ export function NewAssignmentSheet() {
                     <SelectContent>
                       {activeSchedules.map((schedule) => (
                         <SelectItem key={schedule.periodScheduleId} value={String(schedule.periodScheduleId)}>
-                          {schedule.scheduleName}
+                          {schedule.scheduleName} · {formatScheduleRef(schedule.periodScheduleId)}
                         </SelectItem>
                       ))}
                     </SelectContent>

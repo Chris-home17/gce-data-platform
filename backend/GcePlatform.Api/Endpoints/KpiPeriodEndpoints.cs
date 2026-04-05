@@ -164,6 +164,8 @@ public static class KpiPeriodEndpoints
                 SELECT
                     PeriodId,
                     ExternalId,
+                    PeriodScheduleId,
+                    ScheduleName,
                     PeriodLabel,
                     PeriodYear,
                     PeriodMonth,
@@ -187,6 +189,8 @@ public static class KpiPeriodEndpoints
                 SELECT
                     PeriodId,
                     ExternalId,
+                    PeriodScheduleId,
+                    ScheduleName,
                     PeriodLabel,
                     PeriodYear,
                     PeriodMonth,
@@ -224,7 +228,7 @@ public static class KpiPeriodEndpoints
             var newId = p.Get<int>("@PeriodId");
 
             var created = await conn.QuerySingleAsync<KpiPeriodDto>(@"
-                SELECT PeriodId, ExternalId, PeriodLabel, PeriodYear, PeriodMonth,
+                SELECT PeriodId, ExternalId, PeriodScheduleId, ScheduleName, PeriodLabel, PeriodYear, PeriodMonth,
                        SubmissionOpenDate, SubmissionCloseDate, Status,
                        CAST(IsCurrentlyOpen AS bit) AS IsCurrentlyOpen,
                        DaysRemaining
@@ -245,7 +249,7 @@ public static class KpiPeriodEndpoints
                 commandType: System.Data.CommandType.StoredProcedure);
 
             var updated = await conn.QuerySingleOrDefaultAsync<KpiPeriodDto>(@"
-                SELECT PeriodId, ExternalId, PeriodLabel, PeriodYear, PeriodMonth,
+                SELECT PeriodId, ExternalId, PeriodScheduleId, ScheduleName, PeriodLabel, PeriodYear, PeriodMonth,
                        SubmissionOpenDate, SubmissionCloseDate, Status,
                        CAST(IsCurrentlyOpen AS bit) AS IsCurrentlyOpen,
                        DaysRemaining
@@ -268,7 +272,7 @@ public static class KpiPeriodEndpoints
                 commandType: System.Data.CommandType.StoredProcedure);
 
             var updated = await conn.QuerySingleOrDefaultAsync<KpiPeriodDto>(@"
-                SELECT PeriodId, ExternalId, PeriodLabel, PeriodYear, PeriodMonth,
+                SELECT PeriodId, ExternalId, PeriodScheduleId, ScheduleName, PeriodLabel, PeriodYear, PeriodMonth,
                        SubmissionOpenDate, SubmissionCloseDate, Status,
                        CAST(IsCurrentlyOpen AS bit) AS IsCurrentlyOpen,
                        DaysRemaining

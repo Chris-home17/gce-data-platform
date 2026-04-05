@@ -107,6 +107,8 @@ public record CreateKpiPeriodScheduleRequest(
 public record KpiPeriodDto(
     int      PeriodId,
     Guid     ExternalId,
+    int      PeriodScheduleId,
+    string   ScheduleName,
     string   PeriodLabel,
     short    PeriodYear,
     byte     PeriodMonth,
@@ -176,6 +178,9 @@ public record KpiAssignmentDto(
     string?  SiteCode,
     string?  SiteName,
     bool     IsAccountWide,
+    int      PeriodId,
+    int      PeriodScheduleId,
+    string   ScheduleName,
     string   PeriodLabel,
     bool     IsRequired,
     decimal? TargetValue,

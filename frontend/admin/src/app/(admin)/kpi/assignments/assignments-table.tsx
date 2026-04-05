@@ -12,6 +12,10 @@ import {
 import type { KpiAssignment, KpiPeriod } from '@/types/api'
 import { assignmentColumns } from './columns'
 
+function formatScheduleRef(periodScheduleId: number) {
+  return `SCH-${periodScheduleId}`
+}
+
 export function AssignmentsTable({
   data,
   periods,
@@ -39,7 +43,7 @@ export function AssignmentsTable({
   }, [periods])
 
   const filtered = useMemo(() => {
-    return data.filter((assignment) => periodFilter === 'all' || assignment.periodLabel === periodFilter)
+    return data.filter((assignment) => periodFilter === 'all' || String(assignment.periodId) === periodFilter)
   }, [data, periodFilter])
 
   if (isError) {
@@ -65,8 +69,11 @@ export function AssignmentsTable({
             <SelectContent>
               <SelectItem value="all">All periods</SelectItem>
               {sortedPeriods.map((p) => (
-                <SelectItem key={p.periodId} value={p.periodLabel}>
-                  {p.periodLabel} ({p.status})
+                <SelectItem key={p.periodId} value={String(p.periodId)}>
+                  {p.periodLabel}
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {formatScheduleRef(p.periodScheduleId)} · {p.scheduleName} ({p.status})
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>

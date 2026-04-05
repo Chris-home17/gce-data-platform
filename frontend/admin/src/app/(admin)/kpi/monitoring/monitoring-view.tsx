@@ -25,6 +25,10 @@ import { DataTable } from '@/components/shared/data-table'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { SiteCompletion } from '@/types/api'
 
+function formatScheduleRef(periodScheduleId: number) {
+  return `SCH-${periodScheduleId}`
+}
+
 // ---------------------------------------------------------------------------
 // Stat card
 // ---------------------------------------------------------------------------
@@ -295,7 +299,9 @@ export function MonitoringView() {
             {sortedPeriods.map((p) => (
               <SelectItem key={p.periodId} value={String(p.periodId)}>
                 {p.periodLabel}
-                <span className="ml-2 text-xs text-muted-foreground">({p.status})</span>
+                <span className="ml-2 text-xs text-muted-foreground">
+                  {formatScheduleRef(p.periodScheduleId)} · {p.scheduleName} ({p.status})
+                </span>
               </SelectItem>
             ))}
           </SelectContent>

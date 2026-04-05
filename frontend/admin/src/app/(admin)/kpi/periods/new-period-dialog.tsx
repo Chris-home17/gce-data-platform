@@ -115,7 +115,7 @@ export function NewPeriodDialog() {
       queryClient.invalidateQueries({ queryKey: ['kpi', 'periods'] })
       queryClient.invalidateQueries({ queryKey: ['kpi', 'assignments'] })
       queryClient.invalidateQueries({ queryKey: ['kpi', 'assignment-templates'] })
-      toast.success(`Schedule ${schedule.scheduleName} saved.`)
+      toast.success(`Schedule ${schedule.scheduleName} created.`)
       setOpen(false)
       form.reset()
     },
@@ -145,7 +145,7 @@ export function NewPeriodDialog() {
         <DialogHeader>
           <DialogTitle>New KPI Period Schedule</DialogTitle>
           <DialogDescription>
-            Define a cadence once, then let the platform generate the reporting periods and downstream KPI instances automatically.
+            Create a new cadence, then let the platform generate the reporting periods and downstream KPI instances automatically. Schedule names are labels, not unique keys.
           </DialogDescription>
         </DialogHeader>
 
@@ -160,6 +160,9 @@ export function NewPeriodDialog() {
                   <FormControl>
                     <Input placeholder="Monthly KPI Submission Calendar" {...field} />
                   </FormControl>
+                  <FormDescription>
+                    You can reuse the same label on multiple schedules when needed.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
