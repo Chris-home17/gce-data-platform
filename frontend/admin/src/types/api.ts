@@ -101,6 +101,24 @@ export interface Policy {
   isActive: boolean
 }
 
+export interface PolicyRole {
+  accountRolePolicyId: number
+  policyName: string
+  roleId: number
+  roleCode: string
+  roleName: string
+  description: string | null
+  isActive: boolean
+  accountId: number
+  accountCode: string
+  accountName: string
+  scopeType: 'NONE' | 'ORGUNIT'
+  orgUnitId: number | null
+  orgUnitType: string | null
+  orgUnitCode: string | null
+  orgUnitName: string | null
+}
+
 export interface CreatePolicyInput {
   policyName: string
   roleCodeTemplate: string
@@ -126,6 +144,8 @@ export interface UpdatePolicyInput {
 /** From App.vDelegations (screen A-17) */
 export interface Delegation {
   principalDelegationId: number
+  delegatorPrincipalId: number
+  delegatePrincipalId: number
   delegatorName: string
   delegatorType: string
   delegateName: string

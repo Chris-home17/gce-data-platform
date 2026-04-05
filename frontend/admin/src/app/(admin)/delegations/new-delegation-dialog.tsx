@@ -114,6 +114,9 @@ export function NewDelegationDialog() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['delegations'] })
       queryClient.invalidateQueries({ queryKey: ['coverage'] })
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      queryClient.invalidateQueries({ queryKey: ['user-delegations'] })
       setOpen(false)
       form.reset()
     },

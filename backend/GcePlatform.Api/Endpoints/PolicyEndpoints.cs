@@ -56,6 +56,46 @@ public static class PolicyEndpoints
                 : Results.Ok(item);
         }).RequireAuthorization();
 
+        // GET /policies/{id}/roles
+        app.MapGet("/policies/{id:int}/roles", async (int id, DbConnectionFactory db) =>
+        {
+            using var conn = db.CreateConnection();
+
+            var exists = await conn.ExecuteScalarAsync<int>(@"
+                SELECT COUNT(1)
+                FROM App.vAccountRolePolicies
+                WHERE AccountRolePolicyId = @Id",
+                new { Id = id });
+
+            if (exists == 0)
+                return Results.NotFound(new ApiError("POLICY_NOT_FOUND", $"Policy {id} not found."));
+
+            var items = await conn.QueryAsync<AccountRolePolicyRoleDto>(@"
+                SELECT
+                    AccountRolePolicyId,
+                    PolicyName,
+                    RoleId,
+                    RoleCode,
+                    RoleName,
+                    Description,
+                    IsActive,
+                    AccountId,
+                    AccountCode,
+                    AccountName,
+                    ScopeType,
+                    OrgUnitId,
+                    OrgUnitType,
+                    OrgUnitCode,
+                    OrgUnitName
+                FROM App.vAccountRolePolicyRoles
+                WHERE AccountRolePolicyId = @Id
+                ORDER BY AccountCode, OrgUnitType, OrgUnitCode, RoleCode",
+                new { Id = id });
+
+            var list = items.ToList();
+            return Results.Ok(new ApiList<AccountRolePolicyRoleDto>(list, list.Count));
+        }).RequireAuthorization();
+
         // POST /policies
         app.MapPost("/policies", async (CreateAccountRolePolicyRequest request, DbConnectionFactory db) =>
         {

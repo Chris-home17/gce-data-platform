@@ -1298,6 +1298,8 @@ CREATE OR ALTER VIEW App.vDelegations
 AS
     SELECT
         del.PrincipalDelegationId,
+        del.DelegatorPrincipalId,
+        del.DelegatePrincipalId,
         delegator.PrincipalName             AS DelegatorName,
         delegator.PrincipalType             AS DelegatorType,
         delegate.PrincipalName              AS DelegateName,
@@ -6284,6 +6286,82 @@ AS
         CAST(ExpandPerOrgUnit AS bit) AS ExpandPerOrgUnit,
         CAST(IsActive AS bit) AS IsActive
     FROM Sec.AccountRolePolicy;
+GO
+
+CREATE OR ALTER VIEW App.vAccountRolePolicyRoles
+AS
+    WITH Expanded AS
+    (
+        SELECT
+            pol.AccountRolePolicyId,
+            pol.PolicyName,
+            pol.ScopeType,
+            a.AccountId,
+            a.AccountCode,
+            a.AccountName,
+            ou.OrgUnitId,
+            ou.OrgUnitType,
+            ou.OrgUnitCode,
+            ou.OrgUnitName,
+            CASE
+                WHEN pol.ScopeType = 'ORGUNIT' THEN
+                    REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                        pol.RoleCodeTemplate,
+                        '{AccountCode}', a.AccountCode),
+                        '{ACCOUNTCODE}', a.AccountCode),
+                        '{AccountName}', a.AccountName),
+                        '{ACCOUNTNAME}', a.AccountName),
+                        '{OrgUnitCode}', COALESCE(ou.OrgUnitCode, '')),
+                        '{ORGUNITCODE}', COALESCE(ou.OrgUnitCode, '')),
+                        '{OrgUnitName}', COALESCE(ou.OrgUnitName, '')),
+                        '{ORGUNITNAME}', COALESCE(ou.OrgUnitName, ''))
+                ELSE
+                    REPLACE(REPLACE(REPLACE(REPLACE(
+                        pol.RoleCodeTemplate,
+                        '{AccountCode}', a.AccountCode),
+                        '{ACCOUNTCODE}', a.AccountCode),
+                        '{AccountName}', a.AccountName),
+                        '{ACCOUNTNAME}', a.AccountName)
+            END AS ResolvedRoleCode
+        FROM Sec.AccountRolePolicy AS pol
+        JOIN Dim.Account AS a
+            ON a.IsActive = 1
+        LEFT JOIN Dim.OrgUnit AS ou
+            ON pol.ScopeType = 'ORGUNIT'
+           AND ou.AccountId = a.AccountId
+           AND ou.OrgUnitType = pol.OrgUnitType
+           AND (
+                (pol.ExpandPerOrgUnit = 1 AND (pol.OrgUnitCode IS NULL OR ou.OrgUnitCode = pol.OrgUnitCode))
+                OR
+                (pol.ExpandPerOrgUnit = 0 AND ou.OrgUnitCode = pol.OrgUnitCode)
+           )
+        WHERE pol.IsActive = 1
+          AND (
+                pol.ScopeType = 'NONE'
+                OR ou.OrgUnitId IS NOT NULL
+              )
+    )
+    SELECT
+        e.AccountRolePolicyId,
+        e.PolicyName,
+        r.RoleId,
+        r.RoleCode,
+        r.RoleName,
+        r.Description,
+        vr.IsActive,
+        e.AccountId,
+        e.AccountCode,
+        e.AccountName,
+        e.ScopeType,
+        e.OrgUnitId,
+        e.OrgUnitType,
+        e.OrgUnitCode,
+        e.OrgUnitName
+    FROM Expanded AS e
+    JOIN Sec.Role AS r
+        ON r.RoleCode = e.ResolvedRoleCode
+    JOIN App.vRoles AS vr
+        ON vr.RoleId = r.RoleId;
 GO
 
 CREATE OR ALTER VIEW App.vPackageReports

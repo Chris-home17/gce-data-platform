@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
+import { useRouter } from 'next/navigation'
 import { CheckCircle, MoreHorizontal, Pencil, RefreshCw, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -146,6 +147,7 @@ function makeColumns(onEdit: (policy: Policy) => void): ColumnDef<Policy, unknow
 }
 
 export function PoliciesTable() {
+  const router = useRouter()
   const [editingPolicy, setEditingPolicy] = useState<Policy | null>(null)
 
   const { data, isLoading, isError, error } = useQuery({
@@ -172,6 +174,7 @@ export function PoliciesTable() {
         columns={columns}
         data={data?.items ?? []}
         isLoading={isLoading}
+        onRowClick={(policy) => router.push(`/policies/${policy.accountRolePolicyId}`)}
       />
       <EditPolicyDialog
         policy={editingPolicy}

@@ -13,7 +13,7 @@ import { DataTable } from '@/components/shared/data-table'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { GrantAccessDialog } from '@/components/shared/grant-access-dialog'
 import { api } from '@/lib/api'
-import type { Grant, PackageGrant, Role } from '@/types/api'
+import type { Delegation, Grant, PackageGrant, Role } from '@/types/api'
 
 // ---------------------------------------------------------------------------
 // Column definitions
@@ -139,6 +139,78 @@ const packageGrantColumns: ColumnDef<PackageGrant, unknown>[] = [
   },
 ]
 
+const delegationColumns: ColumnDef<Delegation, unknown>[] = [
+  {
+    accessorKey: 'delegatorName',
+    header: 'Delegated By',
+    cell: ({ row }) => (
+      <div>
+        <p className="font-medium leading-tight">{row.original.delegatorName}</p>
+        <p className="text-xs text-muted-foreground">{row.original.delegatorType}</p>
+      </div>
+    ),
+  },
+  {
+    id: 'delegatedScope',
+    header: 'Scope',
+    cell: ({ row }) => {
+      const delegation = row.original
+      if (delegation.accessType === 'ALL') {
+        return <Badge variant="outline" className="text-xs">All Accounts</Badge>
+      }
+      if (delegation.scopeType === 'ORGUNIT') {
+        return (
+          <div className="space-y-0.5">
+            <span className="block text-sm">{delegation.accountName}</span>
+            <span className="block font-mono text-xs text-muted-foreground">
+              {delegation.orgUnitType} / {delegation.orgUnitCode}
+            </span>
+          </div>
+        )
+      }
+      return <span className="text-sm">{delegation.accountName}</span>
+    },
+  },
+  {
+    id: 'delegationValidity',
+    header: 'Validity',
+    cell: ({ row }) => {
+      const delegation = row.original
+      if (!delegation.validFromDate && !delegation.validToDate) {
+        return <span className="text-sm text-muted-foreground">Open-ended</span>
+      }
+      if (delegation.validFromDate && delegation.validToDate) {
+        return (
+          <div className="space-y-0.5">
+            <span className="block text-sm">{delegation.validFromDate}</span>
+            <span className="block text-xs text-muted-foreground">to {delegation.validToDate}</span>
+          </div>
+        )
+      }
+      if (delegation.validFromDate) {
+        return (
+          <div className="space-y-0.5">
+            <span className="block text-sm">{delegation.validFromDate}</span>
+            <span className="block text-xs text-muted-foreground">start</span>
+          </div>
+        )
+      }
+      return (
+        <div className="space-y-0.5">
+          <span className="block text-sm">{delegation.validToDate}</span>
+          <span className="block text-xs text-muted-foreground">end</span>
+        </div>
+      )
+    },
+  },
+  {
+    accessorKey: 'isActive',
+    header: 'Status',
+    cell: ({ row }) => <StatusBadge status={row.original.isActive ? 'Active' : 'Inactive'} />,
+    meta: { className: 'w-[100px]' },
+  },
+]
+
 function RevokeGrantButton({ grantId, userId }: { grantId: number; userId: number }) {
   const queryClient = useQueryClient()
   const mutation = useMutation({
@@ -201,6 +273,12 @@ export function UserDetail({ userId }: { userId: number }) {
   const { data: pkgGrantsData, isLoading: pkgGrantsLoading } = useQuery({
     queryKey: ['user-package-grants', userId],
     queryFn: () => api.users.packageGrants(userId),
+    enabled: !!user,
+  })
+
+  const { data: delegationsData, isLoading: delegationsLoading } = useQuery({
+    queryKey: ['user-delegations', userId],
+    queryFn: () => api.users.delegations(userId),
     enabled: !!user,
   })
 
@@ -301,6 +379,9 @@ export function UserDetail({ userId }: { userId: number }) {
           <TabsTrigger value="packages">
             Package Grants {!pkgGrantsLoading && pkgGrantsData ? `(${pkgGrantsData.totalCount})` : ''}
           </TabsTrigger>
+          <TabsTrigger value="delegations">
+            Delegations {!delegationsLoading && delegationsData ? `(${delegationsData.totalCount})` : ''}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="roles" className="mt-4">
@@ -337,6 +418,16 @@ export function UserDetail({ userId }: { userId: number }) {
             </div>
           ) : (
             <DataTable columns={packageGrantColumns} data={pkgGrantsData?.items ?? []} isLoading={pkgGrantsLoading} />
+          )}
+        </TabsContent>
+
+        <TabsContent value="delegations" className="mt-4">
+          {delegationsData?.items.length === 0 && !delegationsLoading ? (
+            <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+              No delegated access found for this user.
+            </div>
+          ) : (
+            <DataTable columns={delegationColumns} data={delegationsData?.items ?? []} isLoading={delegationsLoading} />
           )}
         </TabsContent>
       </Tabs>

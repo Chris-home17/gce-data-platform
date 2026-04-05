@@ -152,6 +152,39 @@ public static class UserEndpoints
             return Results.Ok(new ApiList<PackageGrantDto>(list, list.Count));
         }).RequireAuthorization();
 
+        // GET /users/{id}/delegations
+        app.MapGet("/users/{id:int}/delegations", async (int id, DbConnectionFactory db) =>
+        {
+            using var conn = db.CreateConnection();
+            var items = await conn.QueryAsync<DelegationDto>(@"
+                SELECT
+                    PrincipalDelegationId,
+                    DelegatorPrincipalId,
+                    DelegatePrincipalId,
+                    DelegatorName,
+                    DelegatorType,
+                    DelegateName,
+                    DelegateType,
+                    AccessType,
+                    ScopeType,
+                    AccountCode,
+                    AccountName,
+                    OrgUnitType,
+                    OrgUnitCode,
+                    OrgUnitName,
+                    ValidFromDate,
+                    ValidToDate,
+                    IsActive,
+                    CreatedOnUtc
+                FROM App.vDelegations
+                WHERE DelegatePrincipalId = @Id
+                ORDER BY DelegatorName, AccountCode, OrgUnitCode",
+                new { Id = id });
+
+            var list = items.ToList();
+            return Results.Ok(new ApiList<DelegationDto>(list, list.Count));
+        }).RequireAuthorization();
+
         return app;
     }
 }

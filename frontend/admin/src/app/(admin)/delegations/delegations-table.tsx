@@ -110,7 +110,7 @@ const columns: ColumnDef<Delegation, unknown>[] = [
       <RowActions
         isActive={row.original.isActive}
         onToggle={() => api.delegations.setActive(row.original.principalDelegationId, !row.original.isActive)}
-        invalidateKeys={[['delegations'], ['coverage']]}
+        invalidateKeys={[['delegations'], ['coverage'], ['users'], ['accounts'], ['user-delegations']]}
         entityLabel="delegation"
       />
     ),

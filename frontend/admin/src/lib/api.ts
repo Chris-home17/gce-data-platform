@@ -47,6 +47,7 @@ import type {
   Package,
   PackageGrant,
   Policy,
+  PolicyRole,
   Role,
   RoleMember,
   SharedGeoUnit,
@@ -165,6 +166,9 @@ export const api = {
     packageGrants(id: number): Promise<ApiList<PackageGrant>> {
       return apiFetch(`/users/${id}/package-grants`)
     },
+    delegations(id: number): Promise<ApiList<Delegation>> {
+      return apiFetch(`/users/${id}/delegations`)
+    },
   },
 
   roles: {
@@ -203,6 +207,9 @@ export const api = {
     },
     get(id: number): Promise<Policy> {
       return apiFetch(`/policies/${id}`)
+    },
+    roles(id: number): Promise<ApiList<PolicyRole>> {
+      return apiFetch(`/policies/${id}/roles`)
     },
     create(data: CreatePolicyInput): Promise<Policy> {
       return apiFetch('/policies', { method: 'POST', body: JSON.stringify(data) })

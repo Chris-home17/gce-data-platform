@@ -300,6 +300,9 @@ export function RoleDetail({ roleId }: { roleId: number }) {
       queryClient.invalidateQueries({ queryKey: ['roles', roleId, 'members'] })
       queryClient.invalidateQueries({ queryKey: ['roles', roleId] })
       queryClient.invalidateQueries({ queryKey: ['roles'] })
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      queryClient.invalidateQueries({ queryKey: ['coverage'] })
     },
   })
 
@@ -396,6 +399,9 @@ export function RoleDetail({ roleId }: { roleId: number }) {
                 queryClient.invalidateQueries({ queryKey: ['roles', roleId, 'members'] })
                 queryClient.invalidateQueries({ queryKey: ['roles', roleId] })
                 queryClient.invalidateQueries({ queryKey: ['roles'] })
+                queryClient.invalidateQueries({ queryKey: ['users'] })
+                queryClient.invalidateQueries({ queryKey: ['accounts'] })
+                queryClient.invalidateQueries({ queryKey: ['coverage'] })
               }}
             />
           </div>

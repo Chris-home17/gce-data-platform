@@ -482,6 +482,24 @@ public record UpdateAccountRolePolicyRequest(
     bool     RefreshAfterSave
 );
 
+public record AccountRolePolicyRoleDto(
+    int      AccountRolePolicyId,
+    string   PolicyName,
+    int      RoleId,
+    string   RoleCode,
+    string   RoleName,
+    string?  Description,
+    bool     IsActive,
+    int      AccountId,
+    string   AccountCode,
+    string   AccountName,
+    string   ScopeType,
+    int?     OrgUnitId,
+    string?  OrgUnitType,
+    string?  OrgUnitCode,
+    string?  OrgUnitName
+);
+
 // ---------------------------------------------------------------------------
 // KPI Submission
 // ---------------------------------------------------------------------------
@@ -733,6 +751,8 @@ public record UserDto(
 
 public record DelegationDto(
     int      PrincipalDelegationId,
+    int      DelegatorPrincipalId,
+    int      DelegatePrincipalId,
     string   DelegatorName,
     string   DelegatorType,
     string   DelegateName,

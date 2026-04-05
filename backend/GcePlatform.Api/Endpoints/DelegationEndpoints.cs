@@ -16,6 +16,8 @@ public static class DelegationEndpoints
             var items = await conn.QueryAsync<DelegationDto>(@"
                 SELECT
                     PrincipalDelegationId,
+                    DelegatorPrincipalId,
+                    DelegatePrincipalId,
                     DelegatorName,
                     DelegatorType,
                     DelegateName,
