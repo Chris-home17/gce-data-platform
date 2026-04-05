@@ -1074,9 +1074,9 @@ AS
         ISNULL(coverage.ReportCount,  0)    AS ReportCount,
         CASE
             WHEN ISNULL(coverage.SiteCount,    0) > 0
-             AND ISNULL(coverage.PackageCount, 0) = 0 THEN 'Packages without sites'
+             AND ISNULL(coverage.PackageCount, 0) = 0 THEN 'Sites without packages'
             WHEN ISNULL(coverage.PackageCount, 0) > 0
-             AND ISNULL(coverage.SiteCount,    0) = 0 THEN 'Sites without packages'
+             AND ISNULL(coverage.SiteCount,    0) = 0 THEN 'Packages without sites'
             ELSE 'OK'
         END AS GapStatus
     FROM Sec.[User] AS u

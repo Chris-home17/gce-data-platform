@@ -5,21 +5,11 @@ import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import { DataTable } from '@/components/shared/data-table'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { RowActions } from '@/components/shared/row-actions'
 import { api } from '@/lib/api'
 import type { User } from '@/types/api'
-
-function GapBadge({ status }: { status: string | null }) {
-  if (!status || status === 'OK') return null
-  return (
-    <Badge variant="destructive" className="text-xs">
-      {status}
-    </Badge>
-  )
-}
 
 const columns: ColumnDef<User, unknown>[] = [
   {
@@ -66,12 +56,6 @@ const columns: ColumnDef<User, unknown>[] = [
       <span className="tabular-nums text-muted-foreground">{row.original.accountCount}</span>
     ),
     meta: { className: 'w-[90px] text-right', headerClassName: 'text-right' },
-  },
-  {
-    accessorKey: 'gapStatus',
-    header: 'Gap',
-    cell: ({ row }) => <GapBadge status={row.original.gapStatus} />,
-    meta: { className: 'w-[90px]' },
   },
   {
     accessorKey: 'isActive',
