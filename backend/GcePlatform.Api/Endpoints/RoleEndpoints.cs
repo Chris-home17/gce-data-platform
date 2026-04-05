@@ -84,13 +84,22 @@ public static class RoleEndpoints
             async (int id, SetActiveRequest req, DbConnectionFactory db) =>
         {
             using var conn = db.CreateConnection();
-            var affected = await conn.ExecuteAsync(
-                "UPDATE Sec.Principal SET IsActive = @IsActive, ModifiedOnUtc = SYSUTCDATETIME() WHERE PrincipalId = @Id",
-                new { IsActive = req.IsActive, Id = id });
 
-            return affected == 0
-                ? Results.NotFound(new ApiError("ROLE_NOT_FOUND", $"Role {id} not found."))
-                : Results.NoContent();
+            var role = await conn.QuerySingleOrDefaultAsync<RoleDto>(@"
+                SELECT RoleId, RoleCode, RoleName, Description, IsActive,
+                       MemberCount, AccessGrantCount, PackageGrantCount
+                FROM App.vRoles
+                WHERE RoleId = @Id",
+                new { Id = id });
+
+            if (role is null)
+                return Results.NotFound(new ApiError("ROLE_NOT_FOUND", $"Role {id} not found."));
+
+            await conn.ExecuteAsync("App.usp_SetRoleActive",
+                new { RoleId = id, req.IsActive },
+                commandType: System.Data.CommandType.StoredProcedure);
+
+            return Results.NoContent();
         }).RequireAuthorization();
 
         // GET /roles/{id}/members
@@ -115,7 +124,7 @@ public static class RoleEndpoints
 
             // Resolve the role code for the stored proc
             var roleCode = await conn.QuerySingleOrDefaultAsync<string>(
-                "SELECT RoleCode FROM Sec.Role WHERE RoleId = @Id", new { Id = id });
+                "SELECT RoleCode FROM App.vRoles WHERE RoleId = @Id", new { Id = id });
 
             if (roleCode is null)
                 return Results.NotFound(new ApiError("ROLE_NOT_FOUND", $"Role {id} not found."));
@@ -136,13 +145,13 @@ public static class RoleEndpoints
             using var conn = db.CreateConnection();
 
             var roleCode = await conn.QuerySingleOrDefaultAsync<string>(
-                "SELECT RoleCode FROM Sec.Role WHERE RoleId = @Id", new { Id = id });
+                "SELECT RoleCode FROM App.vRoles WHERE RoleId = @Id", new { Id = id });
 
             if (roleCode is null)
                 return Results.NotFound(new ApiError("ROLE_NOT_FOUND", $"Role {id} not found."));
 
             var upn = await conn.QuerySingleOrDefaultAsync<string>(
-                "SELECT UPN FROM Sec.[User] WHERE UserId = @UserId", new { UserId = userId });
+                "SELECT UPN FROM App.vUsers WHERE UserId = @UserId", new { UserId = userId });
 
             if (upn is null)
                 return Results.NotFound(new ApiError("USER_NOT_FOUND", $"User {userId} not found."));

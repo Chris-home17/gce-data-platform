@@ -54,18 +54,16 @@ public static class PackageEndpoints
             using var conn = db.CreateConnection();
             var items = await conn.QueryAsync<BiReportDto>(@"
                 SELECT
-                    br.BiReportId,
-                    br.ReportCode,
-                    br.ReportName,
-                    br.ReportUri,
-                    CAST(br.IsActive AS bit) AS IsActive,
-                    v.PackageCount,
-                    ISNULL(v.PackageList, '') AS PackageList
-                FROM Dim.BiReportPackage AS brp
-                JOIN Dim.BiReport AS br ON br.BiReportId = brp.BiReportId
-                JOIN App.vBiReports AS v ON v.BiReportId = br.BiReportId
-                WHERE brp.PackageId = @Id
-                ORDER BY br.ReportCode",
+                    BiReportId,
+                    ReportCode,
+                    ReportName,
+                    ReportUri,
+                    CAST(IsActive AS bit) AS IsActive,
+                    PackageCount,
+                    ISNULL(PackageList, '') AS PackageList
+                FROM App.vPackageReports
+                WHERE PackageId = @Id
+                ORDER BY ReportCode",
                 new { Id = id });
 
             var list = items.ToList();

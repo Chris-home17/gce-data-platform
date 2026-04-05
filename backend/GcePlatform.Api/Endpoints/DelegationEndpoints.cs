@@ -60,11 +60,18 @@ public static class DelegationEndpoints
         app.MapDelete("/delegations/{id:int}", async (int id, DbConnectionFactory db) =>
         {
             using var conn = db.CreateConnection();
-            var affected = await conn.ExecuteAsync(
-                @"UPDATE Sec.PrincipalDelegation
-                  SET IsActive = 0, ModifiedOnUtc = SYSUTCDATETIME()
-                  WHERE PrincipalDelegationId = @Id",
+            var affected = await conn.ExecuteScalarAsync<int>(@"
+                SELECT COUNT(1)
+                FROM App.vDelegations
+                WHERE PrincipalDelegationId = @Id",
                 new { Id = id });
+
+            if (affected > 0)
+            {
+                await conn.ExecuteAsync("Sec.usp_SetDelegationActive",
+                    new { PrincipalDelegationId = id, IsActive = false },
+                    commandType: System.Data.CommandType.StoredProcedure);
+            }
 
             return affected == 0
                 ? Results.NotFound(new ApiError("DELEGATION_NOT_FOUND", $"Delegation {id} not found."))

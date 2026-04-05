@@ -77,23 +77,21 @@ public static class UserEndpoints
             async (int id, SetActiveRequest req, DbConnectionFactory db) =>
         {
             using var conn = db.CreateConnection();
-            var affected = await conn.ExecuteAsync(
-                @"
-                UPDATE Sec.Principal
-                SET IsActive = @IsActive,
-                    ModifiedOnUtc = SYSUTCDATETIME()
-                WHERE PrincipalId = @Id;
+            var user = await conn.QuerySingleOrDefaultAsync<UserDto>(@"
+                SELECT UserId, UPN, DisplayName, IsActive,
+                       RoleCount, RoleList, SiteCount, AccountCount, GapStatus
+                FROM App.vUsers
+                WHERE UserId = @Id",
+                new { Id = id });
 
-                UPDATE Sec.[User]
-                SET IsActive = @IsActive,
-                    ModifiedOnUtc = SYSUTCDATETIME()
-                WHERE UserId = @Id;
-                ",
-                new { IsActive = req.IsActive, Id = id });
+            if (user is null)
+                return Results.NotFound(new ApiError("USER_NOT_FOUND", $"User {id} not found."));
 
-            return affected == 0
-                ? Results.NotFound(new ApiError("USER_NOT_FOUND", $"User {id} not found."))
-                : Results.NoContent();
+            await conn.ExecuteAsync("App.usp_SetUserActive",
+                new { UserId = id, req.IsActive },
+                commandType: System.Data.CommandType.StoredProcedure);
+
+            return Results.NoContent();
         }).RequireAuthorization();
 
         // GET /users/{id}/roles — roles the user belongs to (with IDs for removal)
@@ -101,11 +99,19 @@ public static class UserEndpoints
         {
             using var conn = db.CreateConnection();
             var items = await conn.QueryAsync<RoleDto>(@"
-                SELECT r.RoleId, r.RoleCode, r.RoleName, r.Description, r.IsActive,
-                       r.MemberCount, r.AccessGrantCount, r.PackageGrantCount
-                FROM App.vRoles AS r
-                JOIN Sec.RoleMembership AS rm ON rm.RoleId = r.RoleId
-                WHERE rm.MemberPrincipalId = @Id
+                SELECT
+                    r.RoleId,
+                    r.RoleCode,
+                    r.RoleName,
+                    r.Description,
+                    r.IsActive,
+                    r.MemberCount,
+                    r.AccessGrantCount,
+                    r.PackageGrantCount
+                FROM App.vUserRoles AS ur
+                JOIN App.vRoles AS r
+                    ON r.RoleId = ur.RoleId
+                WHERE ur.UserId = @Id
                 ORDER BY r.RoleCode",
                 new { Id = id });
 

@@ -123,7 +123,7 @@ public static class KpiAssignmentEndpoints
 
             var exists = await conn.QuerySingleOrDefaultAsync<int?>(@"
                 SELECT AssignmentTemplateId
-                FROM KPI.AssignmentTemplate
+                FROM App.vKpiAssignmentTemplates
                 WHERE AssignmentTemplateId = @Id",
                 new { Id = id });
 
@@ -141,16 +141,44 @@ public static class KpiAssignmentEndpoints
             async (int id, SetActiveRequest body, DbConnectionFactory db) =>
         {
             using var conn = db.CreateConnection();
-            var rows = await conn.ExecuteAsync(@"
-                UPDATE KPI.AssignmentTemplate
-                SET IsActive = @IsActive,
-                    ModifiedOnUtc = SYSUTCDATETIME(),
-                    ModifiedBy = SESSION_USER
+            var item = await conn.QuerySingleOrDefaultAsync<KpiAssignmentTemplateDto>(@"
+                SELECT
+                    AssignmentTemplateId,
+                    ExternalId,
+                    KpiCode,
+                    KpiName,
+                    CustomKpiName,
+                    CustomKpiDescription,
+                    EffectiveKpiName,
+                    EffectiveKpiDescription,
+                    Category,
+                    PeriodScheduleId,
+                    ScheduleName,
+                    FrequencyType,
+                    FrequencyInterval,
+                    AccountCode,
+                    AccountName,
+                    SiteCode,
+                    SiteName,
+                    CAST(IsAccountWide AS bit) AS IsAccountWide,
+                    IsRequired,
+                    TargetValue,
+                    ThresholdGreen,
+                    ThresholdAmber,
+                    ThresholdRed,
+                    EffectiveThresholdDirection,
+                    IsActive,
+                    GeneratedAssignmentCount
+                FROM App.vKpiAssignmentTemplates
                 WHERE AssignmentTemplateId = @Id",
-                new { Id = id, body.IsActive });
+                new { Id = id });
 
-            if (rows == 0)
+            if (item is null)
                 return Results.NotFound(new ApiError("ASSIGNMENT_TEMPLATE_NOT_FOUND", $"Assignment template {id} not found."));
+
+            await conn.ExecuteAsync("App.usp_SetKpiAssignmentTemplateActive",
+                new { AssignmentTemplateID = id, body.IsActive },
+                commandType: System.Data.CommandType.StoredProcedure);
 
             if (body.IsActive)
             {
@@ -280,12 +308,45 @@ public static class KpiAssignmentEndpoints
             async (int id, SetActiveRequest body, DbConnectionFactory db) =>
         {
             using var conn = db.CreateConnection();
-            var rows = await conn.ExecuteAsync(
-                "UPDATE KPI.Assignment SET IsActive = @IsActive WHERE AssignmentId = @Id",
-                new { Id = id, body.IsActive });
-            return rows == 0
-                ? Results.NotFound(new ApiError("ASSIGNMENT_NOT_FOUND", $"Assignment {id} not found."))
-                : Results.NoContent();
+            var item = await conn.QuerySingleOrDefaultAsync<KpiAssignmentDto>(@"
+                SELECT
+                    AssignmentId,
+                    ExternalId,
+                    KpiCode,
+                    KpiName,
+                    Category,
+                    AccountCode,
+                    AccountName,
+                    SiteCode,
+                    SiteName,
+                    CAST(IsAccountWide AS bit) AS IsAccountWide,
+                    PeriodLabel,
+                    IsRequired,
+                    TargetValue,
+                    ThresholdGreen,
+                    ThresholdAmber,
+                    ThresholdRed,
+                    EffectiveThresholdDirection,
+                    IsActive
+                FROM App.vKpiAssignments
+                WHERE AssignmentId = @Id",
+                new { Id = id });
+
+            if (item is null)
+                return Results.NotFound(new ApiError("ASSIGNMENT_NOT_FOUND", $"Assignment {id} not found."));
+
+            try
+            {
+                await conn.ExecuteAsync("App.usp_SetKpiAssignmentActive",
+                    new { AssignmentID = id, body.IsActive },
+                    commandType: System.Data.CommandType.StoredProcedure);
+            }
+            catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number == 50115)
+            {
+                return Results.Conflict(new ApiError("ASSIGNMENT_HAS_SUBMISSIONS", ex.Message));
+            }
+
+            return Results.NoContent();
         }).RequireAuthorization();
 
         // POST /kpi/assignments

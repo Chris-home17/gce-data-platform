@@ -69,12 +69,34 @@ public static class KpiDefinitionEndpoints
             async (int id, SetActiveRequest body, DbConnectionFactory db) =>
         {
             using var conn = db.CreateConnection();
-            var rows = await conn.ExecuteAsync(
-                "UPDATE KPI.Definition SET IsActive = @IsActive WHERE KpiId = @Id",
-                new { Id = id, body.IsActive });
-            return rows == 0
-                ? Results.NotFound(new ApiError("KPI_NOT_FOUND", $"KPI definition {id} not found."))
-                : Results.NoContent();
+            var item = await conn.QuerySingleOrDefaultAsync<KpiDefinitionDto>(@"
+                SELECT
+                    KpiId,
+                    ExternalId,
+                    KpiCode,
+                    KpiName,
+                    KpiDescription,
+                    Category,
+                    Unit,
+                    DataType,
+                    AllowMultiValue,
+                    CollectionType,
+                    ThresholdDirection,
+                    IsActive,
+                    AssignmentCount,
+                    DropDownOptionsRaw
+                FROM App.vKpiDefinitions
+                WHERE KpiId = @Id",
+                new { Id = id });
+
+            if (item is null)
+                return Results.NotFound(new ApiError("KPI_NOT_FOUND", $"KPI definition {id} not found."));
+
+            await conn.ExecuteAsync("App.usp_SetKpiDefinitionActive",
+                new { KPIID = id, body.IsActive },
+                commandType: System.Data.CommandType.StoredProcedure);
+
+            return Results.NoContent();
         }).RequireAuthorization();
 
         // POST /kpi/definitions

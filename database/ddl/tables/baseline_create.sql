@@ -6075,6 +6075,714 @@ BEGIN
 END;
 GO
 
+CREATE OR ALTER VIEW App.vAccountRolePolicies
+AS
+    SELECT
+        AccountRolePolicyId,
+        PolicyName,
+        RoleCodeTemplate,
+        RoleNameTemplate,
+        ScopeType,
+        OrgUnitType,
+        OrgUnitCode,
+        CAST(ExpandPerOrgUnit AS bit) AS ExpandPerOrgUnit,
+        CAST(IsActive AS bit) AS IsActive
+    FROM Sec.AccountRolePolicy;
+GO
+
+CREATE OR ALTER VIEW App.vPackageReports
+AS
+    SELECT
+        brp.PackageId,
+        br.BiReportId,
+        br.ReportCode,
+        br.ReportName,
+        br.ReportUri,
+        CAST(br.IsActive AS bit) AS IsActive,
+        br.PackageCount,
+        ISNULL(br.PackageList, '') AS PackageList
+    FROM Dim.BiReportPackage AS brp
+    JOIN App.vBiReports AS br
+        ON br.BiReportId = brp.BiReportId;
+GO
+
+CREATE OR ALTER VIEW App.vSubmissionTokens
+AS
+    SELECT
+        st.TokenId,
+        st.SiteOrgUnitId,
+        st.AccountId,
+        st.PeriodId,
+        site.OrgUnitCode AS SiteCode,
+        site.OrgUnitName AS SiteName,
+        acct.AccountCode,
+        acct.AccountName,
+        period.PeriodLabel,
+        period.Status AS PeriodStatus,
+        CAST(period.SubmissionCloseDate AS DATETIME2) AS PeriodCloseDate,
+        st.ExpiresAtUtc,
+        st.CreatedBy,
+        st.CreatedAtUtc,
+        st.RevokedAtUtc
+    FROM KPI.SubmissionToken AS st
+    JOIN App.vOrgUnits AS site
+        ON site.OrgUnitId = st.SiteOrgUnitId
+    JOIN App.vAccounts AS acct
+        ON acct.AccountId = st.AccountId
+    JOIN App.vKpiPeriods AS period
+        ON period.PeriodId = st.PeriodId;
+GO
+
+CREATE OR ALTER VIEW App.vSubmissionTokenAssignments
+AS
+    SELECT
+        st.TokenId,
+        asgn.AssignmentID                                       AS AssignmentId,
+        asgn.ExternalId,
+        d.KPICode                                               AS KpiCode,
+        d.KPIName                                               AS KpiName,
+        COALESCE(t.CustomKpiName,        d.KPIName)             AS EffectiveKpiName,
+        COALESCE(t.CustomKpiDescription, d.KPIDescription)      AS EffectiveKpiDescription,
+        d.Category,
+        d.DataType,
+        CAST(d.AllowMultiValue AS bit)                          AS AllowMultiValue,
+        CASE
+            WHEN d.DataType = 'DropDown' THEN
+                COALESCE(
+                    CASE
+                        WHEN asgn.AssignmentTemplateID IS NOT NULL
+                         AND EXISTS
+                            (
+                                SELECT 1
+                                FROM KPI.AssignmentTemplateDropDownOption AS x
+                                WHERE x.AssignmentTemplateID = asgn.AssignmentTemplateID
+                            )
+                        THEN
+                            (
+                                SELECT STRING_AGG(opt.OptionValue, '||') WITHIN GROUP (ORDER BY opt.SortOrder)
+                                FROM KPI.AssignmentTemplateDropDownOption AS opt
+                                WHERE opt.AssignmentTemplateID = asgn.AssignmentTemplateID
+                            )
+                    END,
+                    (
+                        SELECT STRING_AGG(opt.OptionValue, '||') WITHIN GROUP (ORDER BY opt.SortOrder)
+                        FROM KPI.DropDownOption AS opt
+                        WHERE opt.KPIID = d.KPIID
+                          AND opt.IsActive = 1
+                    )
+                )
+            ELSE NULL
+        END                                                     AS DropDownOptionsRaw,
+        CAST(asgn.IsRequired AS bit)                            AS IsRequired,
+        asgn.TargetValue,
+        asgn.ThresholdGreen,
+        asgn.ThresholdAmber,
+        asgn.ThresholdRed,
+        COALESCE(asgn.ThresholdDirection, d.ThresholdDirection) AS EffectiveThresholdDirection,
+        asgn.SubmitterGuidance,
+        sub.SubmissionID                                        AS SubmissionId,
+        sub.SubmissionValue,
+        sub.SubmissionText,
+        sub.SubmissionBoolean,
+        sub.SubmissionNotes,
+        sub.LockState,
+        CAST(CASE WHEN sub.SubmissionID IS NOT NULL THEN 1 ELSE 0 END AS bit) AS IsSubmitted
+    FROM App.vSubmissionTokens AS st
+    JOIN KPI.Assignment AS asgn
+        ON asgn.PeriodID = st.PeriodId
+       AND asgn.IsActive = 1
+       AND (
+            asgn.OrgUnitId = st.SiteOrgUnitId
+            OR
+            (
+                asgn.OrgUnitId IS NULL
+                AND asgn.AccountId = st.AccountId
+                AND NOT EXISTS
+                (
+                    SELECT 1
+                    FROM KPI.Assignment AS sa
+                    WHERE sa.KPIID = asgn.KPIID
+                      AND sa.OrgUnitId = st.SiteOrgUnitId
+                      AND sa.PeriodID = st.PeriodId
+                      AND sa.IsActive = 1
+                )
+            )
+       )
+    JOIN KPI.Definition AS d
+        ON d.KPIID = asgn.KPIID
+    LEFT JOIN KPI.AssignmentTemplate AS t
+        ON t.AssignmentTemplateID = asgn.AssignmentTemplateID
+    LEFT JOIN KPI.Submission AS sub
+        ON sub.AssignmentID = asgn.AssignmentID;
+GO
+
+CREATE OR ALTER VIEW App.vSiteSubmissionDetails
+AS
+    SELECT
+        asgn.OrgUnitId                                           AS SiteOrgUnitId,
+        asgn.PeriodID                                            AS PeriodId,
+        asgn.AssignmentID                                        AS AssignmentId,
+        asgn.ExternalId,
+        d.KPICode                                                AS KpiCode,
+        d.KPIName                                                AS KpiName,
+        COALESCE(t.CustomKpiName, d.KPIName)                     AS EffectiveKpiName,
+        d.Category,
+        d.DataType,
+        CAST(asgn.IsRequired AS bit)                             AS IsRequired,
+        asgn.TargetValue,
+        asgn.ThresholdGreen,
+        asgn.ThresholdAmber,
+        asgn.ThresholdRed,
+        COALESCE(asgn.ThresholdDirection, d.ThresholdDirection)  AS EffectiveThresholdDirection,
+        sub.SubmissionID                                         AS SubmissionId,
+        sub.SubmissionValue,
+        sub.SubmissionText,
+        sub.SubmissionBoolean,
+        sub.SubmissionNotes,
+        sub.LockState,
+        u.UPN                                                    AS SubmittedByUpn,
+        sub.SubmittedAt,
+        CAST(CASE WHEN sub.SubmissionID IS NOT NULL THEN 1 ELSE 0 END AS bit) AS IsSubmitted,
+        CASE
+            WHEN d.DataType NOT IN ('Numeric','Percentage','Currency') THEN NULL
+            WHEN sub.SubmissionValue IS NULL                           THEN NULL
+            WHEN asgn.ThresholdGreen IS NULL                           THEN NULL
+            WHEN COALESCE(asgn.ThresholdDirection, d.ThresholdDirection) = 'Higher'
+            THEN CASE
+                WHEN sub.SubmissionValue >= asgn.ThresholdGreen THEN 'Green'
+                WHEN sub.SubmissionValue >= asgn.ThresholdAmber THEN 'Amber'
+                ELSE 'Red'
+            END
+            WHEN COALESCE(asgn.ThresholdDirection, d.ThresholdDirection) = 'Lower'
+            THEN CASE
+                WHEN sub.SubmissionValue <= asgn.ThresholdGreen THEN 'Green'
+                WHEN sub.SubmissionValue <= asgn.ThresholdAmber THEN 'Amber'
+                ELSE 'Red'
+            END
+            ELSE NULL
+        END                                                      AS RagStatus
+    FROM KPI.Assignment AS asgn
+    JOIN KPI.Definition AS d
+        ON d.KPIID = asgn.KPIID
+    LEFT JOIN KPI.AssignmentTemplate AS t
+        ON t.AssignmentTemplateID = asgn.AssignmentTemplateID
+    LEFT JOIN KPI.Submission AS sub
+        ON sub.AssignmentID = asgn.AssignmentID
+    LEFT JOIN Sec.[User] AS u
+        ON u.UserId = sub.SubmittedByPrincipalId
+    WHERE asgn.OrgUnitId IS NOT NULL
+      AND asgn.IsActive = 1;
+GO
+
+CREATE OR ALTER VIEW App.vKpiSubmissionUnlockState
+AS
+    SELECT
+        a.ExternalId AS AssignmentExternalId,
+        sub.SubmissionID AS SubmissionId,
+        sub.LockState,
+        p.Status AS PeriodStatus
+    FROM KPI.Assignment AS a
+    JOIN KPI.Period AS p
+        ON p.PeriodID = a.PeriodID
+    JOIN KPI.Submission AS sub
+        ON sub.AssignmentID = a.AssignmentID
+    WHERE a.IsActive = 1;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_SetUserActive
+    @UserId    INT,
+    @IsActive  BIT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE Sec.Principal
+    SET IsActive = @IsActive,
+        ModifiedOnUtc = SYSUTCDATETIME()
+    WHERE PrincipalId = @UserId;
+
+    UPDATE Sec.[User]
+    SET IsActive = @IsActive,
+        ModifiedOnUtc = SYSUTCDATETIME()
+    WHERE UserId = @UserId;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_SetRoleActive
+    @RoleId     INT,
+    @IsActive   BIT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE Sec.Principal
+    SET IsActive = @IsActive,
+        ModifiedOnUtc = SYSUTCDATETIME()
+    WHERE PrincipalId = @RoleId;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_SetOrgUnitActive
+    @OrgUnitId  INT,
+    @IsActive   BIT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE Dim.OrgUnit
+    SET IsActive = @IsActive,
+        ModifiedOnUtc = SYSUTCDATETIME(),
+        ModifiedBy = SESSION_USER
+    WHERE OrgUnitId = @OrgUnitId;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_SetKpiDefinitionActive
+    @KPIID      INT,
+    @IsActive   BIT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE KPI.Definition
+    SET IsActive = @IsActive,
+        ModifiedOnUtc = SYSUTCDATETIME(),
+        ModifiedBy = SESSION_USER
+    WHERE KPIID = @KPIID;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_SetKpiPeriodScheduleActive
+    @PeriodScheduleID INT,
+    @IsActive         BIT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE KPI.PeriodSchedule
+    SET IsActive = @IsActive,
+        ModifiedOnUtc = SYSUTCDATETIME(),
+        ModifiedBy = SESSION_USER
+    WHERE PeriodScheduleID = @PeriodScheduleID;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_SetKpiAssignmentTemplateActive
+    @AssignmentTemplateID INT,
+    @IsActive             BIT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE KPI.AssignmentTemplate
+    SET IsActive = @IsActive,
+        ModifiedOnUtc = SYSUTCDATETIME(),
+        ModifiedBy = SESSION_USER
+    WHERE AssignmentTemplateID = @AssignmentTemplateID;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_SetKpiAssignmentActive
+    @AssignmentID INT,
+    @IsActive     BIT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @IsActive = 0
+    BEGIN
+        EXEC App.usp_DeactivateKpiAssignment
+            @AssignmentID = @AssignmentID,
+            @ActorUPN = NULL;
+        RETURN;
+    END
+
+    UPDATE KPI.Assignment
+    SET IsActive = 1,
+        ModifiedOnUtc = SYSUTCDATETIME(),
+        ModifiedBy = SESSION_USER
+    WHERE AssignmentID = @AssignmentID;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE Sec.usp_SetDelegationActive
+    @PrincipalDelegationId INT,
+    @IsActive              BIT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE Sec.PrincipalDelegation
+    SET IsActive = @IsActive,
+        ModifiedOnUtc = SYSUTCDATETIME(),
+        ModifiedBy = SESSION_USER
+    WHERE PrincipalDelegationId = @PrincipalDelegationId;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_CreateSubmissionToken
+    @SiteOrgUnitId INT,
+    @PeriodId      INT,
+    @CreatedBy     NVARCHAR(128),
+    @TokenId       UNIQUEIDENTIFIER OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @AccountId INT;
+    DECLARE @SubmissionCloseDate DATE;
+    DECLARE @ExpiresAtUtc DATETIME2;
+
+    SELECT @AccountId = AccountId
+    FROM App.vOrgUnits
+    WHERE OrgUnitId = @SiteOrgUnitId
+      AND OrgUnitType = 'Site'
+      AND IsActive = 1;
+
+    IF @AccountId IS NULL
+        THROW 50210, 'Active site not found.', 1;
+
+    SELECT @SubmissionCloseDate = CAST(SubmissionCloseDate AS DATE)
+    FROM App.vKpiPeriods
+    WHERE PeriodId = @PeriodId;
+
+    IF @SubmissionCloseDate IS NULL
+        THROW 50211, 'Period not found.', 1;
+
+    SET @ExpiresAtUtc = DATEADD(SECOND, -1, DATEADD(DAY, 1, CAST(@SubmissionCloseDate AS DATETIME2)));
+    SET @TokenId = NEWID();
+
+    INSERT INTO KPI.SubmissionToken
+        (TokenId, SiteOrgUnitId, AccountId, PeriodId, ExpiresAtUtc, CreatedBy)
+    VALUES
+        (@TokenId, @SiteOrgUnitId, @AccountId, @PeriodId, @ExpiresAtUtc, @CreatedBy);
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_RevokeSubmissionToken
+    @TokenId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE KPI.SubmissionToken
+    SET RevokedAtUtc = SYSUTCDATETIME()
+    WHERE TokenId = @TokenId
+      AND RevokedAtUtc IS NULL;
+
+    IF @@ROWCOUNT = 0
+        THROW 50212, 'Token not found or already revoked.', 1;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_UnlockKpiSubmission
+    @AssignmentExternalId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @SubmissionId INT;
+    DECLARE @LockState NVARCHAR(25);
+    DECLARE @PeriodStatus NVARCHAR(20);
+
+    SELECT
+        @SubmissionId = SubmissionId,
+        @LockState = LockState,
+        @PeriodStatus = PeriodStatus
+    FROM App.vKpiSubmissionUnlockState
+    WHERE AssignmentExternalId = @AssignmentExternalId;
+
+    IF @SubmissionId IS NULL
+        THROW 50220, 'No submission found for this assignment.', 1;
+
+    IF @LockState = 'Unlocked'
+        RETURN;
+
+    IF @LockState = 'LockedByPeriodClose'
+        THROW 50221, 'This submission was locked when the period closed.', 1;
+
+    IF @PeriodStatus <> 'Open'
+        THROW 50222, 'Cannot unlock because the period is not Open.', 1;
+
+    UPDATE KPI.Submission
+    SET LockState = 'Unlocked',
+        LockedAt = NULL,
+        LockedByPrincipalId = NULL,
+        ModifiedOnUtc = SYSUTCDATETIME()
+    WHERE SubmissionID = @SubmissionId;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_RefreshAccountRolePolicy
+    @AccountRolePolicyId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE
+        @PolicyName NVARCHAR(200),
+        @RoleCodeTemplate NVARCHAR(100),
+        @RoleNameTemplate NVARCHAR(200),
+        @ScopeType NVARCHAR(15),
+        @OrgUnitType NVARCHAR(20),
+        @OrgUnitCode NVARCHAR(50),
+        @ExpandPerOrgUnit BIT,
+        @IsActive BIT;
+
+    SELECT
+        @PolicyName = PolicyName,
+        @RoleCodeTemplate = RoleCodeTemplate,
+        @RoleNameTemplate = RoleNameTemplate,
+        @ScopeType = ScopeType,
+        @OrgUnitType = OrgUnitType,
+        @OrgUnitCode = OrgUnitCode,
+        @ExpandPerOrgUnit = ExpandPerOrgUnit,
+        @IsActive = IsActive
+    FROM Sec.AccountRolePolicy
+    WHERE AccountRolePolicyId = @AccountRolePolicyId;
+
+    IF @PolicyName IS NULL OR @IsActive = 0
+        RETURN;
+
+    DECLARE
+        @AccountId INT,
+        @AccountCode NVARCHAR(50),
+        @AccountName NVARCHAR(200),
+        @ResolvedRoleCode NVARCHAR(100),
+        @ResolvedRoleName NVARCHAR(200),
+        @ResolvedOrgUnitId INT,
+        @ResolvedOrgUnitCode NVARCHAR(50),
+        @ResolvedOrgUnitName NVARCHAR(200),
+        @RoleId INT;
+
+    DECLARE account_cursor CURSOR LOCAL FAST_FORWARD FOR
+        SELECT AccountId, AccountCode, AccountName
+        FROM Dim.Account
+        WHERE IsActive = 1
+        ORDER BY AccountCode;
+
+    OPEN account_cursor;
+    FETCH NEXT FROM account_cursor INTO @AccountId, @AccountCode, @AccountName;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        DECLARE @Expanded TABLE
+        (
+            OrgUnitId   INT NULL,
+            OrgUnitCode NVARCHAR(50) NULL,
+            OrgUnitName NVARCHAR(200) NULL
+        );
+
+        IF @ScopeType = 'ORGUNIT'
+        BEGIN
+            INSERT INTO @Expanded (OrgUnitId, OrgUnitCode, OrgUnitName)
+            SELECT
+                ou.OrgUnitId,
+                ou.OrgUnitCode,
+                ou.OrgUnitName
+            FROM Dim.OrgUnit AS ou
+            WHERE ou.AccountId = @AccountId
+              AND ou.OrgUnitType = @OrgUnitType
+              AND (@OrgUnitCode IS NULL OR ou.OrgUnitCode = @OrgUnitCode)
+            ORDER BY ou.OrgUnitId;
+
+            IF NOT EXISTS (SELECT 1 FROM @Expanded)
+            BEGIN
+                FETCH NEXT FROM account_cursor INTO @AccountId, @AccountCode, @AccountName;
+                CONTINUE;
+            END
+        END
+        ELSE
+        BEGIN
+            INSERT INTO @Expanded (OrgUnitId, OrgUnitCode, OrgUnitName)
+            VALUES (NULL, NULL, NULL);
+        END
+
+        DECLARE expanded_cursor CURSOR LOCAL FAST_FORWARD FOR
+            SELECT OrgUnitId, OrgUnitCode, OrgUnitName
+            FROM @Expanded;
+
+        OPEN expanded_cursor;
+        FETCH NEXT FROM expanded_cursor INTO @ResolvedOrgUnitId, @ResolvedOrgUnitCode, @ResolvedOrgUnitName;
+
+        WHILE @@FETCH_STATUS = 0
+        BEGIN
+            SET @ResolvedRoleCode =
+                REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                    @RoleCodeTemplate,
+                    '{AccountCode}', @AccountCode),
+                    '{ACCOUNTCODE}', @AccountCode),
+                    '{AccountName}', @AccountName),
+                    '{ACCOUNTNAME}', @AccountName),
+                    '{OrgUnitCode}', COALESCE(@ResolvedOrgUnitCode, '')),
+                    '{ORGUNITCODE}', COALESCE(@ResolvedOrgUnitCode, '')),
+                    '{OrgUnitName}', COALESCE(@ResolvedOrgUnitName, '')),
+                    '{ORGUNITNAME}', COALESCE(@ResolvedOrgUnitName, ''));
+
+            SET @ResolvedRoleName =
+                REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                    @RoleNameTemplate,
+                    '{AccountCode}', @AccountCode),
+                    '{ACCOUNTCODE}', @AccountCode),
+                    '{AccountName}', @AccountName),
+                    '{ACCOUNTNAME}', @AccountName),
+                    '{OrgUnitCode}', COALESCE(@ResolvedOrgUnitCode, '')),
+                    '{ORGUNITCODE}', COALESCE(@ResolvedOrgUnitCode, '')),
+                    '{OrgUnitName}', COALESCE(@ResolvedOrgUnitName, '')),
+                    '{ORGUNITNAME}', COALESCE(@ResolvedOrgUnitName, ''));
+
+            EXEC App.UpsertRole
+                @RoleCode = @ResolvedRoleCode,
+                @RoleName = @ResolvedRoleName,
+                @Description = NULL,
+                @RoleId = @RoleId OUTPUT;
+
+            INSERT INTO Sec.PrincipalAccessGrant (PrincipalId, AccessType, AccountId, ScopeType, OrgUnitId)
+            SELECT
+                @RoleId,
+                'ACCOUNT',
+                @AccountId,
+                CASE WHEN @ScopeType = 'ORGUNIT' THEN 'ORGUNIT' ELSE 'NONE' END,
+                @ResolvedOrgUnitId
+            WHERE NOT EXISTS
+            (
+                SELECT 1
+                FROM Sec.PrincipalAccessGrant AS existing
+                WHERE existing.PrincipalId = @RoleId
+                  AND existing.AccessType = 'ACCOUNT'
+                  AND existing.AccountId = @AccountId
+                  AND existing.ScopeType = CASE WHEN @ScopeType = 'ORGUNIT' THEN 'ORGUNIT' ELSE 'NONE' END
+                  AND ISNULL(existing.OrgUnitId, -1) = ISNULL(@ResolvedOrgUnitId, -1)
+            );
+
+            FETCH NEXT FROM expanded_cursor INTO @ResolvedOrgUnitId, @ResolvedOrgUnitCode, @ResolvedOrgUnitName;
+        END
+
+        CLOSE expanded_cursor;
+        DEALLOCATE expanded_cursor;
+
+        FETCH NEXT FROM account_cursor INTO @AccountId, @AccountCode, @AccountName;
+    END
+
+    CLOSE account_cursor;
+    DEALLOCATE account_cursor;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_DeactivateMaterializedRolesForPolicy
+    @AccountRolePolicyId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    ;WITH Expanded AS
+    (
+        SELECT DISTINCT
+            CASE
+                WHEN pol.ScopeType = 'ORGUNIT' AND pol.ExpandPerOrgUnit = 1
+                    THEN REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+                        pol.RoleCodeTemplate,
+                        '{AccountCode}', a.AccountCode),
+                        '{ACCOUNTCODE}', a.AccountCode),
+                        '{AccountName}', a.AccountName),
+                        '{ACCOUNTNAME}', a.AccountName),
+                        '{OrgUnitCode}', ou.OrgUnitCode),
+                        '{ORGUNITCODE}', ou.OrgUnitCode),
+                        '{OrgUnitName}', ou.OrgUnitName),
+                        '{ORGUNITNAME}', ou.OrgUnitName)
+                ELSE REPLACE(REPLACE(REPLACE(REPLACE(
+                        pol.RoleCodeTemplate,
+                        '{AccountCode}', a.AccountCode),
+                        '{ACCOUNTCODE}', a.AccountCode),
+                        '{AccountName}', a.AccountName),
+                        '{ACCOUNTNAME}', a.AccountName)
+            END AS RoleCode
+        FROM Sec.AccountRolePolicy AS pol
+        CROSS JOIN Dim.Account AS a
+        LEFT JOIN Dim.OrgUnit AS ou
+            ON pol.ScopeType = 'ORGUNIT'
+           AND pol.ExpandPerOrgUnit = 1
+           AND ou.AccountId = a.AccountId
+           AND ou.OrgUnitType = pol.OrgUnitType
+           AND (pol.OrgUnitCode IS NULL OR ou.OrgUnitCode = pol.OrgUnitCode)
+        WHERE pol.AccountRolePolicyId = @AccountRolePolicyId
+    )
+    UPDATE pr
+    SET pr.IsActive = 0,
+        pr.ModifiedOnUtc = SYSUTCDATETIME(),
+        pr.ModifiedBy = 'policy_disable'
+    FROM Sec.Principal AS pr
+    JOIN Sec.Role AS r
+        ON r.RoleId = pr.PrincipalId
+    JOIN Expanded AS e
+        ON e.RoleCode = r.RoleCode;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_UpsertAccountRolePolicy
+    @AccountRolePolicyId INT = NULL,
+    @PolicyName          NVARCHAR(200),
+    @RoleCodeTemplate    NVARCHAR(100),
+    @RoleNameTemplate    NVARCHAR(200),
+    @ScopeType           NVARCHAR(15),
+    @OrgUnitType         NVARCHAR(20) = NULL,
+    @OrgUnitCode         NVARCHAR(50) = NULL,
+    @ExpandPerOrgUnit    BIT = 0,
+    @ApplyNow            BIT = 0,
+    @ResultAccountRolePolicyId INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @AccountRolePolicyId IS NULL
+    BEGIN
+        INSERT INTO Sec.AccountRolePolicy
+            (PolicyName, RoleCodeTemplate, RoleNameTemplate, ScopeType, OrgUnitType, OrgUnitCode, ExpandPerOrgUnit, IsActive)
+        VALUES
+            (@PolicyName, UPPER(LTRIM(RTRIM(@RoleCodeTemplate))), @RoleNameTemplate, @ScopeType, @OrgUnitType, @OrgUnitCode, @ExpandPerOrgUnit, 1);
+
+        SET @ResultAccountRolePolicyId = SCOPE_IDENTITY();
+    END
+    ELSE
+    BEGIN
+        UPDATE Sec.AccountRolePolicy
+        SET PolicyName = @PolicyName,
+            RoleCodeTemplate = UPPER(LTRIM(RTRIM(@RoleCodeTemplate))),
+            RoleNameTemplate = @RoleNameTemplate,
+            ScopeType = @ScopeType,
+            OrgUnitType = @OrgUnitType,
+            OrgUnitCode = @OrgUnitCode,
+            ExpandPerOrgUnit = @ExpandPerOrgUnit,
+            ModifiedOnUtc = SYSUTCDATETIME()
+        WHERE AccountRolePolicyId = @AccountRolePolicyId;
+
+        SET @ResultAccountRolePolicyId = @AccountRolePolicyId;
+    END
+
+    IF @ApplyNow = 1
+        EXEC App.usp_RefreshAccountRolePolicy @AccountRolePolicyId = @ResultAccountRolePolicyId;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_SetAccountRolePolicyActive
+    @AccountRolePolicyId INT,
+    @IsActive            BIT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE Sec.AccountRolePolicy
+    SET IsActive = @IsActive,
+        ModifiedOnUtc = SYSUTCDATETIME()
+    WHERE AccountRolePolicyId = @AccountRolePolicyId;
+
+    IF @IsActive = 1
+        EXEC App.usp_RefreshAccountRolePolicy @AccountRolePolicyId = @AccountRolePolicyId;
+    ELSE
+        EXEC App.usp_DeactivateMaterializedRolesForPolicy @AccountRolePolicyId = @AccountRolePolicyId;
+END;
+GO
+
 -- Reporting views ------------------------------------------------------------
 CREATE OR ALTER VIEW Reporting.vw_PBICustomerSecurity
 AS

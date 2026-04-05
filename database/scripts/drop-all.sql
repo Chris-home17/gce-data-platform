@@ -48,6 +48,24 @@ IF OBJECT_ID('Reporting.vw_PBICustomerSecurity', 'V') IS NOT NULL
 GO
 
 -- Drop App views ------------------------------------------------------------------
+IF OBJECT_ID('App.vKpiSubmissionUnlockState', 'V') IS NOT NULL
+    DROP VIEW App.vKpiSubmissionUnlockState;
+GO
+IF OBJECT_ID('App.vSiteSubmissionDetails', 'V') IS NOT NULL
+    DROP VIEW App.vSiteSubmissionDetails;
+GO
+IF OBJECT_ID('App.vSubmissionTokenAssignments', 'V') IS NOT NULL
+    DROP VIEW App.vSubmissionTokenAssignments;
+GO
+IF OBJECT_ID('App.vSubmissionTokens', 'V') IS NOT NULL
+    DROP VIEW App.vSubmissionTokens;
+GO
+IF OBJECT_ID('App.vPackageReports', 'V') IS NOT NULL
+    DROP VIEW App.vPackageReports;
+GO
+IF OBJECT_ID('App.vAccountRolePolicies', 'V') IS NOT NULL
+    DROP VIEW App.vAccountRolePolicies;
+GO
 IF OBJECT_ID('App.vGrantHistory', 'V') IS NOT NULL
     DROP VIEW App.vGrantHistory;
 GO
@@ -170,6 +188,48 @@ IF OBJECT_ID('Audit.usp_WriteLog', 'P') IS NOT NULL
 GO
 
 -- Drop App stored procedures ------------------------------------------------------
+IF OBJECT_ID('App.usp_SetAccountRolePolicyActive', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_SetAccountRolePolicyActive;
+GO
+IF OBJECT_ID('App.usp_UpsertAccountRolePolicy', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_UpsertAccountRolePolicy;
+GO
+IF OBJECT_ID('App.usp_DeactivateMaterializedRolesForPolicy', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_DeactivateMaterializedRolesForPolicy;
+GO
+IF OBJECT_ID('App.usp_RefreshAccountRolePolicy', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_RefreshAccountRolePolicy;
+GO
+IF OBJECT_ID('App.usp_UnlockKpiSubmission', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_UnlockKpiSubmission;
+GO
+IF OBJECT_ID('App.usp_RevokeSubmissionToken', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_RevokeSubmissionToken;
+GO
+IF OBJECT_ID('App.usp_CreateSubmissionToken', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_CreateSubmissionToken;
+GO
+IF OBJECT_ID('App.usp_SetKpiAssignmentActive', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_SetKpiAssignmentActive;
+GO
+IF OBJECT_ID('App.usp_SetKpiAssignmentTemplateActive', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_SetKpiAssignmentTemplateActive;
+GO
+IF OBJECT_ID('App.usp_SetKpiPeriodScheduleActive', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_SetKpiPeriodScheduleActive;
+GO
+IF OBJECT_ID('App.usp_SetKpiDefinitionActive', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_SetKpiDefinitionActive;
+GO
+IF OBJECT_ID('App.usp_SetOrgUnitActive', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_SetOrgUnitActive;
+GO
+IF OBJECT_ID('App.usp_SetRoleActive', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_SetRoleActive;
+GO
+IF OBJECT_ID('App.usp_SetUserActive', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_SetUserActive;
+GO
 IF OBJECT_ID('App.usp_ProcessScheduledPeriods', 'P') IS NOT NULL
     DROP PROCEDURE App.usp_ProcessScheduledPeriods;
 GO
@@ -274,6 +334,9 @@ IF OBJECT_ID('App.InsertOrgUnit', 'P') IS NOT NULL
 GO
 
 -- Drop Sec stored procedures ------------------------------------------------------
+IF OBJECT_ID('Sec.usp_SetDelegationActive', 'P') IS NOT NULL
+    DROP PROCEDURE Sec.usp_SetDelegationActive;
+GO
 IF OBJECT_ID('Sec.RevokeDelegation', 'P') IS NOT NULL
     DROP PROCEDURE Sec.RevokeDelegation;
 GO

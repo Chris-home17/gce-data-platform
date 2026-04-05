@@ -96,7 +96,7 @@ public static class KpiPeriodEndpoints
 
             var exists = await conn.QuerySingleOrDefaultAsync<int?>(@"
                 SELECT PeriodScheduleId
-                FROM KPI.PeriodSchedule
+                FROM App.vKpiPeriodSchedules
                 WHERE PeriodScheduleId = @Id",
                 new { Id = id });
 
@@ -116,16 +116,33 @@ public static class KpiPeriodEndpoints
             async (int id, SetActiveRequest body, DbConnectionFactory db) =>
         {
             using var conn = db.CreateConnection();
-            var rows = await conn.ExecuteAsync(@"
-                UPDATE KPI.PeriodSchedule
-                SET IsActive = @IsActive,
-                    ModifiedOnUtc = SYSUTCDATETIME(),
-                    ModifiedBy = SESSION_USER
+            var item = await conn.QuerySingleOrDefaultAsync<KpiPeriodScheduleDto>(@"
+                SELECT
+                    PeriodScheduleId,
+                    ExternalId,
+                    ScheduleName,
+                    FrequencyType,
+                    FrequencyInterval,
+                    StartDate,
+                    EndDate,
+                    SubmissionOpenDay,
+                    SubmissionCloseDay,
+                    GenerateMonthsAhead,
+                    Notes,
+                    IsActive,
+                    GeneratedPeriodCount,
+                    FirstGeneratedPeriodLabel,
+                    LastGeneratedPeriodLabel
+                FROM App.vKpiPeriodSchedules
                 WHERE PeriodScheduleId = @Id",
-                new { Id = id, body.IsActive });
+                new { Id = id });
 
-            if (rows == 0)
+            if (item is null)
                 return Results.NotFound(new ApiError("PERIOD_SCHEDULE_NOT_FOUND", $"Period schedule {id} not found."));
+
+            await conn.ExecuteAsync("App.usp_SetKpiPeriodScheduleActive",
+                new { PeriodScheduleID = id, body.IsActive },
+                commandType: System.Data.CommandType.StoredProcedure);
 
             if (body.IsActive)
             {

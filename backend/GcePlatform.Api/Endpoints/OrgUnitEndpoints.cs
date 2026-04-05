@@ -65,7 +65,7 @@ public static class OrgUnitEndpoints
             using var conn = db.CreateConnection();
 
             var exists = await conn.QuerySingleOrDefaultAsync<int?>(
-                "SELECT SharedGeoUnitId FROM Dim.SharedGeoUnit WHERE SharedGeoUnitId = @Id",
+                "SELECT SharedGeoUnitId FROM App.vSharedGeoUnits WHERE SharedGeoUnitId = @Id",
                 new { Id = id });
 
             if (!exists.HasValue)
@@ -178,19 +178,15 @@ public static class OrgUnitEndpoints
         {
             using var conn = db.CreateConnection();
             var exists = await conn.QuerySingleOrDefaultAsync<int?>(
-                "SELECT OrgUnitId FROM Dim.OrgUnit WHERE OrgUnitId = @Id",
+                "SELECT OrgUnitId FROM App.vOrgUnits WHERE OrgUnitId = @Id",
                 new { Id = id });
 
             if (!exists.HasValue)
                 return Results.NotFound(new ApiError("ORG_UNIT_NOT_FOUND", $"Org unit {id} not found."));
 
-            await conn.ExecuteAsync(@"
-                UPDATE Dim.OrgUnit
-                SET IsActive = @IsActive,
-                    ModifiedOnUtc = SYSUTCDATETIME(),
-                    ModifiedBy = SESSION_USER
-                WHERE OrgUnitId = @Id",
-                new { Id = id, IsActive = req.IsActive });
+            await conn.ExecuteAsync("App.usp_SetOrgUnitActive",
+                new { OrgUnitId = id, req.IsActive },
+                commandType: System.Data.CommandType.StoredProcedure);
 
             return Results.NoContent();
         }).RequireAuthorization();

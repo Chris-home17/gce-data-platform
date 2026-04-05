@@ -55,7 +55,7 @@ public static class AccountEndpoints
 
             var accountExists = await conn.ExecuteScalarAsync<int>(@"
                 SELECT COUNT(1)
-                FROM Dim.Account
+                FROM App.vAccounts
                 WHERE AccountId = @Id",
                 new { Id = id });
 
