@@ -507,6 +507,10 @@ export interface CreateOrgUnitInput {
   countrySharedGeoUnitId?: number
 }
 
+export interface MoveOrgUnitInput {
+  parentOrgUnitId?: number | null
+}
+
 export interface CreateSourceMappingInput {
   accountCode: string
   orgUnitCode: string

@@ -73,7 +73,7 @@ interface GrantAccessDialogProps {
   onOpenChange: (open: boolean) => void
   principalType: 'USER' | 'ROLE'
   principalIdentifier: string  // UPN for users, RoleCode for roles
-  invalidateKeys: string[][]   // query keys to invalidate on success
+  invalidateKeys: readonly unknown[][]   // query keys to invalidate on success
 }
 
 export function GrantAccessDialog({

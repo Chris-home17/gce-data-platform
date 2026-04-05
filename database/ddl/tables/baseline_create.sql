@@ -1761,6 +1761,158 @@ BEGIN
 END;
 GO
 
+CREATE OR ALTER PROCEDURE App.MoveOrgUnit
+    @OrgUnitId           INT,
+    @NewParentOrgUnitId  INT = NULL,
+    @ApplyPolicies       BIT = 0,
+    @ActorUPN            NVARCHAR(320) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    DECLARE
+        @AccountId            INT,
+        @AccountCode          NVARCHAR(50),
+        @OrgUnitType          NVARCHAR(20),
+        @OrgUnitCode          NVARCHAR(50),
+        @CurrentParentOrgUnitId INT,
+        @OldPath              NVARCHAR(850),
+        @CurrentCountryOrgUnitId INT,
+        @CurrentCountryCode   NVARCHAR(10);
+
+    SELECT
+        @AccountId = ou.AccountId,
+        @AccountCode = acct.AccountCode,
+        @OrgUnitType = ou.OrgUnitType,
+        @OrgUnitCode = ou.OrgUnitCode,
+        @CurrentParentOrgUnitId = ou.ParentOrgUnitId,
+        @OldPath = ou.Path,
+        @CurrentCountryOrgUnitId = ou.CountryOrgUnitId,
+        @CurrentCountryCode = ou.CountryCode
+    FROM Dim.OrgUnit AS ou
+    JOIN Dim.Account AS acct
+        ON acct.AccountId = ou.AccountId
+    WHERE ou.OrgUnitId = @OrgUnitId;
+
+    IF @AccountId IS NULL
+        THROW 50230, 'Org unit not found.', 1;
+
+    IF ISNULL(@CurrentParentOrgUnitId, -1) = ISNULL(@NewParentOrgUnitId, -1)
+        RETURN;
+
+    DECLARE @AllowedParentTypes NVARCHAR(200) = CASE @OrgUnitType
+        WHEN 'Region'    THEN ''
+        WHEN 'SubRegion' THEN 'Region'
+        WHEN 'Cluster'   THEN 'Region,SubRegion'
+        WHEN 'Country'   THEN 'Region,SubRegion,Cluster'
+        WHEN 'Area'      THEN 'Country'
+        WHEN 'Branch'    THEN 'Country,Area'
+        WHEN 'Site'      THEN 'Country,Area,Branch'
+        ELSE ''
+    END;
+
+    DECLARE
+        @NewParentOrgUnitType NVARCHAR(20) = NULL,
+        @NewParentPath NVARCHAR(850) = NULL,
+        @NewParentAccountId INT = NULL,
+        @NewParentCountryOrgUnitId INT = NULL;
+
+    IF @NewParentOrgUnitId IS NULL
+    BEGIN
+        IF @OrgUnitType <> 'Region'
+            THROW 50234, 'Only Region org units can be placed at account root.', 1;
+    END
+    ELSE
+    BEGIN
+        SELECT
+            @NewParentOrgUnitType = OrgUnitType,
+            @NewParentPath = Path,
+            @NewParentAccountId = AccountId,
+            @NewParentCountryOrgUnitId = CountryOrgUnitId
+        FROM Dim.OrgUnit
+        WHERE OrgUnitId = @NewParentOrgUnitId;
+
+        IF @NewParentAccountId IS NULL
+            THROW 50231, 'Parent org unit not found.', 1;
+
+        IF @NewParentAccountId <> @AccountId
+            THROW 50232, 'Parent org unit must belong to the same account.', 1;
+
+        IF @NewParentOrgUnitId = @OrgUnitId
+           OR @NewParentPath LIKE @OldPath + '%'
+            THROW 50235, 'An org unit cannot be moved under itself or one of its descendants.', 1;
+
+        IF CHARINDEX(@NewParentOrgUnitType, @AllowedParentTypes) = 0
+            THROW 50233, 'Selected parent type is invalid for this org unit type.', 1;
+    END
+
+    DECLARE @NewPath NVARCHAR(850) = CASE
+        WHEN @NewParentOrgUnitId IS NULL THEN CONCAT('|', @AccountCode, '|', @OrgUnitCode, '|')
+        ELSE CONCAT(@NewParentPath, @OrgUnitCode, '|')
+    END;
+
+    DECLARE @NewCountryOrgUnitId INT = NULL;
+    DECLARE @NewCountryCode NVARCHAR(10) = NULL;
+
+    IF @OrgUnitType IN ('Area','Branch','Site')
+    BEGIN
+        SET @NewCountryOrgUnitId = CASE
+            WHEN @NewParentOrgUnitType = 'Country' THEN @NewParentOrgUnitId
+            ELSE @NewParentCountryOrgUnitId
+        END;
+
+        IF @NewCountryOrgUnitId IS NULL
+            THROW 50236, 'A valid country ancestor is required for Area, Branch, and Site.', 1;
+
+        SELECT @NewCountryCode = CountryCode
+        FROM Dim.OrgUnit
+        WHERE OrgUnitId = @NewCountryOrgUnitId;
+    END
+
+    BEGIN TRANSACTION;
+
+    UPDATE Dim.OrgUnit
+    SET ParentOrgUnitId = @NewParentOrgUnitId,
+        Path            = @NewPath,
+        CountryOrgUnitId = CASE
+            WHEN @OrgUnitType IN ('Area','Branch','Site') THEN @NewCountryOrgUnitId
+            WHEN @OrgUnitType IN ('Region','SubRegion','Cluster','Country') THEN NULL
+            ELSE CountryOrgUnitId
+        END,
+        CountryCode = CASE
+            WHEN @OrgUnitType = 'Country' THEN @CurrentCountryCode
+            WHEN @OrgUnitType IN ('Area','Branch','Site') THEN @NewCountryCode
+            ELSE NULL
+        END,
+        ModifiedOnUtc = SYSUTCDATETIME(),
+        ModifiedBy = COALESCE(@ActorUPN, SESSION_USER)
+    WHERE OrgUnitId = @OrgUnitId;
+
+    UPDATE Dim.OrgUnit
+    SET Path = CONCAT(@NewPath, SUBSTRING(Path, LEN(@OldPath) + 1, 850)),
+        CountryOrgUnitId = CASE
+            WHEN @OrgUnitType IN ('Area','Branch','Site') AND OrgUnitType IN ('Area','Branch','Site')
+                THEN @NewCountryOrgUnitId
+            ELSE CountryOrgUnitId
+        END,
+        CountryCode = CASE
+            WHEN @OrgUnitType IN ('Area','Branch','Site') AND OrgUnitType IN ('Area','Branch','Site')
+                THEN @NewCountryCode
+            ELSE CountryCode
+        END,
+        ModifiedOnUtc = SYSUTCDATETIME(),
+        ModifiedBy = COALESCE(@ActorUPN, SESSION_USER)
+    WHERE OrgUnitId <> @OrgUnitId
+      AND Path LIKE @OldPath + '%';
+
+    COMMIT TRANSACTION;
+
+    IF @ApplyPolicies = 1
+        EXEC App.ApplyAccountPolicies @AccountCode = @AccountCode, @ApplyAccess = 1, @ApplyPackages = 1;
+END;
+GO
+
 -- Ensures full hierarchy exists for an account/shared geography/local operating path
 CREATE OR ALTER PROCEDURE App.CreateOrEnsureSitePath
     @AccountCode    NVARCHAR(50),

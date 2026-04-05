@@ -13,10 +13,10 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
-import { Input } from '@/components/ui/input'
 import { DataTable } from '@/components/shared/data-table'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { GrantAccessDialog } from '@/components/shared/grant-access-dialog'
+import { UserUpnTypeahead } from '@/components/shared/user-upn-typeahead'
 import { api } from '@/lib/api'
 import type { Grant, PackageGrant, RoleMember } from '@/types/api'
 import { useForm } from 'react-hook-form'
@@ -26,7 +26,15 @@ import { z } from 'zod'
 // ---------------------------------------------------------------------------
 // Add Member Dialog
 // ---------------------------------------------------------------------------
-function AddMemberDialog({ roleId, onSuccess }: { roleId: number; onSuccess: () => void }) {
+function AddMemberDialog({
+  roleId,
+  memberUpns,
+  onSuccess,
+}: {
+  roleId: number
+  memberUpns: string[]
+  onSuccess: () => void
+}) {
   const [open, setOpen] = useState(false)
   const form = useForm<{ upn: string }>({
     resolver: zodResolver(z.object({ upn: z.string().email('Enter a valid UPN / email') })),
@@ -56,8 +64,18 @@ function AddMemberDialog({ roleId, onSuccess }: { roleId: number; onSuccess: () 
                   <FormItem>
                     <FormLabel>User UPN</FormLabel>
                     <FormControl>
-                      <Input placeholder="user@example.com" {...field} />
+                      <UserUpnTypeahead
+                        value={field.value}
+                        onChange={field.onChange}
+                        open={open}
+                        disabled={mutation.isPending}
+                        excludeUpns={memberUpns}
+                        placeholder="Type a name or email"
+                      />
                     </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      Start typing to search users by name or email.
+                    </p>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -373,6 +391,7 @@ export function RoleDetail({ roleId }: { roleId: number }) {
           <div className="flex justify-end mb-3">
             <AddMemberDialog
               roleId={roleId}
+              memberUpns={(membersData?.items ?? []).map((member) => member.upn)}
               onSuccess={() => {
                 queryClient.invalidateQueries({ queryKey: ['roles', roleId, 'members'] })
                 queryClient.invalidateQueries({ queryKey: ['roles', roleId] })

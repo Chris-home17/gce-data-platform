@@ -27,6 +27,7 @@ import type {
   CreatePackageInput,
   CreatePolicyInput,
   UpdatePolicyInput,
+  MoveOrgUnitInput,
   CreateRoleInput,
   CreateSharedGeoUnitInput,
   UpdateSharedGeoUnitInput,
@@ -275,6 +276,9 @@ export const api = {
     },
     create(data: CreateOrgUnitInput): Promise<OrgUnit> {
       return apiFetch('/org-units', { method: 'POST', body: JSON.stringify(data) })
+    },
+    move(id: number, data: MoveOrgUnitInput): Promise<OrgUnit> {
+      return apiFetch(`/org-units/${id}/move`, { method: 'POST', body: JSON.stringify(data) })
     },
     setActive(id: number, isActive: boolean): Promise<void> {
       return apiFetch(`/org-units/${id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) })

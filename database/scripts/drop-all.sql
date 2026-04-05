@@ -332,6 +332,9 @@ GO
 IF OBJECT_ID('App.InsertOrgUnit', 'P') IS NOT NULL
     DROP PROCEDURE App.InsertOrgUnit;
 GO
+IF OBJECT_ID('App.MoveOrgUnit', 'P') IS NOT NULL
+    DROP PROCEDURE App.MoveOrgUnit;
+GO
 
 -- Drop Sec stored procedures ------------------------------------------------------
 IF OBJECT_ID('Sec.usp_SetDelegationActive', 'P') IS NOT NULL

@@ -245,6 +245,57 @@ public static class OrgUnitEndpoints
             return Results.Created($"/org-units/{newId}", item);
         }).RequireAuthorization();
 
+        app.MapPost("/org-units/{id:int}/move", async (int id, MoveOrgUnitRequest req, DbConnectionFactory db) =>
+        {
+            using var conn = db.CreateConnection();
+
+            var existing = await conn.QuerySingleOrDefaultAsync<OrgUnitDto>(@"
+                SELECT
+                    OrgUnitId, AccountId, AccountCode, AccountName, SharedGeoUnitId, SharedGeoUnitCode, SharedGeoUnitName,
+                    CountryOrgUnitId, CountryOrgUnitCode, CountryOrgUnitName, OrgUnitType, OrgUnitCode,
+                    OrgUnitName, ParentOrgUnitId, ParentOrgUnitName, ParentOrgUnitType,
+                    Path, CountryCode, CAST(IsActive AS bit) AS IsActive, ChildCount, SourceMappingCount
+                FROM App.vOrgUnits
+                WHERE OrgUnitId = @Id",
+                new { Id = id });
+
+            if (existing is null)
+                return Results.NotFound(new ApiError("ORG_UNIT_NOT_FOUND", $"Org unit {id} not found."));
+
+            try
+            {
+                await conn.ExecuteAsync("App.MoveOrgUnit",
+                    new
+                    {
+                        OrgUnitId = id,
+                        NewParentOrgUnitId = req.ParentOrgUnitId,
+                        ApplyPolicies = false,
+                        ActorUPN = (string?)null,
+                    },
+                    commandType: System.Data.CommandType.StoredProcedure);
+            }
+            catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number is 50231)
+            {
+                return Results.NotFound(new ApiError("PARENT_NOT_FOUND", ex.Message));
+            }
+            catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number is 50232 or 50233 or 50234 or 50235 or 50236)
+            {
+                return Results.BadRequest(new ApiError("INVALID_MOVE", ex.Message));
+            }
+
+            var updated = await conn.QuerySingleAsync<OrgUnitDto>(@"
+                SELECT
+                    OrgUnitId, AccountId, AccountCode, AccountName, SharedGeoUnitId, SharedGeoUnitCode, SharedGeoUnitName,
+                    CountryOrgUnitId, CountryOrgUnitCode, CountryOrgUnitName, OrgUnitType, OrgUnitCode,
+                    OrgUnitName, ParentOrgUnitId, ParentOrgUnitName, ParentOrgUnitType,
+                    Path, CountryCode, CAST(IsActive AS bit) AS IsActive, ChildCount, SourceMappingCount
+                FROM App.vOrgUnits
+                WHERE OrgUnitId = @Id",
+                new { Id = id });
+
+            return Results.Ok(updated);
+        }).RequireAuthorization();
+
         return app;
     }
 }

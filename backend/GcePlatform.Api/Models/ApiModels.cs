@@ -317,6 +317,10 @@ public record CreateOrgUnitRequest(
     int?    CountrySharedGeoUnitId
 );
 
+public record MoveOrgUnitRequest(
+    int? ParentOrgUnitId
+);
+
 public record SharedGeoUnitDto(
     int      SharedGeoUnitId,
     string   GeoUnitType,
@@ -381,6 +385,63 @@ public record CoverageSummaryDto(
     int     SiteCount,
     int     AccountCount,
     string  GapStatus
+);
+
+// ---------------------------------------------------------------------------
+// Platform roles / permissions
+// ---------------------------------------------------------------------------
+
+public record CurrentUserDto(
+    int UserId,
+    string Upn,
+    string DisplayName,
+    IEnumerable<string> Permissions
+);
+
+public record PlatformPermissionDto(
+    int PermissionId,
+    string PermissionCode,
+    string DisplayName,
+    string? Description,
+    string? Category,
+    int SortOrder
+);
+
+public record PlatformRoleDto(
+    int PlatformRoleId,
+    string RoleCode,
+    string RoleName,
+    string? Description,
+    bool IsActive,
+    int MemberCount,
+    int PermissionCount
+);
+
+public record PlatformRoleMemberDto(
+    int UserId,
+    string UPN,
+    string DisplayName,
+    DateTime AssignedOnUtc
+);
+
+public record PlatformRoleDetailDto(
+    PlatformRoleDto Role,
+    IEnumerable<PlatformPermissionDto> Permissions,
+    IEnumerable<PlatformRoleMemberDto> Members
+);
+
+public record CreatePlatformRoleRequest(
+    string RoleCode,
+    string RoleName,
+    string? Description
+);
+
+public record SetPlatformRolePermissionsRequest(
+    IEnumerable<string> PermissionCodes
+);
+
+public record AddPlatformRoleMemberRequest(
+    string UserUpn
 );
 
 // ---------------------------------------------------------------------------
