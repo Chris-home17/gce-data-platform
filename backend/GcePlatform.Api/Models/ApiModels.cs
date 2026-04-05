@@ -333,6 +333,13 @@ public record CreateSharedGeoUnitRequest(
     string?  CountryCode
 );
 
+public record UpdateSharedGeoUnitRequest(
+    string   GeoUnitType,
+    string   GeoUnitCode,
+    string   GeoUnitName,
+    string?  CountryCode
+);
+
 // ---------------------------------------------------------------------------
 // Source Mapping  (App.vSourceMappings — screen M-13)
 // ---------------------------------------------------------------------------

@@ -29,6 +29,7 @@ import type {
   UpdatePolicyInput,
   CreateRoleInput,
   CreateSharedGeoUnitInput,
+  UpdateSharedGeoUnitInput,
   CreateSourceMappingInput,
   CreateSubmissionTokenInput,
   CreateUserInput,
@@ -287,6 +288,9 @@ export const api = {
     },
     create(data: CreateSharedGeoUnitInput): Promise<SharedGeoUnit> {
       return apiFetch('/shared-geo-units', { method: 'POST', body: JSON.stringify(data) })
+    },
+    update(id: number, data: UpdateSharedGeoUnitInput): Promise<SharedGeoUnit> {
+      return apiFetch(`/shared-geo-units/${id}`, { method: 'PUT', body: JSON.stringify(data) })
     },
   },
 

@@ -37,6 +37,7 @@ public static class OrgUnitEndpoints
             p.Add("@GeoUnitName", req.GeoUnitName);
             p.Add("@CountryCode", req.CountryCode);
             p.Add("@IsActive", 1);
+            p.Add("@ExistingSharedGeoUnitId", null);
             p.Add("@SharedGeoUnitId", dbType: System.Data.DbType.Int32,
                 direction: System.Data.ParameterDirection.Output);
 
@@ -57,6 +58,46 @@ public static class OrgUnitEndpoints
                 new { Id = id });
 
             return Results.Created($"/shared-geo-units/{id}", item);
+        }).RequireAuthorization();
+
+        app.MapPut("/shared-geo-units/{id:int}", async (int id, UpdateSharedGeoUnitRequest req, DbConnectionFactory db) =>
+        {
+            using var conn = db.CreateConnection();
+
+            var exists = await conn.QuerySingleOrDefaultAsync<int?>(
+                "SELECT SharedGeoUnitId FROM Dim.SharedGeoUnit WHERE SharedGeoUnitId = @Id",
+                new { Id = id });
+
+            if (!exists.HasValue)
+                return Results.NotFound(new ApiError("SHARED_GEO_NOT_FOUND", $"Shared geography item {id} not found."));
+
+            var p = new DynamicParameters();
+            p.Add("@GeoUnitType", req.GeoUnitType);
+            p.Add("@GeoUnitCode", req.GeoUnitCode);
+            p.Add("@GeoUnitName", req.GeoUnitName);
+            p.Add("@CountryCode", req.CountryCode);
+            p.Add("@IsActive", 1);
+            p.Add("@ExistingSharedGeoUnitId", id);
+            p.Add("@SharedGeoUnitId", dbType: System.Data.DbType.Int32,
+                direction: System.Data.ParameterDirection.Output);
+
+            await conn.ExecuteAsync("App.UpsertSharedGeoUnit", p,
+                commandType: System.Data.CommandType.StoredProcedure);
+
+            var updatedId = p.Get<int>("@SharedGeoUnitId");
+            var item = await conn.QuerySingleOrDefaultAsync<SharedGeoUnitDto>(@"
+                SELECT
+                    SharedGeoUnitId,
+                    GeoUnitType,
+                    GeoUnitCode,
+                    GeoUnitName,
+                    CountryCode,
+                    CAST(IsActive AS bit) AS IsActive
+                FROM App.vSharedGeoUnits
+                WHERE SharedGeoUnitId = @Id",
+                new { Id = updatedId });
+
+            return Results.Ok(item);
         }).RequireAuthorization();
 
         // GET /org-units?accountId=

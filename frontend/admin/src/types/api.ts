@@ -188,6 +188,13 @@ export interface CreateSharedGeoUnitInput {
   countryCode?: string
 }
 
+export interface UpdateSharedGeoUnitInput {
+  geoUnitType: 'Region' | 'SubRegion' | 'Cluster' | 'Country'
+  geoUnitCode: string
+  geoUnitName: string
+  countryCode?: string
+}
+
 /** From App.vOrgUnits */
 export interface OrgUnit {
   orgUnitId: number

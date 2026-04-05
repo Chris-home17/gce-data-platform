@@ -1448,6 +1448,7 @@ CREATE OR ALTER PROCEDURE App.UpsertSharedGeoUnit
     @GeoUnitName            NVARCHAR(200),
     @CountryCode            NVARCHAR(10) = NULL,
     @IsActive               BIT = 1,
+    @ExistingSharedGeoUnitId INT = NULL,
     @SharedGeoUnitId        INT OUTPUT
 AS
 BEGIN
@@ -1462,12 +1463,37 @@ BEGIN
     IF @GeoUnitType <> 'Country'
         SET @CountryCode = NULL;
 
-    DECLARE @ExistingId INT = (
-        SELECT SharedGeoUnitId
-        FROM Dim.SharedGeoUnit
-        WHERE GeoUnitType = @GeoUnitType
-          AND GeoUnitCode = @GeoUnitCode
-    );
+    DECLARE @ExistingId INT = NULL;
+
+    IF @ExistingSharedGeoUnitId IS NOT NULL
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1
+            FROM Dim.SharedGeoUnit
+            WHERE SharedGeoUnitId = @ExistingSharedGeoUnitId
+        )
+            THROW 50076, 'SharedGeoUnitId not found for update.', 1;
+
+        IF EXISTS (
+            SELECT 1
+            FROM Dim.SharedGeoUnit
+            WHERE GeoUnitType = @GeoUnitType
+              AND GeoUnitCode = @GeoUnitCode
+              AND SharedGeoUnitId <> @ExistingSharedGeoUnitId
+        )
+            THROW 50077, 'Another shared geography item already uses this type/code.', 1;
+
+        SET @ExistingId = @ExistingSharedGeoUnitId;
+    END
+    ELSE
+    BEGIN
+        SET @ExistingId = (
+            SELECT SharedGeoUnitId
+            FROM Dim.SharedGeoUnit
+            WHERE GeoUnitType = @GeoUnitType
+              AND GeoUnitCode = @GeoUnitCode
+        );
+    END
 
     IF @ExistingId IS NULL
     BEGIN
