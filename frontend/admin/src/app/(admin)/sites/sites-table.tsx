@@ -11,6 +11,7 @@ import { StatusBadge } from '@/components/shared/status-badge'
 import { RowActions } from '@/components/shared/row-actions'
 import { api } from '@/lib/api'
 import type { OrgUnit, OrgUnitType } from '@/types/api'
+import { ImportOrgUnitsDialog } from './import-org-units-dialog'
 
 function pathDepth(path: string): number {
   return path.split('|').filter(Boolean).length - 1
@@ -296,6 +297,9 @@ function SitesTreeTable({
               {items.length} unit{items.length !== 1 ? 's' : ''}
             </span>
           )}
+          <div className="ml-auto">
+            <ImportOrgUnitsDialog />
+          </div>
         </div>
       )}
 

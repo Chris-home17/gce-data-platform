@@ -245,6 +245,57 @@ public static class OrgUnitEndpoints
             return Results.Created($"/org-units/{newId}", item);
         }).RequireAuthorization();
 
+        // POST /org-units/bulk
+        app.MapPost("/org-units/bulk", async (BulkCreateOrgUnitsRequest req, DbConnectionFactory db) =>
+        {
+            using var conn = db.CreateConnection();
+
+            // Verify account exists upfront
+            var accountId = await conn.QuerySingleOrDefaultAsync<int?>(
+                "SELECT AccountId FROM Dim.Account WHERE AccountCode = @AccountCode",
+                new { req.AccountCode });
+
+            if (!accountId.HasValue)
+                return Results.BadRequest(new ApiError("ACCOUNT_NOT_FOUND", $"Account '{req.AccountCode}' not found."));
+
+            var results = new List<BulkOrgUnitResult>();
+
+            for (int i = 0; i < req.Rows.Count; i++)
+            {
+                var row = req.Rows[i];
+                try
+                {
+                    var p = new DynamicParameters();
+                    p.Add("@AccountCode", req.AccountCode);
+                    p.Add("@OrgUnitType", row.OrgUnitType);
+                    p.Add("@OrgUnitCode", row.OrgUnitCode);
+                    p.Add("@OrgUnitName", row.OrgUnitName);
+                    p.Add("@ParentOrgUnitType", row.ParentOrgUnitType);
+                    p.Add("@ParentOrgUnitCode", row.ParentOrgUnitCode);
+                    p.Add("@CountrySharedGeoUnitId", null);
+                    p.Add("@IsActive", 1);
+                    p.Add("@ApplyPolicies", 1);
+                    p.Add("@OrgUnitId", dbType: System.Data.DbType.Int32,
+                        direction: System.Data.ParameterDirection.Output);
+
+                    await conn.ExecuteAsync("App.InsertOrgUnit", p,
+                        commandType: System.Data.CommandType.StoredProcedure);
+
+                    results.Add(new BulkOrgUnitResult(i, true, p.Get<int>("@OrgUnitId"), null));
+                }
+                catch (Microsoft.Data.SqlClient.SqlException ex)
+                {
+                    results.Add(new BulkOrgUnitResult(i, false, null, ex.Message));
+                }
+                catch (Exception ex)
+                {
+                    results.Add(new BulkOrgUnitResult(i, false, null, ex.Message));
+                }
+            }
+
+            return Results.Ok(new BulkCreateOrgUnitsResponse(results));
+        }).RequireAuthorization();
+
         app.MapPost("/org-units/{id:int}/move", async (int id, MoveOrgUnitRequest req, DbConnectionFactory db) =>
         {
             using var conn = db.CreateConnection();

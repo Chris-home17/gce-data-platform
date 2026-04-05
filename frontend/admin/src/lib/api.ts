@@ -23,6 +23,8 @@ import type {
   CreateKpiDefinitionInput,
   CreateKpiPeriodInput,
   CreateKpiPeriodScheduleInput,
+  BulkCreateOrgUnitsInput,
+  BulkCreateOrgUnitsResponse,
   CreateOrgUnitInput,
   CreatePackageInput,
   CreatePolicyInput,
@@ -292,6 +294,9 @@ export const api = {
     },
     setActive(id: number, isActive: boolean): Promise<void> {
       return apiFetch(`/org-units/${id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) })
+    },
+    bulkCreate(data: BulkCreateOrgUnitsInput): Promise<BulkCreateOrgUnitsResponse> {
+      return apiFetch('/org-units/bulk', { method: 'POST', body: JSON.stringify(data) })
     },
   },
 

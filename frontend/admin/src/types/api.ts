@@ -533,6 +533,30 @@ export interface MoveOrgUnitInput {
   parentOrgUnitId?: number | null
 }
 
+export interface BulkOrgUnitRow {
+  orgUnitType: string
+  orgUnitCode: string
+  orgUnitName: string
+  parentOrgUnitType?: string
+  parentOrgUnitCode?: string
+}
+
+export interface BulkCreateOrgUnitsInput {
+  accountCode: string
+  rows: BulkOrgUnitRow[]
+}
+
+export interface BulkOrgUnitResult {
+  rowIndex: number
+  success: boolean
+  orgUnitId: number | null
+  error: string | null
+}
+
+export interface BulkCreateOrgUnitsResponse {
+  results: BulkOrgUnitResult[]
+}
+
 export interface CreateSourceMappingInput {
   accountCode: string
   orgUnitCode: string

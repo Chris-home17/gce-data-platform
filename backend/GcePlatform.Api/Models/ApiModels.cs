@@ -321,6 +321,32 @@ public record MoveOrgUnitRequest(
     int? ParentOrgUnitId
 );
 
+// ---------------------------------------------------------------------------
+// Org Unit bulk import  (POST /org-units/bulk)
+// ---------------------------------------------------------------------------
+
+public record BulkOrgUnitRow(
+    string  OrgUnitType,
+    string  OrgUnitCode,
+    string  OrgUnitName,
+    string? ParentOrgUnitType,
+    string? ParentOrgUnitCode
+);
+
+public record BulkCreateOrgUnitsRequest(
+    string              AccountCode,
+    List<BulkOrgUnitRow> Rows
+);
+
+public record BulkOrgUnitResult(
+    int     RowIndex,
+    bool    Success,
+    int?    OrgUnitId,
+    string? Error
+);
+
+public record BulkCreateOrgUnitsResponse(List<BulkOrgUnitResult> Results);
+
 public record SharedGeoUnitDto(
     int      SharedGeoUnitId,
     string   GeoUnitType,
