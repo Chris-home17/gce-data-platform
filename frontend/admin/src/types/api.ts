@@ -112,6 +112,17 @@ export interface CreatePolicyInput {
   applyNow: boolean
 }
 
+export interface UpdatePolicyInput {
+  policyName: string
+  roleCodeTemplate: string
+  roleNameTemplate: string
+  scopeType: 'NONE' | 'ORGUNIT'
+  orgUnitType?: string
+  orgUnitCode?: string
+  expandPerOrgUnit: boolean
+  refreshAfterSave: boolean
+}
+
 /** From App.vDelegations (screen A-17) */
 export interface Delegation {
   principalDelegationId: number

@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { api } from '@/lib/api'
+import type { ApiList, Policy } from '@/types/api'
 
 const ORG_UNIT_TYPES = ['Region', 'SubRegion', 'Cluster', 'Country', 'Area', 'Branch', 'Site'] as const
 
@@ -137,7 +138,14 @@ export function NewPolicyDialog() {
         expandPerOrgUnit: values.scopeType === 'ORGUNIT' ? values.expandPerOrgUnit : false,
         applyNow: values.applyNow,
       }),
-    onSuccess: () => {
+    onSuccess: (created) => {
+      // Immediately insert the new policy returned by the server so the table
+      // updates without waiting for the background refetch to complete.
+      queryClient.setQueryData<ApiList<Policy>>(['policies'], (old) =>
+        old
+          ? { items: [...old.items, created], totalCount: old.totalCount + 1 }
+          : { items: [created], totalCount: 1 }
+      )
       queryClient.invalidateQueries({ queryKey: ['policies'] })
       queryClient.invalidateQueries({ queryKey: ['roles'] })
       queryClient.invalidateQueries({ queryKey: ['accounts'] })

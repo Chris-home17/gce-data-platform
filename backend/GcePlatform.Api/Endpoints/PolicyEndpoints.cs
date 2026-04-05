@@ -118,6 +118,77 @@ public static class PolicyEndpoints
             return Results.Created($"/policies/{newId}", created);
         }).RequireAuthorization();
 
+        // PUT /policies/{id}
+        app.MapPut("/policies/{id:int}", async (int id, UpdateAccountRolePolicyRequest request, DbConnectionFactory db) =>
+        {
+            using var conn = db.CreateConnection();
+
+            // Validate ORGUNIT scope has the required fields
+            if (request.ScopeType == "ORGUNIT" &&
+                (string.IsNullOrWhiteSpace(request.OrgUnitType)
+                    || (!request.ExpandPerOrgUnit && string.IsNullOrWhiteSpace(request.OrgUnitCode))))
+            {
+                return Results.BadRequest(new ApiError(
+                    "INVALID_SCOPE",
+                    request.ExpandPerOrgUnit
+                        ? "OrgUnitType is required when ScopeType is ORGUNIT and expansion is enabled."
+                        : "OrgUnitType and OrgUnitCode are required when ScopeType is ORGUNIT."));
+            }
+
+            if (request.ScopeType != "ORGUNIT" && request.ExpandPerOrgUnit)
+            {
+                return Results.BadRequest(new ApiError(
+                    "INVALID_EXPANSION",
+                    "ExpandPerOrgUnit can only be enabled when ScopeType is ORGUNIT."));
+            }
+
+            if (request.ExpandPerOrgUnit &&
+                (!ContainsOrgUnitToken(request.RoleCodeTemplate) || !ContainsOrgUnitToken(request.RoleNameTemplate)))
+            {
+                return Results.BadRequest(new ApiError(
+                    "ORG_UNIT_TOKEN_REQUIRED",
+                    "Per-org-unit expansion requires both role templates to include {OrgUnitCode} or {OrgUnitName}."));
+            }
+
+            var affected = await conn.ExecuteAsync(@"
+                UPDATE Sec.AccountRolePolicy
+                SET PolicyName       = @PolicyName,
+                    RoleCodeTemplate = @RoleCodeTemplate,
+                    RoleNameTemplate = @RoleNameTemplate,
+                    ScopeType        = @ScopeType,
+                    OrgUnitType      = @OrgUnitType,
+                    OrgUnitCode      = @OrgUnitCode,
+                    ExpandPerOrgUnit = @ExpandPerOrgUnit,
+                    ModifiedOnUtc    = SYSUTCDATETIME()
+                WHERE AccountRolePolicyId = @Id",
+                new
+                {
+                    Id = id,
+                    request.PolicyName,
+                    RoleCodeTemplate = request.RoleCodeTemplate.Trim().ToUpperInvariant(),
+                    request.RoleNameTemplate,
+                    request.ScopeType,
+                    OrgUnitType = request.ScopeType == "ORGUNIT" ? request.OrgUnitType : null,
+                    OrgUnitCode = request.ScopeType == "ORGUNIT" ? request.OrgUnitCode : null,
+                    request.ExpandPerOrgUnit,
+                });
+
+            if (affected == 0)
+                return Results.NotFound(new ApiError("POLICY_NOT_FOUND", $"Policy {id} not found."));
+
+            if (request.RefreshAfterSave)
+                await ApplySingleRolePolicyAcrossAccounts(conn, id);
+
+            var updated = await conn.QuerySingleAsync<AccountRolePolicyDto>(@"
+                SELECT AccountRolePolicyId, PolicyName, RoleCodeTemplate, RoleNameTemplate,
+                       ScopeType, OrgUnitType, OrgUnitCode, CAST(ExpandPerOrgUnit AS bit) AS ExpandPerOrgUnit, IsActive
+                FROM Sec.AccountRolePolicy
+                WHERE AccountRolePolicyId = @Id",
+                new { Id = id });
+
+            return Results.Ok(updated);
+        }).RequireAuthorization();
+
         // POST /policies/{id}/refresh
         app.MapPost("/policies/{id:int}/refresh", async (int id, DbConnectionFactory db) =>
         {

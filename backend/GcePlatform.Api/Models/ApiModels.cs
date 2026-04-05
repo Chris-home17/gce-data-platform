@@ -403,6 +403,17 @@ public record CreateAccountRolePolicyRequest(
     bool     ApplyNow
 );
 
+public record UpdateAccountRolePolicyRequest(
+    string   PolicyName,
+    string   RoleCodeTemplate,
+    string   RoleNameTemplate,
+    string   ScopeType,
+    string?  OrgUnitType,
+    string?  OrgUnitCode,
+    bool     ExpandPerOrgUnit,
+    bool     RefreshAfterSave
+);
+
 // ---------------------------------------------------------------------------
 // KPI Submission
 // ---------------------------------------------------------------------------

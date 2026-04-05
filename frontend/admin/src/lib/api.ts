@@ -26,6 +26,7 @@ import type {
   CreateOrgUnitInput,
   CreatePackageInput,
   CreatePolicyInput,
+  UpdatePolicyInput,
   CreateRoleInput,
   CreateSharedGeoUnitInput,
   CreateSourceMappingInput,
@@ -203,6 +204,9 @@ export const api = {
     },
     create(data: CreatePolicyInput): Promise<Policy> {
       return apiFetch('/policies', { method: 'POST', body: JSON.stringify(data) })
+    },
+    update(id: number, data: UpdatePolicyInput): Promise<Policy> {
+      return apiFetch(`/policies/${id}`, { method: 'PUT', body: JSON.stringify(data) })
     },
     refresh(id: number): Promise<void> {
       return apiFetch(`/policies/${id}/refresh`, { method: 'POST' })
