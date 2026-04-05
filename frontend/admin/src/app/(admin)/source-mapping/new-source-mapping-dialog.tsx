@@ -157,11 +157,15 @@ export function NewSourceMappingDialog() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {orgUnits?.items.map((u) => (
-                            <SelectItem key={u.orgUnitId} value={u.orgUnitCode}>
-                              {u.orgUnitCode} — {u.orgUnitName}
-                            </SelectItem>
-                          ))}
+                          {orgUnits?.items.map((u) => {
+                            const depth = u.path.split('|').filter(Boolean).length - 1
+                            const indent = '\u00a0\u00a0'.repeat(depth)
+                            return (
+                              <SelectItem key={u.orgUnitId} value={u.orgUnitCode}>
+                                {indent}{u.orgUnitCode} — {u.orgUnitName}
+                              </SelectItem>
+                            )
+                          })}
                         </SelectContent>
                       </Select>
                       <FormMessage />
