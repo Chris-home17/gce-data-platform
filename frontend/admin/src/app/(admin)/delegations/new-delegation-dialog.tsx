@@ -30,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { PrincipalIdentifierTypeahead } from '@/components/shared/principal-identifier-typeahead'
 import { api } from '@/lib/api'
 
 const schema = z
@@ -43,6 +44,8 @@ const schema = z
     scopeType:           z.enum(['NONE', 'ORGUNIT']),
     orgUnitType:         z.string().optional(),
     orgUnitCode:         z.string().optional(),
+    validFromDate:       z.string().optional(),
+    validToDate:         z.string().optional(),
   })
   .superRefine((d, ctx) => {
     if (d.accessType === 'ACCOUNT' && !d.accountCode) {
@@ -53,6 +56,9 @@ const schema = z
         ctx.addIssue({ code: 'custom', path: ['orgUnitType'], message: 'Org unit type is required' })
       if (!d.orgUnitCode)
         ctx.addIssue({ code: 'custom', path: ['orgUnitCode'], message: 'Org unit code is required' })
+    }
+    if (d.validFromDate && d.validToDate && d.validToDate < d.validFromDate) {
+      ctx.addIssue({ code: 'custom', path: ['validToDate'], message: 'End date must be on or after start date' })
     }
   })
 
@@ -80,11 +86,15 @@ export function NewDelegationDialog() {
       scopeType:           'NONE',
       orgUnitType:         '',
       orgUnitCode:         '',
+      validFromDate:       '',
+      validToDate:         '',
     },
   })
 
   const accessType = form.watch('accessType')
   const scopeType  = form.watch('scopeType')
+  const delegatorType = form.watch('delegatorType')
+  const delegateType = form.watch('delegateType')
 
   const mutation = useMutation({
     mutationFn: (values: FormValues) =>
@@ -98,9 +108,12 @@ export function NewDelegationDialog() {
         scopeType:           values.scopeType,
         orgUnitType:         values.scopeType === 'ORGUNIT' ? values.orgUnitType : undefined,
         orgUnitCode:         values.scopeType === 'ORGUNIT' ? values.orgUnitCode : undefined,
+        validFromDate:       values.validFromDate || undefined,
+        validToDate:         values.validToDate || undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['delegations'] })
+      queryClient.invalidateQueries({ queryKey: ['coverage'] })
       setOpen(false)
       form.reset()
     },
@@ -130,7 +143,10 @@ export function NewDelegationDialog() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Delegator Type</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
+                      <Select value={field.value} onValueChange={(value) => {
+                        field.onChange(value)
+                        form.resetField('delegatorIdentifier')
+                      }}>
                         <FormControl>
                           <SelectTrigger><SelectValue /></SelectTrigger>
                         </FormControl>
@@ -150,8 +166,17 @@ export function NewDelegationDialog() {
                     <FormItem className="col-span-2">
                       <FormLabel>Delegator (UPN or Role Code)</FormLabel>
                       <FormControl>
-                        <Input placeholder="user@example.com" {...field} />
+                        <PrincipalIdentifierTypeahead
+                          principalType={delegatorType}
+                          value={field.value}
+                          onChange={field.onChange}
+                          open={open}
+                          disabled={mutation.isPending}
+                        />
                       </FormControl>
+                      <p className="text-xs text-muted-foreground">
+                        Search by user name/email or role name/code.
+                      </p>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -166,7 +191,10 @@ export function NewDelegationDialog() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Delegate Type</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
+                      <Select value={field.value} onValueChange={(value) => {
+                        field.onChange(value)
+                        form.resetField('delegateIdentifier')
+                      }}>
                         <FormControl>
                           <SelectTrigger><SelectValue /></SelectTrigger>
                         </FormControl>
@@ -186,8 +214,17 @@ export function NewDelegationDialog() {
                     <FormItem className="col-span-2">
                       <FormLabel>Delegate (UPN or Role Code)</FormLabel>
                       <FormControl>
-                        <Input placeholder="user@example.com" {...field} />
+                        <PrincipalIdentifierTypeahead
+                          principalType={delegateType}
+                          value={field.value}
+                          onChange={field.onChange}
+                          open={open}
+                          disabled={mutation.isPending}
+                        />
                       </FormControl>
+                      <p className="text-xs text-muted-foreground">
+                        Search by user name/email or role name/code.
+                      </p>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -311,6 +348,35 @@ export function NewDelegationDialog() {
                   />
                 </div>
               )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <FormField
+                  control={form.control}
+                  name="validFromDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Valid From</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="validToDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Valid To</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
               {mutation.isError && (
                 <p className="text-sm text-destructive">

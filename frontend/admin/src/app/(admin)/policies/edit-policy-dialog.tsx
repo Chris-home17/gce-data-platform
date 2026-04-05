@@ -162,6 +162,7 @@ export function EditPolicyDialog({ policy, open, onOpenChange }: EditPolicyDialo
       queryClient.invalidateQueries({ queryKey: ['roles'] })
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
       queryClient.invalidateQueries({ queryKey: ['users'] })
+      queryClient.invalidateQueries({ queryKey: ['coverage'] })
       onOpenChange(false)
     },
   })

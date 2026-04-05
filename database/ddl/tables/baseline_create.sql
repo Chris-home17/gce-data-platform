@@ -377,6 +377,8 @@ BEGIN
         AccountId             INT             NULL,
         ScopeType             NVARCHAR(15)    NOT NULL,
         OrgUnitId             INT             NULL,
+        ValidFromDate         DATE            NULL,
+        ValidToDate           DATE            NULL,
         IsActive              BIT             NOT NULL CONSTRAINT DF_PrincipalDelegation_IsActive DEFAULT (1),
         CreatedOnUtc          DATETIME2       NOT NULL CONSTRAINT DF_PrincipalDelegation_Created DEFAULT (SYSUTCDATETIME()),
         ModifiedOnUtc         DATETIME2       NOT NULL CONSTRAINT DF_PrincipalDelegation_Modified DEFAULT (SYSUTCDATETIME()),
@@ -392,6 +394,9 @@ BEGIN
             (ScopeType = 'NONE'    AND OrgUnitId IS NULL) OR
             (ScopeType = 'ORGUNIT' AND OrgUnitId IS NOT NULL)
         ),
+        CONSTRAINT CK_PrincipalDelegation_Validity CHECK (
+            ValidToDate IS NULL OR ValidFromDate IS NULL OR ValidToDate >= ValidFromDate
+        ),
         CONSTRAINT CK_PrincipalDelegation_Self CHECK (DelegatorPrincipalId <> DelegatePrincipalId)
     );
 
@@ -401,6 +406,34 @@ BEGIN
 
     CREATE INDEX IX_PrincipalDelegation_Delegate
         ON Sec.PrincipalDelegation (DelegatePrincipalId, IsActive);
+END;
+GO
+
+IF COL_LENGTH('Sec.PrincipalDelegation', 'ValidFromDate') IS NULL
+BEGIN
+    ALTER TABLE Sec.PrincipalDelegation
+        ADD ValidFromDate DATE NULL;
+END;
+GO
+
+IF COL_LENGTH('Sec.PrincipalDelegation', 'ValidToDate') IS NULL
+BEGIN
+    ALTER TABLE Sec.PrincipalDelegation
+        ADD ValidToDate DATE NULL;
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT 1
+    FROM sys.check_constraints
+    WHERE name = 'CK_PrincipalDelegation_Validity'
+      AND parent_object_id = OBJECT_ID('Sec.PrincipalDelegation')
+)
+BEGIN
+    ALTER TABLE Sec.PrincipalDelegation
+        ADD CONSTRAINT CK_PrincipalDelegation_Validity CHECK (
+            ValidToDate IS NULL OR ValidFromDate IS NULL OR ValidToDate >= ValidFromDate
+        );
 END;
 GO
 
@@ -525,7 +558,9 @@ AS
         del.ScopeType,
         del.OrgUnitId
     FROM Sec.PrincipalDelegation AS del
-    WHERE del.IsActive = 1;
+    WHERE del.IsActive = 1
+      AND (del.ValidFromDate IS NULL OR del.ValidFromDate <= CAST(SYSUTCDATETIME() AS DATE))
+      AND (del.ValidToDate IS NULL OR del.ValidToDate >= CAST(SYSUTCDATETIME() AS DATE));
 GO
 
 IF OBJECT_ID('Sec.fnCanAdministerScope', 'FN') IS NOT NULL
@@ -1274,6 +1309,8 @@ AS
         ISNULL(ou.OrgUnitType, 'N/A')       AS OrgUnitType,
         ISNULL(ou.OrgUnitCode, 'N/A')       AS OrgUnitCode,
         ISNULL(ou.OrgUnitName, 'N/A')       AS OrgUnitName,
+        CONVERT(CHAR(10), del.ValidFromDate, 23) AS ValidFromDate,
+        CONVERT(CHAR(10), del.ValidToDate, 23)   AS ValidToDate,
         del.IsActive,
         del.CreatedOnUtc,
         del.ModifiedOnUtc
@@ -3047,7 +3084,9 @@ CREATE OR ALTER PROCEDURE Sec.GrantDelegation
     @AccountCode            NVARCHAR(50) = NULL,
     @ScopeType              NVARCHAR(15),
     @OrgUnitType            NVARCHAR(20) = NULL,
-    @OrgUnitCode            NVARCHAR(50) = NULL
+    @OrgUnitCode            NVARCHAR(50) = NULL,
+    @ValidFromDate          DATE = NULL,
+    @ValidToDate            DATE = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -3068,6 +3107,9 @@ BEGIN
 
     IF @ScopeType NOT IN ('NONE','ORGUNIT')
         THROW 50033, 'Invalid delegation scope type.', 1;
+
+    IF @ValidFromDate IS NOT NULL AND @ValidToDate IS NOT NULL AND @ValidToDate < @ValidFromDate
+        THROW 50041, 'Delegation end date cannot be before start date.', 1;
 
     DECLARE @AccountId INT = NULL;
     IF @AccessType = 'ACCOUNT'
@@ -3123,6 +3165,8 @@ BEGIN
     BEGIN
         UPDATE Sec.PrincipalDelegation
         SET IsActive = 1,
+            ValidFromDate = @ValidFromDate,
+            ValidToDate = @ValidToDate,
             ModifiedOnUtc = SYSUTCDATETIME(),
             ModifiedBy = SESSION_USER
         WHERE DelegatorPrincipalId = @DelegatorId
@@ -3135,9 +3179,9 @@ BEGIN
     ELSE
     BEGIN
         INSERT INTO Sec.PrincipalDelegation
-            (DelegatorPrincipalId, DelegatePrincipalId, AccessType, AccountId, ScopeType, OrgUnitId)
+            (DelegatorPrincipalId, DelegatePrincipalId, AccessType, AccountId, ScopeType, OrgUnitId, ValidFromDate, ValidToDate)
         VALUES
-            (@DelegatorId, @DelegateId, @AccessType, @AccountId, @ScopeType, @OrgUnitId);
+            (@DelegatorId, @DelegateId, @AccessType, @AccountId, @ScopeType, @OrgUnitId, @ValidFromDate, @ValidToDate);
     END
 END;
 GO

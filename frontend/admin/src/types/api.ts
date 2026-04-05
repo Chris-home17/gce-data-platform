@@ -137,6 +137,8 @@ export interface Delegation {
   orgUnitType: string
   orgUnitCode: string
   orgUnitName: string
+  validFromDate: string | null
+  validToDate: string | null
   isActive: boolean
   createdOnUtc: string
 }
@@ -530,6 +532,8 @@ export interface CreateDelegationInput {
   scopeType: 'NONE' | 'ORGUNIT'
   orgUnitType?: string
   orgUnitCode?: string
+  validFromDate?: string
+  validToDate?: string
 }
 
 export interface CreateKpiAssignmentInput {

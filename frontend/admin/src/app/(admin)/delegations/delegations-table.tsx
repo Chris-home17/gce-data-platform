@@ -39,6 +39,37 @@ function ScopeBadge({ delegation }: { delegation: Delegation }) {
   )
 }
 
+function ValidityBadge({ delegation }: { delegation: Delegation }) {
+  if (!delegation.validFromDate && !delegation.validToDate) {
+    return <span className="text-sm text-muted-foreground">Open-ended</span>
+  }
+
+  if (delegation.validFromDate && delegation.validToDate) {
+    return (
+      <div className="space-y-0.5 text-sm">
+        <span className="block">{delegation.validFromDate}</span>
+        <span className="block text-muted-foreground">to {delegation.validToDate}</span>
+      </div>
+    )
+  }
+
+  if (delegation.validFromDate) {
+    return (
+      <div className="space-y-0.5 text-sm">
+        <span className="block">{delegation.validFromDate}</span>
+        <span className="block text-muted-foreground">start</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-0.5 text-sm">
+      <span className="block">{delegation.validToDate}</span>
+      <span className="block text-muted-foreground">end</span>
+    </div>
+  )
+}
+
 const columns: ColumnDef<Delegation, unknown>[] = [
   {
     accessorKey: 'delegatorName',
@@ -60,6 +91,11 @@ const columns: ColumnDef<Delegation, unknown>[] = [
     cell: ({ row }) => <ScopeBadge delegation={row.original} />,
   },
   {
+    id: 'validity',
+    header: 'Validity',
+    cell: ({ row }) => <ValidityBadge delegation={row.original} />,
+  },
+  {
     accessorKey: 'isActive',
     header: 'Status',
     cell: ({ row }) => (
@@ -73,12 +109,8 @@ const columns: ColumnDef<Delegation, unknown>[] = [
     cell: ({ row }) => (
       <RowActions
         isActive={row.original.isActive}
-        onToggle={() =>
-          row.original.isActive
-            ? api.delegations.revoke(row.original.principalDelegationId)
-            : Promise.resolve()
-        }
-        invalidateKeys={[['delegations']]}
+        onToggle={() => api.delegations.setActive(row.original.principalDelegationId, !row.original.isActive)}
+        invalidateKeys={[['delegations'], ['coverage']]}
         entityLabel="delegation"
       />
     ),

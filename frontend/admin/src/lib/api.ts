@@ -225,6 +225,9 @@ export const api = {
     create(data: CreateDelegationInput): Promise<void> {
       return apiFetch('/delegations', { method: 'POST', body: JSON.stringify(data) })
     },
+    setActive(id: number, isActive: boolean): Promise<void> {
+      return apiFetch(`/delegations/${id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) })
+    },
     revoke(id: number): Promise<void> {
       return apiFetch(`/delegations/${id}`, { method: 'DELETE' })
     },

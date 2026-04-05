@@ -744,6 +744,8 @@ public record DelegationDto(
     string   OrgUnitType,
     string   OrgUnitCode,
     string   OrgUnitName,
+    string?  ValidFromDate,
+    string?  ValidToDate,
     bool     IsActive,
     DateTime CreatedOnUtc
 );
@@ -757,7 +759,9 @@ public record GrantDelegationRequest(
     string? AccountCode,
     string  ScopeType,
     string? OrgUnitType,
-    string? OrgUnitCode
+    string? OrgUnitCode,
+    string? ValidFromDate,
+    string? ValidToDate
 );
 
 // ---------------------------------------------------------------------------

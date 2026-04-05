@@ -1,6 +1,7 @@
 using Dapper;
 using GcePlatform.Api.Data;
 using GcePlatform.Api.Models;
+using Microsoft.Data.SqlClient;
 
 namespace GcePlatform.Api.Endpoints;
 
@@ -26,6 +27,8 @@ public static class DelegationEndpoints
                     OrgUnitType,
                     OrgUnitCode,
                     OrgUnitName,
+                    ValidFromDate,
+                    ValidToDate,
                     IsActive,
                     CreatedOnUtc
                 FROM App.vDelegations
@@ -38,6 +41,31 @@ public static class DelegationEndpoints
         // POST /delegations — Sec.GrantDelegation
         app.MapPost("/delegations", async (GrantDelegationRequest req, DbConnectionFactory db) =>
         {
+            DateTime? validFromDate = null;
+            DateTime? validToDate = null;
+
+            if (!string.IsNullOrWhiteSpace(req.ValidFromDate) &&
+                !DateOnly.TryParse(req.ValidFromDate, out var parsedValidFromDate))
+            {
+                return Results.BadRequest(new ApiError("INVALID_VALID_FROM_DATE", "Valid from date is invalid."));
+            }
+
+            if (!string.IsNullOrWhiteSpace(req.ValidToDate) &&
+                !DateOnly.TryParse(req.ValidToDate, out var parsedValidToDate))
+            {
+                return Results.BadRequest(new ApiError("INVALID_VALID_TO_DATE", "Valid to date is invalid."));
+            }
+
+            if (!string.IsNullOrWhiteSpace(req.ValidFromDate))
+            {
+                validFromDate = parsedValidFromDate.ToDateTime(TimeOnly.MinValue);
+            }
+
+            if (!string.IsNullOrWhiteSpace(req.ValidToDate))
+            {
+                validToDate = parsedValidToDate.ToDateTime(TimeOnly.MinValue);
+            }
+
             using var conn = db.CreateConnection();
             var p = new DynamicParameters();
             p.Add("@DelegatorPrincipalType", req.DelegatorType);
@@ -49,9 +77,30 @@ public static class DelegationEndpoints
             p.Add("@ScopeType",              req.ScopeType);
             p.Add("@OrgUnitType",            req.OrgUnitType);
             p.Add("@OrgUnitCode",            req.OrgUnitCode);
+            p.Add("@ValidFromDate",          validFromDate);
+            p.Add("@ValidToDate",            validToDate);
 
-            await conn.ExecuteAsync("Sec.GrantDelegation", p,
-                commandType: System.Data.CommandType.StoredProcedure);
+            try
+            {
+                await conn.ExecuteAsync("Sec.GrantDelegation", p,
+                    commandType: System.Data.CommandType.StoredProcedure);
+            }
+            catch (SqlException ex) when (ex.Number is 50029 or 50030)
+            {
+                return Results.NotFound(new ApiError("PRINCIPAL_NOT_FOUND", ex.Message));
+            }
+            catch (SqlException ex) when (ex.Number is 50031 or 50032 or 50033 or 50034 or 50036 or 50041)
+            {
+                return Results.BadRequest(new ApiError("INVALID_DELEGATION", ex.Message));
+            }
+            catch (SqlException ex) when (ex.Number is 50035 or 50037)
+            {
+                return Results.NotFound(new ApiError("SCOPE_NOT_FOUND", ex.Message));
+            }
+            catch (SqlException ex) when (ex.Number == 50038)
+            {
+                return Results.BadRequest(new ApiError("DELEGATOR_LACKS_COVERAGE", ex.Message));
+            }
 
             return Results.NoContent();
         }).RequireAuthorization();
@@ -76,6 +125,28 @@ public static class DelegationEndpoints
             return affected == 0
                 ? Results.NotFound(new ApiError("DELEGATION_NOT_FOUND", $"Delegation {id} not found."))
                 : Results.NoContent();
+        }).RequireAuthorization();
+
+        // PATCH /delegations/{id}/status
+        app.MapMethods("/delegations/{id:int}/status", new[] { "PATCH" }, async (int id, SetActiveRequest request, DbConnectionFactory db) =>
+        {
+            using var conn = db.CreateConnection();
+            var affected = await conn.ExecuteScalarAsync<int>(@"
+                SELECT COUNT(1)
+                FROM App.vDelegations
+                WHERE PrincipalDelegationId = @Id",
+                new { Id = id });
+
+            if (affected == 0)
+            {
+                return Results.NotFound(new ApiError("DELEGATION_NOT_FOUND", $"Delegation {id} not found."));
+            }
+
+            await conn.ExecuteAsync("Sec.usp_SetDelegationActive",
+                new { PrincipalDelegationId = id, IsActive = request.IsActive },
+                commandType: System.Data.CommandType.StoredProcedure);
+
+            return Results.NoContent();
         }).RequireAuthorization();
 
         return app;

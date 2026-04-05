@@ -150,6 +150,7 @@ export function NewPolicyDialog() {
       queryClient.invalidateQueries({ queryKey: ['roles'] })
       queryClient.invalidateQueries({ queryKey: ['accounts'] })
       queryClient.invalidateQueries({ queryKey: ['users'] })
+      queryClient.invalidateQueries({ queryKey: ['coverage'] })
       setOpen(false)
       form.reset()
     },
