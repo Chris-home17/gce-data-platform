@@ -694,15 +694,53 @@ BEGIN
     IF @PrincipalId IS NULL
         RETURN 0;
 
+    DECLARE @EffectiveScopes TABLE
+    (
+        PrincipalId INT,
+        AccessType  NVARCHAR(10),
+        AccountId   INT NULL,
+        ScopeType   NVARCHAR(15),
+        OrgUnitId   INT NULL
+    );
+
+    INSERT INTO @EffectiveScopes
+    (
+        PrincipalId,
+        AccessType,
+        AccountId,
+        ScopeType,
+        OrgUnitId
+    )
+    SELECT
+        @PrincipalId,
+        eff.AccessType,
+        eff.AccountId,
+        eff.ScopeType,
+        eff.OrgUnitId
+    FROM Sec.vPrincipalEffectiveAccess AS eff
+    WHERE eff.PrincipalId = @PrincipalId
+
+    UNION ALL
+
+    SELECT
+        @PrincipalId,
+        eff.AccessType,
+        eff.AccountId,
+        eff.ScopeType,
+        eff.OrgUnitId
+    FROM Sec.vUserGrantPrincipals AS gp
+    JOIN Sec.vPrincipalEffectiveAccess AS eff
+        ON eff.PrincipalId = gp.GrantPrincipalId
+    WHERE gp.UserPrincipalId = @PrincipalId;
+
     IF @ScopeType = 'NONE'
     BEGIN
         IF @AccountId IS NULL
         BEGIN
             IF EXISTS (
                 SELECT 1
-                FROM Sec.vPrincipalEffectiveAccess AS eff
-                WHERE eff.PrincipalId = @PrincipalId
-                  AND eff.AccessType = 'ALL'
+                FROM @EffectiveScopes AS eff
+                WHERE eff.AccessType = 'ALL'
                   AND eff.ScopeType = 'NONE'
             )
                 SET @Result = 1;
@@ -711,12 +749,11 @@ BEGIN
         BEGIN
             IF EXISTS (
                 SELECT 1
-                FROM Sec.vPrincipalEffectiveAccess AS eff
-                WHERE eff.PrincipalId = @PrincipalId
-                  AND (
-                        (eff.AccessType = 'ALL' AND eff.ScopeType = 'NONE')
-                     OR (eff.AccessType = 'ACCOUNT' AND eff.ScopeType = 'NONE' AND eff.AccountId = @AccountId)
-                  )
+                FROM @EffectiveScopes AS eff
+                WHERE
+                    (eff.AccessType = 'ALL' AND eff.ScopeType = 'NONE')
+                    OR
+                    (eff.AccessType = 'ACCOUNT' AND eff.ScopeType = 'NONE' AND eff.AccountId = @AccountId)
             )
                 SET @Result = 1;
         END
@@ -734,17 +771,28 @@ BEGIN
 
         IF EXISTS (
             SELECT 1
-            FROM Sec.vPrincipalEffectiveAccess AS eff
-            LEFT JOIN Dim.OrgUnit AS effOrg ON eff.OrgUnitId = effOrg.OrgUnitId
-            WHERE eff.PrincipalId = @PrincipalId
-              AND (
-                    (eff.AccessType = 'ALL' AND eff.ScopeType = 'NONE')
-                 OR (eff.AccessType = 'ACCOUNT' AND eff.ScopeType = 'NONE' AND eff.AccountId = @TargetAccountId)
-                 OR (eff.AccessType = 'ACCOUNT' AND eff.ScopeType = 'ORGUNIT' AND eff.AccountId = @TargetAccountId
-                     AND effOrg.Path IS NOT NULL AND @TargetPath LIKE effOrg.Path + '%')
-                 OR (eff.AccessType = 'ALL' AND eff.ScopeType = 'ORGUNIT'
-                     AND effOrg.Path IS NOT NULL AND @TargetPath LIKE effOrg.Path + '%')
-                 )
+            FROM @EffectiveScopes AS eff
+            LEFT JOIN Dim.OrgUnit AS effOrg
+                ON eff.OrgUnitId = effOrg.OrgUnitId
+            WHERE
+                (eff.AccessType = 'ALL' AND eff.ScopeType = 'NONE')
+                OR
+                (eff.AccessType = 'ACCOUNT' AND eff.ScopeType = 'NONE' AND eff.AccountId = @TargetAccountId)
+                OR
+                (
+                    eff.AccessType = 'ACCOUNT'
+                    AND eff.ScopeType = 'ORGUNIT'
+                    AND eff.AccountId = @TargetAccountId
+                    AND effOrg.Path IS NOT NULL
+                    AND @TargetPath LIKE effOrg.Path + '%'
+                )
+                OR
+                (
+                    eff.AccessType = 'ALL'
+                    AND eff.ScopeType = 'ORGUNIT'
+                    AND effOrg.Path IS NOT NULL
+                    AND @TargetPath LIKE effOrg.Path + '%'
+                )
         )
             SET @Result = 1;
     END

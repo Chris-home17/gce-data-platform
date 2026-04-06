@@ -11,6 +11,183 @@ public static class DelegationEndpoints
 {
     public static WebApplication MapDelegationEndpoints(this WebApplication app)
     {
+        app.MapGet("/delegations/scope-options", async (
+            string delegatorType,
+            string delegatorIdentifier,
+            string accessType,
+            string? accountCode,
+            DbConnectionFactory db) =>
+        {
+            using var conn = db.CreateConnection();
+
+            var principal = await conn.QuerySingleOrDefaultAsync<(int PrincipalId, string PrincipalType)>(@"
+                SELECT PrincipalId, PrincipalType
+                FROM App.vPrincipals
+                WHERE IsActive = 1
+                  AND (
+                        (@DelegatorType = 'USER' AND PrincipalType = 'User' AND UPN = @DelegatorIdentifier)
+                     OR (@DelegatorType = 'ROLE' AND PrincipalType = 'Role' AND RoleCode = @DelegatorIdentifier)
+                  )",
+                new
+                {
+                    DelegatorType = delegatorType,
+                    DelegatorIdentifier = delegatorIdentifier,
+                });
+
+            if (principal.PrincipalId == 0)
+            {
+                return Results.NotFound(new ApiError("PRINCIPAL_NOT_FOUND", "Delegator principal not found."));
+            }
+
+            var accounts = (await conn.QueryAsync<DelegationScopeAccountOptionDto>(@"
+                WITH EffectiveScopes AS
+                (
+                    SELECT
+                        @PrincipalId AS PrincipalId,
+                        eff.AccessType,
+                        eff.AccountId,
+                        eff.ScopeType,
+                        eff.OrgUnitId
+                    FROM Sec.vPrincipalEffectiveAccess AS eff
+                    WHERE eff.PrincipalId = @PrincipalId
+
+                    UNION ALL
+
+                    SELECT
+                        @PrincipalId AS PrincipalId,
+                        eff.AccessType,
+                        eff.AccountId,
+                        eff.ScopeType,
+                        eff.OrgUnitId
+                    FROM Sec.vUserGrantPrincipals AS gp
+                    JOIN Sec.vPrincipalEffectiveAccess AS eff
+                        ON eff.PrincipalId = gp.GrantPrincipalId
+                    WHERE gp.UserPrincipalId = @PrincipalId
+                ),
+                DelegableAccounts AS
+                (
+                    SELECT DISTINCT a.AccountCode, a.AccountName
+                    FROM Dim.Account AS a
+                    WHERE EXISTS (
+                        SELECT 1
+                        FROM EffectiveScopes AS eff
+                        LEFT JOIN Dim.OrgUnit AS effOrg ON eff.OrgUnitId = effOrg.OrgUnitId
+                        WHERE (
+                                eff.AccessType = 'ALL'
+                            AND eff.ScopeType = 'NONE'
+                        )
+                        OR (
+                                eff.AccessType = 'ACCOUNT'
+                            AND eff.ScopeType = 'NONE'
+                            AND eff.AccountId = a.AccountId
+                        )
+                        OR (
+                                @AccessType = 'ACCOUNT'
+                            AND eff.ScopeType = 'ORGUNIT'
+                            AND (
+                                   (eff.AccessType = 'ACCOUNT' AND eff.AccountId = a.AccountId)
+                                OR (eff.AccessType = 'ALL' AND effOrg.AccountId = a.AccountId)
+                            )
+                        )
+                    )
+                )
+                SELECT AccountCode, AccountName
+                FROM DelegableAccounts
+                ORDER BY AccountName, AccountCode;",
+                new { PrincipalId = principal.PrincipalId, AccessType = accessType })).ToList();
+
+            var orgUnits = (await conn.QueryAsync<DelegationScopeOrgUnitOptionDto>(@"
+                DECLARE @AccountId INT = (
+                    SELECT AccountId
+                    FROM Dim.Account
+                    WHERE AccountCode = @AccountCode
+                );
+
+                WITH EffectiveScopes AS
+                (
+                    SELECT
+                        @PrincipalId AS PrincipalId,
+                        eff.AccessType,
+                        eff.AccountId,
+                        eff.ScopeType,
+                        eff.OrgUnitId
+                    FROM Sec.vPrincipalEffectiveAccess AS eff
+                    WHERE eff.PrincipalId = @PrincipalId
+
+                    UNION ALL
+
+                    SELECT
+                        @PrincipalId AS PrincipalId,
+                        eff.AccessType,
+                        eff.AccountId,
+                        eff.ScopeType,
+                        eff.OrgUnitId
+                    FROM Sec.vUserGrantPrincipals AS gp
+                    JOIN Sec.vPrincipalEffectiveAccess AS eff
+                        ON eff.PrincipalId = gp.GrantPrincipalId
+                    WHERE gp.UserPrincipalId = @PrincipalId
+                ),
+                AllowedOrgUnits AS
+                (
+                    SELECT DISTINCT
+                        ou.OrgUnitId,
+                        ou.AccountId,
+                        acct.AccountCode,
+                        ou.OrgUnitType,
+                        ou.OrgUnitCode,
+                        ou.OrgUnitName,
+                        ou.Path
+                    FROM App.vOrgUnits AS ou
+                    JOIN Dim.Account AS acct ON acct.AccountId = ou.AccountId
+                    WHERE ou.IsActive = 1
+                      AND (@AccountId IS NULL OR ou.AccountId = @AccountId)
+                      AND EXISTS
+                      (
+                          SELECT 1
+                          FROM EffectiveScopes AS eff
+                          LEFT JOIN Dim.OrgUnit AS effOrg ON eff.OrgUnitId = effOrg.OrgUnitId
+                          WHERE
+                                (
+                                    eff.AccessType = 'ALL'
+                                AND eff.ScopeType = 'NONE'
+                                )
+                             OR (
+                                    @AccessType = 'ACCOUNT'
+                                AND eff.AccessType = 'ACCOUNT'
+                                AND eff.ScopeType = 'NONE'
+                                AND eff.AccountId = ou.AccountId
+                                )
+                             OR (
+                                    eff.AccessType = @AccessType
+                                AND eff.ScopeType = 'ORGUNIT'
+                                AND effOrg.Path IS NOT NULL
+                                AND ou.Path LIKE effOrg.Path + '%'
+                                AND (
+                                       (eff.AccessType = 'ALL')
+                                    OR (eff.AccessType = 'ACCOUNT' AND eff.AccountId = ou.AccountId)
+                                )
+                                )
+                      )
+                )
+                SELECT
+                    OrgUnitId,
+                    AccountCode,
+                    OrgUnitType,
+                    OrgUnitCode,
+                    OrgUnitName,
+                    Path
+                FROM AllowedOrgUnits
+                ORDER BY AccountCode, Path;",
+                new
+                {
+                    PrincipalId = principal.PrincipalId,
+                    AccessType = accessType,
+                    AccountCode = accountCode,
+                })).ToList();
+
+            return Results.Ok(new DelegationScopeOptionsDto(accounts, orgUnits));
+        }).RequireAuthorization();
+
         // GET /delegations
         app.MapGet("/delegations", async (DbConnectionFactory db) =>
         {

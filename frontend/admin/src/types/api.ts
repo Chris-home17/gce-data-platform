@@ -193,6 +193,25 @@ export interface Delegation {
   createdOnUtc: string
 }
 
+export interface DelegationScopeAccountOption {
+  accountCode: string
+  accountName: string
+}
+
+export interface DelegationScopeOrgUnitOption {
+  orgUnitId: number
+  accountCode: string
+  orgUnitType: string
+  orgUnitCode: string
+  orgUnitName: string
+  path: string
+}
+
+export interface DelegationScopeOptions {
+  accounts: DelegationScopeAccountOption[]
+  orgUnits: DelegationScopeOrgUnitOption[]
+}
+
 // ---------------------------------------------------------------------------
 // Catalogue domain types
 // ---------------------------------------------------------------------------

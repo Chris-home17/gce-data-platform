@@ -64,15 +64,13 @@ const schema = z
 
 type FormValues = z.infer<typeof schema>
 
+function makeOrgUnitOptionValue(orgUnitId: number) {
+  return String(orgUnitId)
+}
+
 export function NewDelegationDialog() {
   const [open, setOpen] = useState(false)
   const queryClient = useQueryClient()
-
-  const { data: accounts } = useQuery({
-    queryKey: ['accounts'],
-    queryFn: () => api.accounts.list(),
-    enabled: open,
-  })
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -95,6 +93,22 @@ export function NewDelegationDialog() {
   const scopeType  = form.watch('scopeType')
   const delegatorType = form.watch('delegatorType')
   const delegateType = form.watch('delegateType')
+  const delegatorIdentifier = form.watch('delegatorIdentifier')
+  const watchedAccountCode = form.watch('accountCode')
+  const watchedOrgUnitCode = form.watch('orgUnitCode')
+  const watchedOrgUnitType = form.watch('orgUnitType')
+
+  const { data: scopeOptions, isLoading: isLoadingScopeOptions } = useQuery({
+    queryKey: ['delegation-scope-options', delegatorType, delegatorIdentifier, accessType, watchedAccountCode],
+    queryFn: () =>
+      api.delegations.scopeOptions({
+        delegatorType,
+        delegatorIdentifier: delegatorIdentifier.trim(),
+        accessType,
+        accountCode: accessType === 'ACCOUNT' ? watchedAccountCode || undefined : undefined,
+      }),
+    enabled: open && !!delegatorIdentifier.trim(),
+  })
 
   const mutation = useMutation({
     mutationFn: (values: FormValues) =>
@@ -121,6 +135,13 @@ export function NewDelegationDialog() {
       form.reset()
     },
   })
+
+  const selectedOrgUnitValue =
+    scopeOptions?.orgUnits.find((item) => item.orgUnitCode === watchedOrgUnitCode && item.orgUnitType === watchedOrgUnitType)
+      ? makeOrgUnitOptionValue(
+          scopeOptions.orgUnits.find((item) => item.orgUnitCode === watchedOrgUnitCode && item.orgUnitType === watchedOrgUnitType)!.orgUnitId
+        )
+      : ''
 
   return (
     <>
@@ -272,20 +293,27 @@ export function NewDelegationDialog() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Account</FormLabel>
-                      <Select value={field.value} onValueChange={field.onChange}>
+                      <Select value={field.value} onValueChange={(value) => {
+                        field.onChange(value)
+                        form.resetField('orgUnitType')
+                        form.resetField('orgUnitCode')
+                      }}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select account…" />
+                            <SelectValue placeholder={delegatorIdentifier ? 'Select delegable account…' : 'Select delegator first…'} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {accounts?.items.map((a) => (
-                            <SelectItem key={a.accountId} value={a.accountCode}>
+                          {scopeOptions?.accounts.map((a) => (
+                            <SelectItem key={a.accountCode} value={a.accountCode}>
                               {a.accountName} ({a.accountCode})
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
+                      {delegatorIdentifier && !isLoadingScopeOptions && (scopeOptions?.accounts.length ?? 0) === 0 && (
+                        <p className="text-xs text-muted-foreground">No delegable accounts available for this delegator.</p>
+                      )}
                       <FormMessage />
                     </FormItem>
                   )}
@@ -322,29 +350,49 @@ export function NewDelegationDialog() {
 
               {/* Org unit fields (ORGUNIT only) */}
               {scopeType === 'ORGUNIT' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <FormField
-                    control={form.control}
-                    name="orgUnitType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Org Unit Type</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Site" className="font-mono" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                <div className="grid grid-cols-1 gap-3">
                   <FormField
                     control={form.control}
                     name="orgUnitCode"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Org Unit Code</FormLabel>
-                        <FormControl>
-                          <Input placeholder="AU-SYD-01" className="font-mono" {...field} />
-                        </FormControl>
+                        <FormLabel>Org Unit (root of subtree)</FormLabel>
+                        <Select
+                          value={selectedOrgUnitValue}
+                          onValueChange={(value) => {
+                            const unit = scopeOptions?.orgUnits.find((item) => makeOrgUnitOptionValue(item.orgUnitId) === value)
+                            form.setValue('orgUnitCode', unit?.orgUnitCode ?? '')
+                            form.setValue('orgUnitType', unit?.orgUnitType ?? '')
+                          }}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue
+                                placeholder={
+                                  !delegatorIdentifier
+                                    ? 'Select delegator first…'
+                                    : accessType === 'ACCOUNT' && !watchedAccountCode
+                                      ? 'Select account first…'
+                                      : 'Select delegable org unit…'
+                                }
+                              />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {scopeOptions?.orgUnits.map((u) => {
+                              const depth = u.path.split('|').filter(Boolean).length - 1
+                              const indent = '\u00a0\u00a0'.repeat(depth)
+                              return (
+                                <SelectItem key={u.orgUnitId} value={makeOrgUnitOptionValue(u.orgUnitId)}>
+                                  {indent}{u.orgUnitCode} — {u.orgUnitName}
+                                </SelectItem>
+                              )
+                            })}
+                          </SelectContent>
+                        </Select>
+                        {delegatorIdentifier && !isLoadingScopeOptions && (scopeOptions?.orgUnits.length ?? 0) === 0 && (
+                          <p className="text-xs text-muted-foreground">No delegable org units available for the selected scope.</p>
+                        )}
                         <FormMessage />
                       </FormItem>
                     )}

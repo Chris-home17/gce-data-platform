@@ -849,6 +849,25 @@ public record GrantDelegationRequest(
     string? ValidToDate
 );
 
+public record DelegationScopeAccountOptionDto(
+    string AccountCode,
+    string AccountName
+);
+
+public record DelegationScopeOrgUnitOptionDto(
+    int    OrgUnitId,
+    string AccountCode,
+    string OrgUnitType,
+    string OrgUnitCode,
+    string OrgUnitName,
+    string Path
+);
+
+public record DelegationScopeOptionsDto(
+    List<DelegationScopeAccountOptionDto> Accounts,
+    List<DelegationScopeOrgUnitOptionDto> OrgUnits
+);
+
 // ---------------------------------------------------------------------------
 // Effective access — user detail, A-12
 // ---------------------------------------------------------------------------

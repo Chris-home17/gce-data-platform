@@ -41,6 +41,7 @@ import type {
   CreateUserInput,
   CreateDelegationInput,
   Delegation,
+  DelegationScopeOptions,
   EffectiveAccessEntry,
   Grant,
   GrantAccessInput,
@@ -237,6 +238,20 @@ export const api = {
   delegations: {
     list(): Promise<ApiList<Delegation>> {
       return apiFetch('/delegations')
+    },
+    scopeOptions(params: {
+      delegatorType: 'USER' | 'ROLE'
+      delegatorIdentifier: string
+      accessType: 'ALL' | 'ACCOUNT'
+      accountCode?: string
+    }): Promise<DelegationScopeOptions> {
+      const qs = new URLSearchParams({
+        delegatorType: params.delegatorType,
+        delegatorIdentifier: params.delegatorIdentifier,
+        accessType: params.accessType,
+      })
+      if (params.accountCode) qs.set('accountCode', params.accountCode)
+      return apiFetch(`/delegations/scope-options?${qs.toString()}`)
     },
     create(data: CreateDelegationInput): Promise<void> {
       return apiFetch('/delegations', { method: 'POST', body: JSON.stringify(data) })
