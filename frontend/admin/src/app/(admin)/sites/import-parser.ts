@@ -1,8 +1,12 @@
-import type { BulkOrgUnitRow, OrgUnit, OrgUnitType } from '@/types/api'
+import type { BulkOrgUnitRow, OrgUnit, OrgUnitType, SharedGeoUnit } from '@/types/api'
 
-const ALLOWED_TYPES: OrgUnitType[] = ['Area', 'Branch', 'Site']
+const ALLOWED_TYPES: OrgUnitType[] = ['Region', 'SubRegion', 'Cluster', 'Country', 'Area', 'Branch', 'Site']
 
 const ALLOWED_PARENT_TYPES: Record<string, OrgUnitType[]> = {
+  Region: [],
+  SubRegion: ['Region'],
+  Cluster: ['Region', 'SubRegion'],
+  Country: ['Region', 'SubRegion', 'Cluster'],
   Area: ['Country'],
   Branch: ['Country', 'Area'],
   Site: ['Country', 'Area', 'Branch'],
@@ -126,10 +130,17 @@ export interface ValidatedRow {
   warnings: string[]
 }
 
-export function validateRows(rows: BulkOrgUnitRow[], existingOrgUnits: OrgUnit[]): ValidatedRow[] {
+export function validateRows(
+  rows: BulkOrgUnitRow[],
+  existingOrgUnits: OrgUnit[],
+  sharedGeoUnits: SharedGeoUnit[],
+): ValidatedRow[] {
   // Build a set of codes available: from DB + from earlier rows in this batch
   const knownUnits = new Map<string, OrgUnitType>(
     existingOrgUnits.map((u) => [`${u.orgUnitType}:${u.orgUnitCode}`, u.orgUnitType])
+  )
+  const knownSharedGeo = new Set<string>(
+    sharedGeoUnits.map((g) => `${g.geoUnitType}:${g.geoUnitCode}`)
   )
 
   return rows.map((row, idx) => {
@@ -157,25 +168,33 @@ export function validateRows(rows: BulkOrgUnitRow[], existingOrgUnits: OrgUnit[]
     if (row.orgUnitType && (ALLOWED_TYPES as string[]).includes(row.orgUnitType)) {
       const allowed = ALLOWED_PARENT_TYPES[row.orgUnitType] ?? []
 
-      if (!row.parentOrgUnitType || !row.parentOrgUnitCode) {
-        errors.push('Parent type and code are required for Area, Branch, and Site.')
+      if (allowed.length === 0) {
+        if (row.parentOrgUnitType || row.parentOrgUnitCode) {
+          errors.push(`${row.orgUnitType} cannot have a parent.`)
+        }
+      } else if (!row.parentOrgUnitType || !row.parentOrgUnitCode) {
+        errors.push(`Parent type and code are required for ${row.orgUnitType}.`)
       } else if (!allowed.includes(row.parentOrgUnitType as OrgUnitType)) {
-        errors.push(
-          `${row.orgUnitType} cannot have a ${row.parentOrgUnitType} parent. Allowed: ${allowed.join(', ')}.`
-        )
+        errors.push(`${row.orgUnitType} cannot have a ${row.parentOrgUnitType} parent. Allowed: ${allowed.join(', ')}.`)
       } else {
         const parentKey = `${row.parentOrgUnitType}:${row.parentOrgUnitCode}`
         const inBatchEarlier = rows
           .slice(0, idx)
-          .some(
-            (r) => r.orgUnitType === row.parentOrgUnitType && r.orgUnitCode === row.parentOrgUnitCode
-          )
+          .some((r) => r.orgUnitType === row.parentOrgUnitType && r.orgUnitCode === row.parentOrgUnitCode)
 
         if (!knownUnits.has(parentKey) && !inBatchEarlier) {
-          warnings.push(
-            `Parent "${row.parentOrgUnitCode}" (${row.parentOrgUnitType}) not found in database. ` +
-            'It may need to exist before import.'
-          )
+          warnings.push(`Parent "${row.parentOrgUnitCode}" (${row.parentOrgUnitType}) not found in database. It may need to exist before import.`)
+        }
+      }
+
+      if (['Region', 'SubRegion', 'Cluster', 'Country'].includes(row.orgUnitType)) {
+        const geoKey = `${row.orgUnitType}:${row.orgUnitCode}`
+        const existsInBatchEarlier = rows
+          .slice(0, idx)
+          .some((r) => r.orgUnitType === row.orgUnitType && r.orgUnitCode === row.orgUnitCode)
+
+        if (!knownSharedGeo.has(geoKey) && !existsInBatchEarlier) {
+          warnings.push(`Shared Geography "${row.orgUnitCode}" (${row.orgUnitType}) not found. Import will only attach existing shared geography items.`)
         }
       }
     }
@@ -198,6 +217,10 @@ export function validateRows(rows: BulkOrgUnitRow[], existingOrgUnits: OrgUnit[]
 
 export const TEMPLATE_CSV =
   'Type,Code,Name,ParentType,ParentCode\n' +
+  'Region,EMEA,Europe Middle East & Africa,,\n' +
+  'SubRegion,WEU,Western Europe,Region,EMEA\n' +
+  'Cluster,BENELUX,Benelux,SubRegion,WEU\n' +
+  'Country,BE,Belgium,Cluster,BENELUX\n' +
   'Area,AREA-001,My Area,Country,US\n' +
   'Branch,BR-001,My Branch,Area,AREA-001\n' +
   'Site,SITE-001,My Site,Branch,BR-001\n' +

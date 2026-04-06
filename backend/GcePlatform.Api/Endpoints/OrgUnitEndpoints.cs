@@ -100,6 +100,44 @@ public static class OrgUnitEndpoints
             return Results.Ok(item);
         }).RequireAuthorization();
 
+        app.MapPost("/shared-geo-units/bulk", async (BulkCreateSharedGeoUnitsRequest req, DbConnectionFactory db) =>
+        {
+            using var conn = db.CreateConnection();
+            var results = new List<BulkSharedGeoUnitResult>();
+
+            for (int i = 0; i < req.Rows.Count; i++)
+            {
+                var row = req.Rows[i];
+                try
+                {
+                    var p = new DynamicParameters();
+                    p.Add("@GeoUnitType", row.GeoUnitType);
+                    p.Add("@GeoUnitCode", row.GeoUnitCode);
+                    p.Add("@GeoUnitName", row.GeoUnitName);
+                    p.Add("@CountryCode", row.CountryCode);
+                    p.Add("@IsActive", 1);
+                    p.Add("@ExistingSharedGeoUnitId", null);
+                    p.Add("@SharedGeoUnitId", dbType: System.Data.DbType.Int32,
+                        direction: System.Data.ParameterDirection.Output);
+
+                    await conn.ExecuteAsync("App.UpsertSharedGeoUnit", p,
+                        commandType: System.Data.CommandType.StoredProcedure);
+
+                    results.Add(new BulkSharedGeoUnitResult(i, true, p.Get<int>("@SharedGeoUnitId"), null));
+                }
+                catch (Microsoft.Data.SqlClient.SqlException ex)
+                {
+                    results.Add(new BulkSharedGeoUnitResult(i, false, null, ex.Message));
+                }
+                catch (Exception ex)
+                {
+                    results.Add(new BulkSharedGeoUnitResult(i, false, null, ex.Message));
+                }
+            }
+
+            return Results.Ok(new BulkCreateSharedGeoUnitsResponse(results));
+        }).RequireAuthorization();
+
         // GET /org-units?accountId=
         app.MapGet("/org-units", async (int? accountId, DbConnectionFactory db) =>
         {
@@ -267,19 +305,46 @@ public static class OrgUnitEndpoints
                 {
                     var p = new DynamicParameters();
                     p.Add("@AccountCode", req.AccountCode);
-                    p.Add("@OrgUnitType", row.OrgUnitType);
-                    p.Add("@OrgUnitCode", row.OrgUnitCode);
-                    p.Add("@OrgUnitName", row.OrgUnitName);
                     p.Add("@ParentOrgUnitType", row.ParentOrgUnitType);
                     p.Add("@ParentOrgUnitCode", row.ParentOrgUnitCode);
-                    p.Add("@CountrySharedGeoUnitId", null);
-                    p.Add("@IsActive", 1);
                     p.Add("@ApplyPolicies", 1);
                     p.Add("@OrgUnitId", dbType: System.Data.DbType.Int32,
                         direction: System.Data.ParameterDirection.Output);
 
-                    await conn.ExecuteAsync("App.InsertOrgUnit", p,
-                        commandType: System.Data.CommandType.StoredProcedure);
+                    if (row.OrgUnitType is "Region" or "SubRegion" or "Cluster" or "Country")
+                    {
+                        var sharedGeoUnitId = await conn.QuerySingleOrDefaultAsync<int?>(@"
+                            SELECT SharedGeoUnitId
+                            FROM App.vSharedGeoUnits
+                            WHERE GeoUnitType = @GeoUnitType
+                              AND GeoUnitCode = @GeoUnitCode",
+                            new
+                            {
+                                GeoUnitType = row.OrgUnitType,
+                                GeoUnitCode = row.OrgUnitCode,
+                            });
+
+                        if (!sharedGeoUnitId.HasValue)
+                            throw new InvalidOperationException(
+                                $"Shared Geography '{row.OrgUnitCode}' ({row.OrgUnitType}) does not exist."
+                            );
+
+                        p.Add("@SharedGeoUnitId", sharedGeoUnitId.Value);
+
+                        await conn.ExecuteAsync("App.AttachSharedGeoUnitToAccount", p,
+                            commandType: System.Data.CommandType.StoredProcedure);
+                    }
+                    else
+                    {
+                        p.Add("@OrgUnitType", row.OrgUnitType);
+                        p.Add("@OrgUnitCode", row.OrgUnitCode);
+                        p.Add("@OrgUnitName", row.OrgUnitName);
+                        p.Add("@CountrySharedGeoUnitId", null);
+                        p.Add("@IsActive", 1);
+
+                        await conn.ExecuteAsync("App.InsertOrgUnit", p,
+                            commandType: System.Data.CommandType.StoredProcedure);
+                    }
 
                     results.Add(new BulkOrgUnitResult(i, true, p.Get<int>("@OrgUnitId"), null));
                 }

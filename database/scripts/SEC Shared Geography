@@ -1,0 +1,38 @@
+Type,Code,Name,CountryCode
+Region,SSNA,Security Services North America,
+Region,SSEU,Security Services Europe,
+Region,SSIA,Security Services Ibero-America,
+SubRegion,SSIA-IB,Iberia,
+SubRegion,SSIA-LA,Latin America,
+Country,SSEU-PL,Poland,PL
+Country,SSEU-CZ,Czech Republic,CZ
+Country,SSEU-SK,Slovakia,SK
+Country,SSEU-HU,Hungary,HU
+Country,SSEU-RO,Romania,RO
+Country,SSEU-HR,Croatia,HR
+Country,SSEU-RS,Serbia,RS
+Country,SSEU-GB,United Kingdom,GB
+Country,SSEU-IE,Ireland,IE
+Country,SSEU-DK,Denmark,DK
+Country,SSEU-FI,Finland,FI
+Country,SSEU-NO,Norway,NO
+Country,SSEU-SE,Sweden,SE
+Country,SSEU-AT,Austria,AT
+Country,SSEU-BE,Belgium,BE
+Country,SSEU-CH,Switzerland,CH
+Country,SSEU-NL,Netherlands,NL
+Country,SSEU-FR,France,FR
+Country,SSEU-DE,Germany,DE
+Country,SSEU-LU,Luxembourg,LU
+Country,SSEU-TR,T�rkiye,TR
+Country,SSIA-IB-ES,Spain,ES
+Country,SSIA-IB-PT,Portugal,PT
+Country,SSNA-US,United States of America,US
+Country,SSNA-CA,Canada,CA
+Country,SSNA-MX,Mexico,MX
+Country,SSIA-LA-CL,Chile,CL
+Country,SSIA-LA-CO,Colombia,CO
+Country,SSIA-LA-CR,Costa Rica,CR
+Country,SSIA-LA-EC,Ecuador,EC
+Country,SSIA-LA-PE,Peru,PE
+Country,SSIA-LA-UY,Uruguay,UY

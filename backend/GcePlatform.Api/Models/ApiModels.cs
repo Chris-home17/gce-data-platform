@@ -391,6 +391,24 @@ public record UpdateSharedGeoUnitRequest(
     string?  CountryCode
 );
 
+public record BulkSharedGeoUnitRow(
+    string   GeoUnitType,
+    string   GeoUnitCode,
+    string   GeoUnitName,
+    string?  CountryCode
+);
+
+public record BulkCreateSharedGeoUnitsRequest(List<BulkSharedGeoUnitRow> Rows);
+
+public record BulkSharedGeoUnitResult(
+    int     RowIndex,
+    bool    Success,
+    int?    SharedGeoUnitId,
+    string? Error
+);
+
+public record BulkCreateSharedGeoUnitsResponse(List<BulkSharedGeoUnitResult> Results);
+
 // ---------------------------------------------------------------------------
 // Source Mapping  (App.vSourceMappings — screen M-13)
 // ---------------------------------------------------------------------------

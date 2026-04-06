@@ -12,18 +12,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
-import type { BulkOrgUnitResult } from '@/types/api'
+import type { BulkSharedGeoUnitResult, SharedGeoUnit } from '@/types/api'
 import {
   parseCsv,
   parseIndented,
@@ -34,32 +27,35 @@ import {
 
 type Step = 'input' | 'preview' | 'results'
 
-export function ImportOrgUnitsDialog() {
+const TYPE_COLOURS: Record<SharedGeoUnit['geoUnitType'], string> = {
+  Region: 'bg-blue-100 text-blue-700 border-blue-200',
+  SubRegion: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+  Cluster: 'bg-violet-100 text-violet-700 border-violet-200',
+  Country: 'bg-sky-100 text-sky-700 border-sky-200',
+}
+
+function TypeChip({ type }: { type: string }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium ${
+        TYPE_COLOURS[type as SharedGeoUnit['geoUnitType']] ?? 'bg-muted text-muted-foreground'
+      }`}
+    >
+      {type}
+    </span>
+  )
+}
+
+export function ImportSharedGeoDialog() {
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<Step>('input')
-  const [accountCode, setAccountCode] = useState('')
   const [inputTab, setInputTab] = useState('paste-csv')
   const [csvText, setCsvText] = useState('')
   const [indentedText, setIndentedText] = useState('')
   const [validatedRows, setValidatedRows] = useState<ValidatedRow[]>([])
-  const [importResults, setImportResults] = useState<BulkOrgUnitResult[]>([])
+  const [importResults, setImportResults] = useState<BulkSharedGeoUnitResult[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
-
-  const { data: accounts } = useQuery({
-    queryKey: ['accounts'],
-    queryFn: () => api.accounts.list(),
-    enabled: open,
-  })
-
-  const { data: orgUnitsData } = useQuery({
-    queryKey: ['org-units', accountCode],
-    queryFn: () => {
-      const account = accounts?.items.find((a) => a.accountCode === accountCode)
-      return account ? api.orgUnits.list({ accountId: account.accountId }) : Promise.resolve(null)
-    },
-    enabled: open && !!accountCode && !!accounts,
-  })
 
   const { data: sharedGeoUnits } = useQuery({
     queryKey: ['shared-geo-units'],
@@ -69,18 +65,24 @@ export function ImportOrgUnitsDialog() {
 
   const importMutation = useMutation({
     mutationFn: () =>
-      api.orgUnits.bulkCreate({
-        accountCode,
-        rows: validatedRows.map((vr) => vr.row),
+      api.sharedGeoUnits.bulkCreate({
+        rows: validatedRows.map((vr) => ({
+          geoUnitType: vr.row.geoUnitType,
+          geoUnitCode: vr.row.geoUnitCode.trim().toUpperCase(),
+          geoUnitName: vr.row.geoUnitName.trim(),
+          countryCode:
+            vr.row.geoUnitType === 'Country' ? vr.row.countryCode?.trim().toUpperCase() : undefined,
+        })),
       }),
     onSuccess: (response) => {
       setImportResults(response.results)
       setStep('results')
+      queryClient.invalidateQueries({ queryKey: ['shared-geo-units'] })
       queryClient.invalidateQueries({ queryKey: ['org-units'] })
       const successCount = response.results.filter((r) => r.success).length
       const failCount = response.results.length - successCount
       if (failCount === 0) {
-        toast.success(`${successCount} org unit${successCount !== 1 ? 's' : ''} imported.`)
+        toast.success(`${successCount} shared geography item${successCount !== 1 ? 's' : ''} imported.`)
       } else {
         toast.warning(`${successCount} imported, ${failCount} failed. See details below.`)
       }
@@ -93,7 +95,7 @@ export function ImportOrgUnitsDialog() {
   function handleOpen() {
     setOpen(true)
     setStep('input')
-    setAccountCode('')
+    setInputTab('paste-csv')
     setCsvText('')
     setIndentedText('')
     setValidatedRows([])
@@ -118,11 +120,8 @@ export function ImportOrgUnitsDialog() {
 
   function handlePreview() {
     const rawText = inputTab === 'indented' ? indentedText : csvText
-    const rows =
-      inputTab === 'indented' ? parseIndented(rawText) : parseCsv(rawText)
-
-    const existing = orgUnitsData?.items ?? []
-    const validated = validateRows(rows, existing, sharedGeoUnits?.items ?? [])
+    const rows = inputTab === 'indented' ? parseIndented(rawText) : parseCsv(rawText)
+    const validated = validateRows(rows, sharedGeoUnits?.items ?? [])
     setValidatedRows(validated)
     setStep('preview')
   }
@@ -132,7 +131,7 @@ export function ImportOrgUnitsDialog() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'org-units-template.csv'
+    a.download = 'shared-geography-template.csv'
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -151,33 +150,15 @@ export function ImportOrgUnitsDialog() {
       <Dialog open={open} onOpenChange={handleClose}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Import Org Units</DialogTitle>
+            <DialogTitle>Import Shared Geography</DialogTitle>
           </DialogHeader>
 
           {step === 'input' && (
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Bulk-import account hierarchy rows from a CSV or indented text. <strong>Region</strong>, <strong>SubRegion</strong>, <strong>Cluster</strong>, and <strong>Country</strong> rows attach existing Shared Geography items to the account. <strong>Area</strong>, <strong>Branch</strong>, and <strong>Site</strong> rows create local org units. Rows are processed in order, so parents must appear before their children.
+                Bulk-import canonical <strong>Region</strong>, <strong>SubRegion</strong>, <strong>Cluster</strong>, and <strong>Country</strong> items from CSV or simple text. Shared Geography is a flat canonical catalog, so the import only needs type, code, name, and optional country code for countries.
               </p>
 
-              {/* Account selector */}
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Account</label>
-                <Select value={accountCode} onValueChange={setAccountCode}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select account…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts?.items.map((a) => (
-                      <SelectItem key={a.accountId} value={a.accountCode}>
-                        {a.accountName} ({a.accountCode})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Input method tabs */}
               <Tabs value={inputTab} onValueChange={setInputTab}>
                 <div className="flex items-center justify-between">
                   <TabsList>
@@ -185,7 +166,7 @@ export function ImportOrgUnitsDialog() {
                     <TabsTrigger value="upload-csv">Upload CSV</TabsTrigger>
                     <TabsTrigger value="indented">Indented Text</TabsTrigger>
                   </TabsList>
-                  <Button variant="ghost" size="sm" onClick={downloadTemplate} className="h-7 text-xs gap-1">
+                  <Button variant="ghost" size="sm" onClick={downloadTemplate} className="h-7 gap-1 text-xs">
                     <Download className="h-3.5 w-3.5" />
                     Template
                   </Button>
@@ -196,14 +177,11 @@ export function ImportOrgUnitsDialog() {
                     className="font-mono text-xs"
                     rows={10}
                     placeholder={
-                      'Type,Code,Name,ParentType,ParentCode\n' +
-                      'Region,EMEA,Europe Middle East & Africa,,\n' +
-                      'SubRegion,WEU,Western Europe,Region,EMEA\n' +
-                      'Cluster,BENELUX,Benelux,SubRegion,WEU\n' +
-                      'Country,FR,France,Cluster,BENELUX\n' +
-                      'Area,PN,Paris North,Country,FR\n' +
-                      'Branch,PN-W,Paris West,Area,PN\n' +
-                      'Site,PHQ,Paris HQ,Branch,PN-W'
+                      'Type,Code,Name,CountryCode\n' +
+                      'Region,EMEA,Europe Middle East & Africa,\n' +
+                      'SubRegion,WEU,Western Europe,\n' +
+                      'Cluster,BENELUX,Benelux,\n' +
+                      'Country,BE,Belgium,BE'
                     }
                     value={csvText}
                     onChange={(e) => setCsvText(e.target.value)}
@@ -212,13 +190,13 @@ export function ImportOrgUnitsDialog() {
 
                 <TabsContent value="upload-csv" className="mt-3">
                   <div
-                    className="flex flex-col items-center justify-center gap-3 rounded-md border-2 border-dashed py-10 cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-colors"
+                    className="flex cursor-pointer flex-col items-center justify-center gap-3 rounded-md border-2 border-dashed py-10 transition-colors hover:border-primary/50 hover:bg-muted/30"
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <Upload className="h-8 w-8 text-muted-foreground" />
                     <div className="text-center">
                       <p className="text-sm font-medium">Click to upload a CSV file</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">or drag and drop</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">or drag and drop</p>
                     </div>
                     {csvText && (
                       <Badge variant="secondary" className="text-xs">
@@ -241,19 +219,16 @@ export function ImportOrgUnitsDialog() {
                     rows={10}
                     placeholder={
                       'Region EMEA: Europe Middle East & Africa\n' +
-                      '  SubRegion WEU: Western Europe\n' +
-                      '    Cluster BENELUX: Benelux\n' +
-                      '      Country FR: France\n' +
-                      '        Area PN: Paris North\n' +
-                      '          Branch PN-W: Paris West\n' +
-                      '            Site PHQ: Paris HQ'
+                      'SubRegion WEU: Western Europe\n' +
+                      'Cluster BENELUX: Benelux\n' +
+                      'Country BE: Belgium'
                     }
                     value={indentedText}
                     onChange={(e) => setIndentedText(e.target.value)}
                   />
                   <p className="mt-1.5 text-xs text-muted-foreground">
-                    Format: <code className="font-mono">Type Code: Name</code> — indentation
-                    determines parent/child relationship.
+                    Format: <code className="font-mono">Type Code: Name</code>. For countries,
+                    the code is also used as the default country code.
                   </p>
                 </TabsContent>
               </Tabs>
@@ -270,27 +245,27 @@ export function ImportOrgUnitsDialog() {
                   </Badge>
                 )}
                 {warningCount > 0 && (
-                  <Badge variant="secondary" className="text-xs text-amber-700 bg-amber-100 border-amber-200">
+                  <Badge variant="secondary" className="border-amber-200 bg-amber-100 text-xs text-amber-700">
                     {warningCount} warning{warningCount !== 1 ? 's' : ''}
                   </Badge>
                 )}
                 {!hasErrors && errorCount === 0 && warningCount === 0 && (
-                  <Badge variant="secondary" className="text-xs text-emerald-700 bg-emerald-100 border-emerald-200">
+                  <Badge variant="secondary" className="border-emerald-200 bg-emerald-100 text-xs text-emerald-700">
                     All valid
                   </Badge>
                 )}
               </div>
 
-              <div className="rounded-md border max-h-80 overflow-auto">
+              <div className="max-h-80 overflow-auto rounded-md border">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-muted/80">
                     <tr className="border-b">
-                      <th className="px-3 py-2 text-left font-medium text-muted-foreground w-8">#</th>
+                      <th className="w-8 px-3 py-2 text-left font-medium text-muted-foreground">#</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Type</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Code</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Name</th>
-                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">Parent</th>
-                      <th className="px-3 py-2 text-left font-medium text-muted-foreground w-8" />
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">Country</th>
+                      <th className="w-8 px-3 py-2 text-left font-medium text-muted-foreground" />
                     </tr>
                   </thead>
                   <tbody>
@@ -303,17 +278,13 @@ export function ImportOrgUnitsDialog() {
                           vr.status === 'warning' ? 'bg-amber-50' : '',
                         ].join(' ')}
                       >
-                        <td className="px-3 py-1.5 text-muted-foreground tabular-nums">{i + 1}</td>
+                        <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{i + 1}</td>
                         <td className="px-3 py-1.5">
-                          <TypeChip type={vr.row.orgUnitType} />
+                          <TypeChip type={vr.row.geoUnitType} />
                         </td>
-                        <td className="px-3 py-1.5 font-mono">{vr.row.orgUnitCode || <span className="text-muted-foreground/40">—</span>}</td>
-                        <td className="px-3 py-1.5">{vr.row.orgUnitName || <span className="text-muted-foreground/40">—</span>}</td>
-                        <td className="px-3 py-1.5 text-muted-foreground">
-                          {vr.row.parentOrgUnitCode
-                            ? `${vr.row.parentOrgUnitType} ${vr.row.parentOrgUnitCode}`
-                            : <span className="text-muted-foreground/40">—</span>}
-                        </td>
+                        <td className="px-3 py-1.5 font-mono">{vr.row.geoUnitCode || <span className="text-muted-foreground/40">—</span>}</td>
+                        <td className="px-3 py-1.5">{vr.row.geoUnitName || <span className="text-muted-foreground/40">—</span>}</td>
+                        <td className="px-3 py-1.5 font-mono text-muted-foreground">{vr.row.countryCode || <span className="text-muted-foreground/40">—</span>}</td>
                         <td className="px-3 py-1.5">
                           {vr.status === 'error' && (
                             <span title={vr.errors.join(' ')}>
@@ -321,11 +292,9 @@ export function ImportOrgUnitsDialog() {
                             </span>
                           )}
                           {vr.status === 'warning' && (
-                            <span className="text-amber-500 text-xs" title={vr.warnings.join(' ')}>⚠</span>
+                            <span className="text-xs text-amber-500" title={vr.warnings.join(' ')}>⚠</span>
                           )}
-                          {vr.status === 'valid' && (
-                            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                          )}
+                          {vr.status === 'valid' && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
                         </td>
                       </tr>
                     ))}
@@ -333,9 +302,8 @@ export function ImportOrgUnitsDialog() {
                 </table>
               </div>
 
-              {/* Inline error messages */}
               {(errorCount > 0 || warningCount > 0) && (
-                <div className="space-y-1 max-h-32 overflow-auto">
+                <div className="max-h-32 space-y-1 overflow-auto">
                   {validatedRows.flatMap((vr, i) => [
                     ...vr.errors.map((e) => (
                       <p key={`e-${i}-${e}`} className="text-xs text-destructive">
@@ -343,7 +311,7 @@ export function ImportOrgUnitsDialog() {
                       </p>
                     )),
                     ...vr.warnings.map((w) => (
-                      <p key={`w-${i}-${w}`} className="text-xs text-amber-600">
+                      <p key={`w-${i}-${w}`} className="text-xs text-amber-700">
                         Row {i + 1}: {w}
                       </p>
                     )),
@@ -355,115 +323,87 @@ export function ImportOrgUnitsDialog() {
 
           {step === 'results' && (
             <div className="space-y-3">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-medium">{importResults.length} rows processed</span>
-                <Badge variant="secondary" className="text-xs text-emerald-700 bg-emerald-100 border-emerald-200">
-                  {importResults.filter((r) => r.success).length} created
-                </Badge>
-                {importResults.some((r) => !r.success) && (
-                  <Badge variant="destructive" className="text-xs">
-                    {importResults.filter((r) => !r.success).length} failed
-                  </Badge>
-                )}
-              </div>
-
-              <div className="rounded-md border max-h-80 overflow-auto">
+              <div className="max-h-80 overflow-auto rounded-md border">
                 <table className="w-full text-xs">
                   <thead className="sticky top-0 bg-muted/80">
                     <tr className="border-b">
-                      <th className="px-3 py-2 text-left font-medium text-muted-foreground w-8">#</th>
-                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">Type</th>
-                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">Code</th>
-                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">Name</th>
+                      <th className="w-8 px-3 py-2 text-left font-medium text-muted-foreground">#</th>
                       <th className="px-3 py-2 text-left font-medium text-muted-foreground">Result</th>
+                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">Details</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {importResults.map((result, i) => {
-                      const vr = validatedRows[result.rowIndex]
-                      return (
-                        <tr
-                          key={i}
-                          className={[
-                            'border-b last:border-0',
-                            !result.success ? 'bg-red-50' : '',
-                          ].join(' ')}
-                        >
-                          <td className="px-3 py-1.5 text-muted-foreground tabular-nums">{result.rowIndex + 1}</td>
-                          <td className="px-3 py-1.5">
-                            {vr && <TypeChip type={vr.row.orgUnitType} />}
-                          </td>
-                          <td className="px-3 py-1.5 font-mono">{vr?.row.orgUnitCode}</td>
-                          <td className="px-3 py-1.5">{vr?.row.orgUnitName}</td>
-                          <td className="px-3 py-1.5">
-                            {result.success ? (
-                              <span className="flex items-center gap-1 text-emerald-600">
-                                <CheckCircle2 className="h-3.5 w-3.5" /> Created
-                              </span>
-                            ) : (
-                              <span className="flex items-center gap-1 text-destructive">
-                                <XCircle className="h-3.5 w-3.5" />
-                                <span className="truncate max-w-[200px]" title={result.error ?? ''}>
-                                  {result.error}
-                                </span>
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
+                    {importResults.map((result) => (
+                      <tr key={result.rowIndex} className="border-b last:border-0">
+                        <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{result.rowIndex + 1}</td>
+                        <td className="px-3 py-1.5">
+                          {result.success ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-700">
+                              <CheckCircle2 className="h-4 w-4" />
+                              Imported
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-destructive">
+                              <XCircle className="h-4 w-4" />
+                              Failed
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-1.5 text-muted-foreground">
+                          {result.success
+                            ? `SharedGeoUnitId ${result.sharedGeoUnitId}`
+                            : (result.error ?? 'Unknown error')}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
 
-          <DialogFooter className="gap-2">
+          <DialogFooter>
             {step === 'input' && (
               <>
-                <Button variant="outline" onClick={handleClose}>Cancel</Button>
+                <Button type="button" variant="outline" onClick={handleClose}>
+                  Cancel
+                </Button>
                 <Button
+                  type="button"
                   onClick={handlePreview}
-                  disabled={!accountCode || (inputTab === 'indented' ? !indentedText.trim() : !csvText.trim())}
+                  disabled={
+                    (inputTab === 'indented' ? !indentedText.trim() : !csvText.trim()) ||
+                    sharedGeoUnits === undefined
+                  }
                 >
-                  Preview
+                  Preview Import
                 </Button>
               </>
             )}
+
             {step === 'preview' && (
               <>
-                <Button variant="outline" onClick={() => setStep('input')}>Back</Button>
+                <Button type="button" variant="outline" onClick={() => setStep('input')}>
+                  Back
+                </Button>
                 <Button
+                  type="button"
                   onClick={() => importMutation.mutate()}
-                  disabled={hasErrors || validatedRows.length === 0 || importMutation.isPending}
+                  disabled={hasErrors || importMutation.isPending || validatedRows.length === 0}
                 >
-                  {importMutation.isPending
-                    ? 'Importing…'
-                    : `Import ${validatedRows.length} row${validatedRows.length !== 1 ? 's' : ''}`}
+                  {importMutation.isPending ? 'Importing...' : 'Import Shared Geography'}
                 </Button>
               </>
             )}
+
             {step === 'results' && (
-              <Button onClick={handleClose}>Done</Button>
+              <Button type="button" onClick={handleClose}>
+                Close
+              </Button>
             )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
-  )
-}
-
-function TypeChip({ type }: { type: string }) {
-  const colours: Record<string, string> = {
-    Area: 'bg-teal-100 text-teal-700 border-teal-200',
-    Branch: 'bg-orange-100 text-orange-700 border-orange-200',
-    Site: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-  }
-  return (
-    <span
-      className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium ${colours[type] ?? 'bg-muted text-muted-foreground'}`}
-    >
-      {type || '?'}
-    </span>
   )
 }

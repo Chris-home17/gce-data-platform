@@ -217,6 +217,28 @@ export interface UpdateSharedGeoUnitInput {
   countryCode?: string
 }
 
+export interface BulkSharedGeoUnitRow {
+  geoUnitType: string
+  geoUnitCode: string
+  geoUnitName: string
+  countryCode?: string
+}
+
+export interface BulkCreateSharedGeoUnitsInput {
+  rows: BulkSharedGeoUnitRow[]
+}
+
+export interface BulkSharedGeoUnitResult {
+  rowIndex: number
+  success: boolean
+  sharedGeoUnitId: number | null
+  error: string | null
+}
+
+export interface BulkCreateSharedGeoUnitsResponse {
+  results: BulkSharedGeoUnitResult[]
+}
+
 /** From App.vOrgUnits */
 export interface OrgUnit {
   orgUnitId: number

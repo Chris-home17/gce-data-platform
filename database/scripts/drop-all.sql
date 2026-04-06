@@ -75,6 +75,9 @@ GO
 IF OBJECT_ID('App.vPackageReports', 'V') IS NOT NULL
     DROP VIEW App.vPackageReports;
 GO
+IF OBJECT_ID('App.vAccountRolePolicyRoles', 'V') IS NOT NULL
+    DROP VIEW App.vAccountRolePolicyRoles;
+GO
 IF OBJECT_ID('App.vAccountRolePolicies', 'V') IS NOT NULL
     DROP VIEW App.vAccountRolePolicies;
 GO

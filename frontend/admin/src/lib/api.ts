@@ -26,6 +26,8 @@ import type {
   CreateKpiPeriodScheduleInput,
   BulkCreateOrgUnitsInput,
   BulkCreateOrgUnitsResponse,
+  BulkCreateSharedGeoUnitsInput,
+  BulkCreateSharedGeoUnitsResponse,
   CreateOrgUnitInput,
   CreatePackageInput,
   CreatePolicyInput,
@@ -311,6 +313,9 @@ export const api = {
     },
     update(id: number, data: UpdateSharedGeoUnitInput): Promise<SharedGeoUnit> {
       return apiFetch(`/shared-geo-units/${id}`, { method: 'PUT', body: JSON.stringify(data) })
+    },
+    bulkCreate(data: BulkCreateSharedGeoUnitsInput): Promise<BulkCreateSharedGeoUnitsResponse> {
+      return apiFetch('/shared-geo-units/bulk', { method: 'POST', body: JSON.stringify(data) })
     },
   },
 

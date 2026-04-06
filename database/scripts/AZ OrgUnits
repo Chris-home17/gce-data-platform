@@ -1,0 +1,18 @@
+Type,Code,Name,ParentType,ParentCode
+Region,SSEU,Security Services Europe,,
+Country,SSEU-DE,Germany,Region,SSEU
+Country,SSEU-FR,France,Region,SSEU
+Country,SSEU-SE,Sweden,Region,SSEU
+Country,SSEU-GB,United Kingdom,Region,SSEU
+Site,AZ-DE-001,Astra Zeneca DE - AZ Marzipanfabrik,Country,SSEU-DE
+Site,AZ-UK-002,Astra Zeneca UK - Academy House,Country,SSEU-GB
+Site,AZ-UK-003,Astra Zeneca UK - Discovery Centre,Country,SSEU-GB
+Site,AZ-UK-004,Astra Zeneca UK - Eastbrook,Country,SSEU-GB
+Site,AZ-UK-005,Astra Zeneca UK - Luton,Country,SSEU-GB
+Site,AZ-UK-006,Astra Zeneca UK - Macclesfield,Country,SSEU-GB
+Site,AZ-UK-001,Astra Zeneca UK - Speke,Country,SSEU-GB
+Site,AZ-FR-001,Astra Zeneca FR - Dunkerque,Country,SSEU-FR
+Site,AZ-SE-001,Astra Zeneca SE - Gärtuna,Country,SSEU-SE
+Site,AZ-SE-002,Astra Zeneca SE - Gothenburg,Country,SSEU-SE
+Site,AZ-SE-003,Astra Zeneca SE - SBC B921,Country,SSEU-SE
+Site,AZ-SE-004,Astra Zeneca SE - Snäckviken,Country,SSEU-SE
