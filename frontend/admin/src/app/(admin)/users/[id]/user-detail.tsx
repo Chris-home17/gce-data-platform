@@ -124,6 +124,23 @@ const packageGrantColumns: ColumnDef<PackageGrant, unknown>[] = [
     },
   },
   {
+    id: 'source',
+    header: 'Access via',
+    cell: ({ row }) => {
+      if (row.original.grantSource === 'DIRECT') {
+        return <Badge variant="secondary" className="text-xs">Direct grant</Badge>
+      }
+
+      return (
+        <div className="flex items-center gap-1.5">
+          <Badge variant="outline" className="bg-blue-50 text-xs text-blue-700 border-blue-300">Role</Badge>
+          <span className="text-sm font-medium">{row.original.sourceName}</span>
+          <span className="font-mono text-xs text-muted-foreground">{row.original.sourceCode}</span>
+        </div>
+      )
+    },
+  },
+  {
     accessorKey: 'grantedOnUtc',
     header: 'Granted',
     cell: ({ row }) => (
@@ -136,7 +153,10 @@ const packageGrantColumns: ColumnDef<PackageGrant, unknown>[] = [
   {
     id: 'revoke',
     header: '',
-    cell: ({ row }) => <RevokePackageGrantButton grantId={row.original.principalPackageGrantId} userId={row.original.principalId} />,
+    cell: ({ row }) =>
+      row.original.grantSource === 'DIRECT'
+        ? <RevokePackageGrantButton grantId={row.original.principalPackageGrantId} userId={row.original.principalId} />
+        : null,
     meta: { className: 'w-[50px]' },
   },
 ]

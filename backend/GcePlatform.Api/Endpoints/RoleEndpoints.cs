@@ -197,6 +197,9 @@ public static class RoleEndpoints
             using var conn = db.CreateConnection();
             var items = await conn.QueryAsync<PackageGrantDto>(@"
                 SELECT PrincipalPackageGrantId, PrincipalId, PrincipalType, PrincipalName,
+                       'DIRECT' AS GrantSource,
+                       CAST(NULL AS NVARCHAR(100)) AS SourceCode,
+                       CAST(NULL AS NVARCHAR(200)) AS SourceName,
                        GrantScope, PackageCode, PackageName, GrantedOnUtc
                 FROM App.vPackageGrants
                 WHERE PrincipalId = @Id

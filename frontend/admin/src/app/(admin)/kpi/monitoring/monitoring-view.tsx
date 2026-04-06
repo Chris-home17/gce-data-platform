@@ -25,6 +25,8 @@ import { DataTable } from '@/components/shared/data-table'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { KpiPeriod, SiteCompletion } from '@/types/api'
 
+const KPI_MONITORING_REFRESH_EVENT = 'gce:kpi-monitoring-refresh'
+
 function formatScheduleRef(periodScheduleId: number) {
   return `SCH-${periodScheduleId}`
 }
@@ -348,7 +350,7 @@ export function MonitoringView() {
   }, [selectedPeriodLabel, selectedScheduleId, sortedPeriods])
   const selectedAccount = accountsData?.items.find((a) => a.accountCode === selectedAccountCode)
 
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['kpi', 'monitoring', selectedPeriod?.periodId ?? 'none', selectedAccount?.accountId ?? 'all'],
     queryFn: () =>
       selectedPeriod
@@ -358,7 +360,29 @@ export function MonitoringView() {
           })
         : Promise.resolve({ items: [], totalCount: 0 }),
     enabled: selectedPeriod !== null,
+    refetchOnWindowFocus: true,
   })
+
+  useEffect(() => {
+    if (selectedPeriod === null) return
+
+    function handleRefreshSignal() {
+      void refetch()
+    }
+
+    function handleStorage(event: StorageEvent) {
+      if (event.key !== KPI_MONITORING_REFRESH_EVENT) return
+      void refetch()
+    }
+
+    window.addEventListener(KPI_MONITORING_REFRESH_EVENT, handleRefreshSignal)
+    window.addEventListener('storage', handleStorage)
+
+    return () => {
+      window.removeEventListener(KPI_MONITORING_REFRESH_EVENT, handleRefreshSignal)
+      window.removeEventListener('storage', handleStorage)
+    }
+  }, [selectedPeriod, refetch])
 
   // Aggregate stats across all sites in the selected period
   const stats = useMemo(() => {

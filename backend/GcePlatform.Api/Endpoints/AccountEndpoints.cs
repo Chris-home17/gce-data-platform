@@ -74,6 +74,8 @@ public static class AccountEndpoints
                     u.RoleList,
                     scope.SiteCount,
                     1 AS AccountCount,
+                    u.PackageCount,
+                    u.ReportCount,
                     u.GapStatus
                 FROM App.vUsers AS u
                 JOIN

@@ -718,6 +718,9 @@ public record PackageGrantDto(
     int      PrincipalId,
     string   PrincipalType,
     string   PrincipalName,
+    string   GrantSource,
+    string?  SourceCode,
+    string?  SourceName,
     string   GrantScope,
     string   PackageCode,
     string   PackageName,
@@ -807,6 +810,8 @@ public record UserDto(
     string? RoleList,
     int     SiteCount,
     int     AccountCount,
+    int     PackageCount,
+    int     ReportCount,
     string? GapStatus
 );
 

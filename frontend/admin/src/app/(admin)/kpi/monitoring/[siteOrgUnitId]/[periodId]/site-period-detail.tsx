@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -8,6 +9,7 @@ import {
   CheckCircle2,
   Lock,
   LockOpen,
+  MoreHorizontal,
   AlertTriangle,
   Loader2,
   User,
@@ -23,9 +25,17 @@ import { cn, formatPercent } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import type { SiteSubmissionDetail } from '@/types/api'
+
+const KPI_MONITORING_REFRESH_EVENT = 'gce:kpi-monitoring-refresh'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -137,18 +147,32 @@ function SubmissionRow({ row, periodStatus, onUnlocked }: SubmissionRowProps) {
         <div className="flex items-center gap-2 shrink-0 pt-0.5">
           <LockBadge lockState={row.lockState} />
           {canUnlock && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 px-2.5 text-xs gap-1.5 text-amber-700 border-amber-300 hover:bg-amber-50 dark:hover:bg-amber-950/30"
-              onClick={() => mutation.mutate()}
-              disabled={mutation.isPending}
-            >
-              {mutation.isPending
-                ? <Loader2 className="h-3 w-3 animate-spin" />
-                : <LockOpen className="h-3 w-3" />}
-              Unlock
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 data-[state=open]:bg-muted"
+                  disabled={mutation.isPending}
+                >
+                  {mutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <MoreHorizontal className="h-4 w-4" />
+                  )}
+                  <span className="sr-only">Actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => mutation.mutate()}
+                  className="text-amber-700 focus:text-amber-700"
+                >
+                  <LockOpen className="mr-2 h-4 w-4" />
+                  Unlock
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
           {row.isSubmitted && (!row.lockState || row.lockState === 'Unlocked') && (
             <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
@@ -252,22 +276,46 @@ export function SitePeriodDetail({ siteOrgUnitId, periodId }: SitePeriodDetailPr
   const queryClient = useQueryClient()
 
   // Fetch the monitoring summary row (site + period + completion stats)
-  const { data: monitoringData, isLoading: summaryLoading } = useQuery({
+  const { data: monitoringData, isLoading: summaryLoading, refetch: refetchMonitoring } = useQuery({
     queryKey: ['kpi', 'monitoring', periodId, 'all', siteOrgUnitId],
     queryFn: () => api.kpi.monitoring.list({ periodId, siteOrgUnitId }),
+    refetchOnWindowFocus: true,
   })
 
   // Fetch the period to get status
   const { data: period } = useQuery({
     queryKey: ['kpi', 'periods', periodId],
     queryFn: () => api.kpi.periods.get(periodId),
+    refetchOnWindowFocus: true,
   })
 
   // Fetch individual KPI submission details
-  const { data, isLoading: detailLoading, isError } = useQuery({
+  const { data, isLoading: detailLoading, isError, refetch: refetchDetails } = useQuery({
     queryKey: ['kpi', 'site-submissions', siteOrgUnitId, periodId],
     queryFn: () => api.kpi.submissions.listForSite({ siteOrgUnitId, periodId }),
+    refetchOnWindowFocus: true,
   })
+
+  useEffect(() => {
+    function handleRefreshSignal() {
+      void refetchMonitoring()
+      void refetchDetails()
+    }
+
+    function handleStorage(event: StorageEvent) {
+      if (event.key !== KPI_MONITORING_REFRESH_EVENT) return
+      void refetchMonitoring()
+      void refetchDetails()
+    }
+
+    window.addEventListener(KPI_MONITORING_REFRESH_EVENT, handleRefreshSignal)
+    window.addEventListener('storage', handleStorage)
+
+    return () => {
+      window.removeEventListener(KPI_MONITORING_REFRESH_EVENT, handleRefreshSignal)
+      window.removeEventListener('storage', handleStorage)
+    }
+  }, [refetchDetails, refetchMonitoring])
 
   function handleUnlocked() {
     queryClient.invalidateQueries({ queryKey: ['kpi', 'site-submissions', siteOrgUnitId, periodId] })

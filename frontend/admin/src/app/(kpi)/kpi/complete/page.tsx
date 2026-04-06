@@ -28,6 +28,8 @@ import { Separator } from '@/components/ui/separator'
 import { api } from '@/lib/api'
 import type { AssignmentWithSubmission, SubmissionTokenContext } from '@/types/api'
 
+const KPI_MONITORING_REFRESH_EVENT = 'gce:kpi-monitoring-refresh'
+
 // ---------------------------------------------------------------------------
 // Fonts + global styles for this isolated page
 // ---------------------------------------------------------------------------
@@ -274,6 +276,11 @@ function KpiRow({ assignment, index, onSaved }: KpiRowProps) {
         description: 'Submission recorded.',
         duration: 3000,
       })
+      if (typeof window !== 'undefined') {
+        const refreshMarker = String(Date.now())
+        window.localStorage.setItem(KPI_MONITORING_REFRESH_EVENT, refreshMarker)
+        window.dispatchEvent(new CustomEvent(KPI_MONITORING_REFRESH_EVENT, { detail: refreshMarker }))
+      }
       setDirty(false)
       onSaved()
     },

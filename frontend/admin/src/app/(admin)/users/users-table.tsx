@@ -58,6 +58,14 @@ const columns: ColumnDef<User, unknown>[] = [
     meta: { className: 'w-[90px] text-right', headerClassName: 'text-right' },
   },
   {
+    accessorKey: 'packageCount',
+    header: 'Packages',
+    cell: ({ row }) => (
+      <span className="tabular-nums text-muted-foreground">{row.original.packageCount}</span>
+    ),
+    meta: { className: 'w-[90px] text-right', headerClassName: 'text-right' },
+  },
+  {
     accessorKey: 'isActive',
     header: 'Status',
     cell: ({ row }) => (

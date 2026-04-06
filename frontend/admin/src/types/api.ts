@@ -52,6 +52,8 @@ export interface User {
   roleList: string | null
   siteCount: number
   accountCount: number
+  packageCount: number
+  reportCount: number
   gapStatus: string | null
 }
 
@@ -77,6 +79,9 @@ export interface PackageGrant {
   principalId: number
   principalType: string
   principalName: string
+  grantSource: 'DIRECT' | 'ROLE'
+  sourceCode: string | null
+  sourceName: string | null
   grantScope: 'ALL_PACKAGES' | 'PACKAGE'
   packageCode: string
   packageName: string

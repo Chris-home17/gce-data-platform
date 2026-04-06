@@ -127,7 +127,7 @@ export function KpiAssignmentsPageClient() {
                 <SelectItem value={ALL_FILTER}>All accounts</SelectItem>
                 {(accountsQuery.data?.items ?? []).map((account) => (
                   <SelectItem key={account.accountCode} value={account.accountCode}>
-                    {account.accountCode}
+                    {account.accountName}
                   </SelectItem>
                 ))}
               </SelectContent>

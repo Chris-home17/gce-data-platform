@@ -24,6 +24,8 @@ public static class UserEndpoints
                     RoleList,
                     SiteCount,
                     AccountCount,
+                    PackageCount,
+                    ReportCount,
                     GapStatus
                 FROM App.vUsers
                 ORDER BY DisplayName");
@@ -53,7 +55,7 @@ public static class UserEndpoints
 
             var created = await conn.QuerySingleAsync<UserDto>(@"
                 SELECT UserId, UPN, DisplayName, IsActive,
-                       RoleCount, RoleList, SiteCount, AccountCount, GapStatus
+                       RoleCount, RoleList, SiteCount, AccountCount, PackageCount, ReportCount, GapStatus
                 FROM App.vUsers
                 WHERE UserId = @Id",
                 new { Id = newId });
@@ -67,7 +69,7 @@ public static class UserEndpoints
             using var conn = db.CreateConnection();
             var item = await conn.QuerySingleOrDefaultAsync<UserDto>(@"
                 SELECT UserId, UPN, DisplayName, IsActive,
-                       RoleCount, RoleList, SiteCount, AccountCount, GapStatus
+                       RoleCount, RoleList, SiteCount, AccountCount, PackageCount, ReportCount, GapStatus
                 FROM App.vUsers
                 WHERE UserId = @Id",
                 new { Id = id });
@@ -88,7 +90,7 @@ public static class UserEndpoints
 
             var user = await conn.QuerySingleOrDefaultAsync<UserDto>(@"
                 SELECT UserId, UPN, DisplayName, IsActive,
-                       RoleCount, RoleList, SiteCount, AccountCount, GapStatus
+                       RoleCount, RoleList, SiteCount, AccountCount, PackageCount, ReportCount, GapStatus
                 FROM App.vUsers
                 WHERE UserId = @Id",
                 new { Id = id });
@@ -150,11 +152,64 @@ public static class UserEndpoints
         {
             using var conn = db.CreateConnection();
             var items = await conn.QueryAsync<PackageGrantDto>(@"
-                SELECT PrincipalPackageGrantId, PrincipalId, PrincipalType, PrincipalName,
-                       GrantScope, PackageCode, PackageName, GrantedOnUtc
-                FROM App.vPackageGrants
-                WHERE PrincipalId = @Id
-                ORDER BY PackageCode",
+                -- Direct package grants on the user's own principal
+                SELECT
+                    ppg.PrincipalPackageGrantId,
+                    u.UserId                       AS PrincipalId,
+                    'User'                         AS PrincipalType,
+                    up.PrincipalName               AS PrincipalName,
+                    'DIRECT'                       AS GrantSource,
+                    CAST(NULL AS NVARCHAR(100))    AS SourceCode,
+                    CAST(NULL AS NVARCHAR(200))    AS SourceName,
+                    ppg.GrantScope,
+                    pkg.PackageCode,
+                    pkg.PackageName,
+                    ppg.GrantedOnUtc
+                FROM Sec.[User] AS u
+                JOIN Sec.Principal AS up
+                    ON up.PrincipalId = u.UserId
+                JOIN Sec.PrincipalPackageGrant AS ppg
+                    ON ppg.PrincipalId = u.UserId
+                    AND ppg.RevokedAt IS NULL
+                    AND (ppg.ExpiresAt IS NULL OR ppg.ExpiresAt > SYSUTCDATETIME())
+                LEFT JOIN Dim.Package AS pkg
+                    ON pkg.PackageId = ppg.PackageId
+                WHERE u.UserId = @Id
+
+                UNION ALL
+
+                -- Package grants via role membership
+                SELECT
+                    ppg.PrincipalPackageGrantId,
+                    u.UserId                       AS PrincipalId,
+                    'User'                         AS PrincipalType,
+                    up.PrincipalName               AS PrincipalName,
+                    'ROLE'                         AS GrantSource,
+                    r.RoleCode                     AS SourceCode,
+                    r.RoleName                     AS SourceName,
+                    ppg.GrantScope,
+                    pkg.PackageCode,
+                    pkg.PackageName,
+                    ppg.GrantedOnUtc
+                FROM Sec.[User] AS u
+                JOIN Sec.Principal AS up
+                    ON up.PrincipalId = u.UserId
+                JOIN Sec.RoleMembership AS rm
+                    ON rm.MemberPrincipalId = u.UserId
+                JOIN Sec.Role AS r
+                    ON r.RoleId = rm.RoleId
+                JOIN Sec.Principal AS rp
+                    ON rp.PrincipalId = r.RoleId
+                    AND rp.IsActive = 1
+                JOIN Sec.PrincipalPackageGrant AS ppg
+                    ON ppg.PrincipalId = r.RoleId
+                    AND ppg.RevokedAt IS NULL
+                    AND (ppg.ExpiresAt IS NULL OR ppg.ExpiresAt > SYSUTCDATETIME())
+                LEFT JOIN Dim.Package AS pkg
+                    ON pkg.PackageId = ppg.PackageId
+                WHERE u.UserId = @Id
+
+                ORDER BY GrantSource, PackageCode, SourceCode",
                 new { Id = id });
 
             var list = items.ToList();
