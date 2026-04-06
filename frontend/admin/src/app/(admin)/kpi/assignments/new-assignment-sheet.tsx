@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -201,6 +201,18 @@ export function NewAssignmentSheet() {
   }
 
   const selectedKpi = activeKpis.find((k) => k.kpiCode === form.watch('kpiCode'))
+  const supportsThresholds = ['Numeric', 'Percentage', 'Currency'].includes(selectedKpi?.dataType ?? '')
+
+  // Clear threshold fields when switching to a KPI that doesn't support them
+  useEffect(() => {
+    if (selectedKpi && !supportsThresholds) {
+      form.resetField('targetValue')
+      form.resetField('thresholdGreen')
+      form.resetField('thresholdAmber')
+      form.resetField('thresholdRed')
+      form.resetField('thresholdDirection')
+    }
+  }, [selectedKpi?.dataType]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
@@ -424,86 +436,94 @@ export function NewAssignmentSheet() {
             {/* ── Thresholds ──────────────────────────────────── */}
             <SectionHeading>Thresholds</SectionHeading>
 
-            <div className="grid grid-cols-2 gap-3">
-              <FormField
-                control={form.control}
-                name="targetValue"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Target value</FormLabel>
-                    <FormControl>
-                      <Input type="number" step="0.01" value={field.value ?? ''} onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+            {!selectedKpi ? null : !supportsThresholds ? (
+              <p className="text-xs text-muted-foreground rounded-md border border-dashed px-3 py-2">
+                Thresholds (target, green/amber/red, direction) are not applicable for <strong>{selectedKpi.dataType}</strong> KPIs.
+              </p>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField
+                    control={form.control}
+                    name="targetValue"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Target value</FormLabel>
+                        <FormControl>
+                          <Input type="number" step="0.01" value={field.value ?? ''} onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-              <FormField
-                control={form.control}
-                name="thresholdDirection"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Direction</FormLabel>
-                    <Select value={field.value ?? 'none'} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="none">Use KPI default</SelectItem>
-                        <SelectItem value="Higher">Higher is better</SelectItem>
-                        <SelectItem value="Lower">Lower is better</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                  <FormField
+                    control={form.control}
+                    name="thresholdDirection"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Direction</FormLabel>
+                        <Select value={field.value ?? 'none'} onValueChange={field.onChange}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">Use KPI default</SelectItem>
+                            <SelectItem value="Higher">Higher is better</SelectItem>
+                            <SelectItem value="Lower">Lower is better</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              <FormField
-                control={form.control}
-                name="thresholdGreen"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Green</FormLabel>
-                    <FormControl>
-                      <Input type="number" step="0.01" value={field.value ?? ''} onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="thresholdAmber"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Amber</FormLabel>
-                    <FormControl>
-                      <Input type="number" step="0.01" value={field.value ?? ''} onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="thresholdRed"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Red</FormLabel>
-                    <FormControl>
-                      <Input type="number" step="0.01" value={field.value ?? ''} onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <FormField
+                    control={form.control}
+                    name="thresholdGreen"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Green</FormLabel>
+                        <FormControl>
+                          <Input type="number" step="0.01" value={field.value ?? ''} onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="thresholdAmber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Amber</FormLabel>
+                        <FormControl>
+                          <Input type="number" step="0.01" value={field.value ?? ''} onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="thresholdRed"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Red</FormLabel>
+                        <FormControl>
+                          <Input type="number" step="0.01" value={field.value ?? ''} onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </>
+            )}
 
             {/* ── Display ─────────────────────────────────────── */}
             <SectionHeading>Display</SectionHeading>

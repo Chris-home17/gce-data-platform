@@ -351,6 +351,7 @@ export interface KpiAssignment {
   siteCode: string | null
   siteName: string | null
   isAccountWide: boolean
+  dataType: string
   periodId: number
   periodScheduleId: number
   scheduleName: string
@@ -383,6 +384,7 @@ export interface KpiAssignmentTemplate {
   siteCode: string | null
   siteName: string | null
   isAccountWide: boolean
+  dataType: string
   isRequired: boolean
   targetValue: number | null
   thresholdGreen: number | null
@@ -490,6 +492,18 @@ export interface CreateKpiDefinitionInput {
   collectionType: 'Manual' | 'Automated' | 'BulkUpload'
   thresholdDirection?: 'Higher' | 'Lower' | null
   dropDownOptions?: string[]
+}
+
+export interface UpdateKpiDefinitionInput {
+  kpiName: string
+  kpiDescription?: string
+  category?: string
+  unit?: string
+  dataType: 'Numeric' | 'Percentage' | 'Boolean' | 'Text' | 'Currency' | 'DropDown'
+  allowMultiValue?: boolean
+  collectionType: 'Manual' | 'Automated' | 'BulkUpload'
+  thresholdDirection?: 'Higher' | 'Lower' | null
+  dropDownOptions?: string[] | null
 }
 
 export type GrantType = 'GLOBAL_ALL' | 'GLOBAL_PACKAGE' | 'FULL_ACCOUNT' | 'PATH_PREFIX' | 'COUNTRY_ALL'

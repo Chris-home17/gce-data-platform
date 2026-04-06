@@ -52,13 +52,12 @@ export function PeriodsTable() {
     )
   }
 
-  // Sort: Open first, then Draft, then Closed/Distributed, then by year+month desc
+  // Sort: Open periods first, then all remaining periods by year+month asc.
   const sorted = [...(data?.items ?? [])].sort((a, b) => {
-    const priority = { Open: 0, Draft: 1, Closed: 2, Distributed: 3 }
-    const pa = priority[a.status] ?? 4
-    const pb = priority[b.status] ?? 4
-    if (pa !== pb) return pa - pb
-    return b.periodYear * 100 + b.periodMonth - (a.periodYear * 100 + a.periodMonth)
+    const aIsOpen = a.status === 'Open' ? 0 : 1
+    const bIsOpen = b.status === 'Open' ? 0 : 1
+    if (aIsOpen !== bIsOpen) return aIsOpen - bIsOpen
+    return a.periodYear * 100 + a.periodMonth - (b.periodYear * 100 + b.periodMonth)
   })
 
   return (

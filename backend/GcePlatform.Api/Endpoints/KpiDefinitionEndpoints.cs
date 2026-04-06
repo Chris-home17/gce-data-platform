@@ -64,6 +64,57 @@ public static class KpiDefinitionEndpoints
                 : Results.Ok(item);
         }).RequireAuthorization();
 
+        // PATCH /kpi/definitions/{id}
+        app.MapMethods("/kpi/definitions/{id:int}", new[] { "PATCH" },
+            async (int id, UpdateKpiDefinitionRequest request, DbConnectionFactory db) =>
+        {
+            using var conn = db.CreateConnection();
+
+            // Fetch current record to get KpiCode (immutable) and IsActive (preserve)
+            var current = await conn.QuerySingleOrDefaultAsync<KpiDefinitionDto>(@"
+                SELECT KpiId, ExternalId, KpiCode, KpiName, KpiDescription, Category, Unit,
+                       DataType, AllowMultiValue, CollectionType, ThresholdDirection,
+                       IsActive, AssignmentCount, DropDownOptionsRaw
+                FROM App.vKpiDefinitions
+                WHERE KpiId = @Id",
+                new { Id = id });
+
+            if (current is null)
+                return Results.NotFound(new ApiError("KPI_NOT_FOUND", $"KPI definition {id} not found."));
+
+            string? optionsPipe = request.DropDownOptions is null
+                ? null
+                : string.Join("||", request.DropDownOptions.Where(o => !string.IsNullOrWhiteSpace(o)));
+
+            var p = new DynamicParameters();
+            p.Add("@KpiCode",             current.KpiCode);
+            p.Add("@KpiName",             request.KpiName);
+            p.Add("@KpiDescription",      request.KpiDescription);
+            p.Add("@Category",            request.Category);
+            p.Add("@Unit",                request.Unit);
+            p.Add("@DataType",            request.DataType);
+            p.Add("@AllowMultiValue",     request.AllowMultiValue);
+            p.Add("@CollectionType",      request.CollectionType);
+            p.Add("@ThresholdDirection",  request.ThresholdDirection);
+            p.Add("@DropDownOptionsPipe", optionsPipe);
+            p.Add("@IsActive",            current.IsActive);
+            p.Add("@KPIID", dbType: System.Data.DbType.Int32,
+                  direction: System.Data.ParameterDirection.Output);
+
+            await conn.ExecuteAsync("App.usp_UpsertKpiDefinition", p,
+                commandType: System.Data.CommandType.StoredProcedure);
+
+            var updated = await conn.QuerySingleAsync<KpiDefinitionDto>(@"
+                SELECT KpiId, ExternalId, KpiCode, KpiName, KpiDescription, Category, Unit,
+                       DataType, AllowMultiValue, CollectionType, ThresholdDirection,
+                       IsActive, AssignmentCount, DropDownOptionsRaw
+                FROM App.vKpiDefinitions
+                WHERE KpiId = @Id",
+                new { Id = id });
+
+            return Results.Ok(updated);
+        }).RequireAuthorization();
+
         // PATCH /kpi/definitions/{id}/status
         app.MapMethods("/kpi/definitions/{id:int}/status", new[] { "PATCH" },
             async (int id, SetActiveRequest body, DbConnectionFactory db) =>

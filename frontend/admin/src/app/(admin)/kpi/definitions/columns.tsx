@@ -1,8 +1,81 @@
+'use client'
+
+import { useState } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { MoreHorizontal, Pencil, CheckCircle, XCircle } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { StatusBadge } from '@/components/shared/status-badge'
-import { RowActions } from '@/components/shared/row-actions'
+import { EditDefinitionSheet } from './edit-definition-sheet'
 import { api } from '@/lib/api'
 import type { KpiDefinition } from '@/types/api'
+
+function DefinitionActions({ kpi }: { kpi: KpiDefinition }) {
+  const [editOpen, setEditOpen] = useState(false)
+  const queryClient = useQueryClient()
+
+  const toggleMutation = useMutation({
+    mutationFn: () => api.kpi.definitions.setActive(kpi.kpiId, !kpi.isActive),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['kpi', 'definitions'] }),
+  })
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0 data-[state=open]:bg-muted"
+            disabled={toggleMutation.isPending}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MoreHorizontal className="h-4 w-4" />
+            <span className="sr-only">Actions</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            onClick={(e) => { e.stopPropagation(); setEditOpen(true) }}
+          >
+            <Pencil className="mr-2 h-4 w-4" />
+            Edit
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {kpi.isActive ? (
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={(e) => { e.stopPropagation(); toggleMutation.mutate() }}
+            >
+              <XCircle className="mr-2 h-4 w-4" />
+              Deactivate
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem
+              onClick={(e) => { e.stopPropagation(); toggleMutation.mutate() }}
+            >
+              <CheckCircle className="mr-2 h-4 w-4 text-emerald-600" />
+              Activate
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <EditDefinitionSheet
+        kpi={kpi}
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+      />
+    </>
+  )
+}
 
 export const definitionColumns: ColumnDef<KpiDefinition, unknown>[] = [
   {
@@ -85,13 +158,7 @@ export const definitionColumns: ColumnDef<KpiDefinition, unknown>[] = [
   {
     id: 'actions',
     header: '',
-    cell: ({ row }) => (
-      <RowActions
-        isActive={row.original.isActive}
-        onToggle={() => api.kpi.definitions.setActive(row.original.kpiId, !row.original.isActive)}
-        invalidateKeys={[['kpi', 'definitions']]}
-      />
-    ),
+    cell: ({ row }) => <DefinitionActions kpi={row.original} />,
     meta: { className: 'w-[40px]' },
   },
 ]

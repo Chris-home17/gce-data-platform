@@ -23,10 +23,49 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { DataTable } from '@/components/shared/data-table'
 import type { ColumnDef } from '@tanstack/react-table'
-import type { SiteCompletion } from '@/types/api'
+import type { KpiPeriod, SiteCompletion } from '@/types/api'
 
 function formatScheduleRef(periodScheduleId: number) {
   return `SCH-${periodScheduleId}`
+}
+
+function toPeriodSortValue(period: KpiPeriod) {
+  return period.periodYear * 100 + period.periodMonth
+}
+
+function selectCurrentPeriod(periods: KpiPeriod[]) {
+  if (periods.length === 0) return null
+
+  const today = new Date()
+  const currentMonthPeriods = periods.filter(
+    (period) =>
+      period.periodYear === today.getFullYear()
+      && period.periodMonth === today.getMonth() + 1,
+  )
+
+  if (currentMonthPeriods.length > 0) {
+    return [...currentMonthPeriods].sort((a, b) => {
+      const priority = { Open: 0, Draft: 1, Closed: 2, Distributed: 3 }
+      return (priority[a.status] ?? 4) - (priority[b.status] ?? 4)
+        || a.periodScheduleId - b.periodScheduleId
+    })[0]
+  }
+
+  const activeWindow = periods.find((period) => {
+    const openDate = new Date(`${period.submissionOpenDate}T00:00:00`)
+    const closeDate = new Date(`${period.submissionCloseDate}T23:59:59`)
+    return today >= openDate && today <= closeDate
+  })
+
+  if (activeWindow) return activeWindow
+
+  const nextUpcoming = [...periods]
+    .filter((period) => new Date(`${period.submissionOpenDate}T00:00:00`) >= today)
+    .sort((a, b) => new Date(a.submissionOpenDate).getTime() - new Date(b.submissionOpenDate).getTime())[0]
+
+  if (nextUpcoming) return nextUpcoming
+
+  return [...periods].sort((a, b) => toPeriodSortValue(b) - toPeriodSortValue(a))[0]
 }
 
 // ---------------------------------------------------------------------------
@@ -139,9 +178,12 @@ const monitoringColumns: ColumnDef<SiteCompletion, unknown>[] = [
     accessorKey: 'accountCode',
     header: 'Account',
     cell: ({ row }) => (
-      <span className="font-mono text-sm font-medium">{row.original.accountCode}</span>
+      <div>
+        <p className="text-sm font-medium">{row.original.accountCode}</p>
+        <p className="text-xs text-muted-foreground">{row.original.accountName}</p>
+      </div>
     ),
-    meta: { className: 'w-24' },
+    meta: { className: 'w-36' },
   },
   {
     accessorKey: 'siteCode',
@@ -216,8 +258,8 @@ const monitoringColumns: ColumnDef<SiteCompletion, unknown>[] = [
 
 export function MonitoringView() {
   const router = useRouter()
-  // Track selected period by ID (not label) — multiple periods can share the same label
-  const [selectedPeriodId, setSelectedPeriodId] = useState<number | null>(null)
+  const [selectedPeriodLabel, setSelectedPeriodLabel] = useState<string>('')
+  const [selectedScheduleId, setSelectedScheduleId] = useState<string>('all')
   const [selectedAccountCode, setSelectedAccountCode] = useState<string>('all')
 
   const { data: periodsData } = useQuery({
@@ -234,23 +276,80 @@ export function MonitoringView() {
     const periods = [...(periodsData?.items ?? [])].sort((a, b) => {
       const priority = { Open: 0, Draft: 1, Closed: 2, Distributed: 3 }
       return (priority[a.status] ?? 4) - (priority[b.status] ?? 4)
-        || (b.periodYear * 100 + b.periodMonth) - (a.periodYear * 100 + a.periodMonth)
+        || toPeriodSortValue(b) - toPeriodSortValue(a)
     })
     return periods
   }, [periodsData])
 
-  // Auto-select the first period once data loads
-  useEffect(() => {
-    if (sortedPeriods.length > 0 && selectedPeriodId === null) {
-      setSelectedPeriodId(sortedPeriods[0].periodId)
-    }
-  }, [sortedPeriods, selectedPeriodId])
+  const scheduleOptions = useMemo(() => {
+    const scheduleMap = new Map<number, { periodScheduleId: number; scheduleName: string }>()
+    sortedPeriods.forEach((period) => {
+      if (!scheduleMap.has(period.periodScheduleId)) {
+        scheduleMap.set(period.periodScheduleId, {
+          periodScheduleId: period.periodScheduleId,
+          scheduleName: period.scheduleName,
+        })
+      }
+    })
 
-  const selectedPeriod = sortedPeriods.find((p) => p.periodId === selectedPeriodId) ?? null
+    return Array.from(scheduleMap.values()).sort((a, b) => a.scheduleName.localeCompare(b.scheduleName))
+  }, [sortedPeriods])
+
+  const periodOptions = useMemo(() => {
+    const filteredPeriods = selectedScheduleId === 'all'
+      ? sortedPeriods
+      : sortedPeriods.filter((period) => String(period.periodScheduleId) === selectedScheduleId)
+
+    const firstPeriodByLabel = new Map<string, KpiPeriod>()
+    filteredPeriods.forEach((period) => {
+      if (!firstPeriodByLabel.has(period.periodLabel)) {
+        firstPeriodByLabel.set(period.periodLabel, period)
+      }
+    })
+
+    return Array.from(firstPeriodByLabel.values()).sort((a, b) => toPeriodSortValue(a) - toPeriodSortValue(b))
+  }, [selectedScheduleId, sortedPeriods])
+
+  useEffect(() => {
+    if (periodOptions.length === 0) return
+
+    // Selection is still valid — keep it
+    if (selectedPeriodLabel && periodOptions.some((p) => p.periodLabel === selectedPeriodLabel)) return
+
+    // Try to default to the current calendar month
+    const today = new Date()
+    const currentMonthOption = periodOptions.find(
+      (p) => p.periodYear === today.getFullYear() && p.periodMonth === today.getMonth() + 1,
+    )
+    if (currentMonthOption) {
+      setSelectedPeriodLabel(currentMonthOption.periodLabel)
+      return
+    }
+
+    // Fallback: most recent available period (last in ascending list)
+    setSelectedPeriodLabel(periodOptions[periodOptions.length - 1].periodLabel)
+  }, [selectedPeriodLabel, periodOptions])
+
+  const selectedPeriod = useMemo(() => {
+    const matching = sortedPeriods.filter(
+      (period) =>
+        period.periodLabel === selectedPeriodLabel
+        && (selectedScheduleId === 'all' || String(period.periodScheduleId) === selectedScheduleId),
+    )
+
+    if (matching.length === 0) return null
+
+    return selectCurrentPeriod(matching)
+      ?? [...matching].sort((a, b) => {
+        const priority = { Open: 0, Draft: 1, Closed: 2, Distributed: 3 }
+        return (priority[a.status] ?? 4) - (priority[b.status] ?? 4)
+          || a.periodScheduleId - b.periodScheduleId
+      })[0]
+  }, [selectedPeriodLabel, selectedScheduleId, sortedPeriods])
   const selectedAccount = accountsData?.items.find((a) => a.accountCode === selectedAccountCode)
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['kpi', 'monitoring', selectedPeriodId, selectedAccount?.accountId ?? 'all'],
+    queryKey: ['kpi', 'monitoring', selectedPeriod?.periodId ?? 'none', selectedAccount?.accountId ?? 'all'],
     queryFn: () =>
       selectedPeriod
         ? api.kpi.monitoring.list({
@@ -258,7 +357,7 @@ export function MonitoringView() {
             accountId: selectedAccount?.accountId,
           })
         : Promise.resolve({ items: [], totalCount: 0 }),
-    enabled: selectedPeriodId !== null,
+    enabled: selectedPeriod !== null,
   })
 
   // Aggregate stats across all sites in the selected period
@@ -285,50 +384,74 @@ export function MonitoringView() {
 
   return (
     <div className="space-y-6">
-      {/* Period selector */}
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="text-sm font-medium">Period</span>
-        <Select
-          value={selectedPeriodId !== null ? String(selectedPeriodId) : ''}
-          onValueChange={(v) => setSelectedPeriodId(Number(v))}
-        >
-          <SelectTrigger className="w-52">
-            <SelectValue placeholder="Select a period" />
-          </SelectTrigger>
-          <SelectContent>
-            {sortedPeriods.map((p) => (
-              <SelectItem key={p.periodId} value={String(p.periodId)}>
-                {p.periodLabel}
-                <span className="ml-2 text-xs text-muted-foreground">
-                  {formatScheduleRef(p.periodScheduleId)} · {p.scheduleName} ({p.status})
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Period:</span>
+          <Select value={selectedPeriodLabel} onValueChange={setSelectedPeriodLabel}>
+            <SelectTrigger className="h-8 w-40 text-sm">
+              <SelectValue placeholder="Select a period">{selectedPeriodLabel || 'Select a period'}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {periodOptions.map((p) => (
+                <SelectItem key={`${p.periodScheduleId}-${p.periodLabel}`} value={p.periodLabel} textValue={p.periodLabel}>
+                  {p.periodLabel}
+                  <span className="ml-2 text-xs text-muted-foreground">({p.status})</span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-        <span className="text-sm font-medium">Account</span>
-        <Select value={selectedAccountCode} onValueChange={setSelectedAccountCode}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="All accounts" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All accounts</SelectItem>
-            {(accountsData?.items ?? []).map((account) => (
-              <SelectItem key={account.accountId} value={account.accountCode}>
-                {account.accountCode}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Schedule:</span>
+          <Select value={selectedScheduleId} onValueChange={setSelectedScheduleId}>
+            <SelectTrigger className="h-8 w-72 text-sm">
+              <SelectValue placeholder="All schedules">
+                {selectedScheduleId === 'all'
+                  ? 'All schedules'
+                  : (scheduleOptions.find((s) => String(s.periodScheduleId) === selectedScheduleId)?.scheduleName ?? 'All schedules')}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All schedules</SelectItem>
+              {scheduleOptions.map((schedule) => (
+                <SelectItem key={schedule.periodScheduleId} value={String(schedule.periodScheduleId)} textValue={schedule.scheduleName}>
+                  {schedule.scheduleName}
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {formatScheduleRef(schedule.periodScheduleId)}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Account:</span>
+          <Select value={selectedAccountCode} onValueChange={setSelectedAccountCode}>
+            <SelectTrigger className="h-8 w-48 text-sm">
+              <SelectValue placeholder="All accounts" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All accounts</SelectItem>
+              {(accountsData?.items ?? []).map((account) => (
+                <SelectItem key={account.accountId} value={account.accountCode}>
+                  {account.accountName}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
         {selectedPeriod?.status === 'Open' && selectedPeriod.daysRemaining !== null && (
-          <span className={cn(
-            'text-sm',
-            (selectedPeriod.daysRemaining ?? 0) <= 3 ? 'text-red-600 font-medium' : 'text-muted-foreground'
-          )}>
-            {selectedPeriod.daysRemaining}d remaining
-          </span>
+          <div className="ml-auto rounded-md border bg-muted/40 px-3 py-1.5 text-sm">
+            <span className="text-muted-foreground">Window</span>{' '}
+            <span className={cn(
+              (selectedPeriod.daysRemaining ?? 0) <= 3 ? 'font-medium text-red-600' : 'font-medium'
+            )}>
+              {selectedPeriod.daysRemaining}d remaining
+            </span>
+          </div>
         )}
       </div>
 

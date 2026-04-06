@@ -31,6 +31,7 @@ public static class KpiAssignmentEndpoints
                     SiteCode,
                     SiteName,
                     CAST(IsAccountWide AS bit) AS IsAccountWide,
+                    DataType,
                     IsRequired,
                     TargetValue,
                     ThresholdGreen,
@@ -102,6 +103,7 @@ public static class KpiAssignmentEndpoints
                     SiteCode,
                     SiteName,
                     CAST(IsAccountWide AS bit) AS IsAccountWide,
+                    DataType,
                     IsRequired,
                     TargetValue,
                     ThresholdGreen,
@@ -161,6 +163,7 @@ public static class KpiAssignmentEndpoints
                     SiteCode,
                     SiteName,
                     CAST(IsAccountWide AS bit) AS IsAccountWide,
+                    DataType,
                     IsRequired,
                     TargetValue,
                     ThresholdGreen,
@@ -251,6 +254,7 @@ public static class KpiAssignmentEndpoints
                     SiteCode,
                     SiteName,
                     CAST(IsAccountWide AS bit) AS IsAccountWide,
+                    DataType,
                     PeriodId,
                     PeriodScheduleId,
                     ScheduleName,
@@ -289,6 +293,7 @@ public static class KpiAssignmentEndpoints
                     SiteCode,
                     SiteName,
                     CAST(IsAccountWide AS bit) AS IsAccountWide,
+                    DataType,
                     PeriodId,
                     PeriodScheduleId,
                     ScheduleName,
@@ -326,6 +331,7 @@ public static class KpiAssignmentEndpoints
                     SiteCode,
                     SiteName,
                     CAST(IsAccountWide AS bit) AS IsAccountWide,
+                    DataType,
                     PeriodId,
                     PeriodScheduleId,
                     ScheduleName,
@@ -387,7 +393,7 @@ public static class KpiAssignmentEndpoints
 
             var created = await conn.QuerySingleAsync<KpiAssignmentDto>(@"
                 SELECT AssignmentId, ExternalId, KpiCode, KpiName, Category, AccountCode, AccountName,
-                       SiteCode, SiteName, CAST(IsAccountWide AS bit) AS IsAccountWide, PeriodLabel, IsRequired,
+                       SiteCode, SiteName, CAST(IsAccountWide AS bit) AS IsAccountWide, DataType, PeriodLabel, IsRequired,
                        TargetValue, ThresholdGreen, ThresholdAmber, ThresholdRed,
                        EffectiveThresholdDirection, IsActive
                 FROM App.vKpiAssignments

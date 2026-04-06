@@ -163,6 +163,20 @@ public record CreateKpiDefinitionRequest(
     IEnumerable<string>? DropDownOptions
 );
 
+// KpiCode is immutable after creation (stable identifier used by assignments).
+public record UpdateKpiDefinitionRequest(
+    string   KpiName,
+    string?  KpiDescription,
+    string?  Category,
+    string?  Unit,
+    string   DataType,
+    bool     AllowMultiValue,
+    string   CollectionType,
+    string?  ThresholdDirection,
+    // DropDown options — null to leave unchanged, empty list to clear
+    IEnumerable<string>? DropDownOptions
+);
+
 // ---------------------------------------------------------------------------
 // KPI Assignment  (App.vKpiAssignments — screen K-03)
 // ---------------------------------------------------------------------------
@@ -178,6 +192,7 @@ public record KpiAssignmentDto(
     string?  SiteCode,
     string?  SiteName,
     bool     IsAccountWide,
+    string   DataType,
     int      PeriodId,
     int      PeriodScheduleId,
     string   ScheduleName,
@@ -242,6 +257,7 @@ public record KpiAssignmentTemplateDto(
     string?   SiteCode,
     string?   SiteName,
     bool      IsAccountWide,
+    string    DataType,
     bool      IsRequired,
     decimal?  TargetValue,
     decimal?  ThresholdGreen,

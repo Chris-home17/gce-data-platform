@@ -71,7 +71,11 @@ export const assignmentColumns: ColumnDef<KpiAssignment, unknown>[] = [
     id: 'thresholds',
     header: 'Green / Amber',
     cell: ({ row }) => {
-      const { thresholdGreen, thresholdAmber, effectiveThresholdDirection } = row.original
+      const { dataType, thresholdGreen, thresholdAmber, effectiveThresholdDirection } = row.original
+      const supportsThresholds = ['Numeric', 'Percentage', 'Currency'].includes(dataType)
+      if (!supportsThresholds) {
+        return <span className="text-muted-foreground text-xs">N/A</span>
+      }
       if (thresholdGreen === null && thresholdAmber === null) {
         return <span className="text-muted-foreground text-sm">—</span>
       }

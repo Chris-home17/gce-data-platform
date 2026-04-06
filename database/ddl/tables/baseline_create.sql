@@ -4580,6 +4580,7 @@ AS
         d.KPICode,
         d.KPIName,
         d.Category,
+        d.DataType,
         sched.PeriodScheduleID,
         sched.ScheduleName,
         sched.FrequencyType,
@@ -4677,6 +4678,7 @@ AS
         CASE WHEN a.OrgUnitId IS NULL THEN 1 ELSE 0 END AS IsAccountWide,
         a.PeriodID,
         p.PeriodScheduleID,
+        sched.ScheduleName,
         p.PeriodLabel,
         p.PeriodYear,
         p.PeriodMonth,
@@ -4700,10 +4702,11 @@ AS
         -- Escalation contact count for this site+period
         ISNULL(esc.ContactCount, 0) AS EscalationContactCount
     FROM KPI.Assignment AS a
-    JOIN KPI.Definition             AS d    ON d.KPIID       = a.KPIID
-    JOIN Dim.Account                AS acct ON acct.AccountId = a.AccountId
-    JOIN KPI.Period                 AS p    ON p.PeriodID    = a.PeriodID
-    LEFT JOIN Dim.OrgUnit           AS ou   ON ou.OrgUnitId  = a.OrgUnitId
+    JOIN KPI.Definition             AS d     ON d.KPIID       = a.KPIID
+    JOIN Dim.Account                AS acct  ON acct.AccountId = a.AccountId
+    JOIN KPI.Period                 AS p     ON p.PeriodID    = a.PeriodID
+    LEFT JOIN KPI.PeriodSchedule    AS sched ON sched.PeriodScheduleID = p.PeriodScheduleID
+    LEFT JOIN Dim.OrgUnit           AS ou    ON ou.OrgUnitId  = a.OrgUnitId
     LEFT JOIN KPI.AssignmentTemplate AS tmpl ON tmpl.AssignmentTemplateID = a.AssignmentTemplateID
     OUTER APPLY
     (

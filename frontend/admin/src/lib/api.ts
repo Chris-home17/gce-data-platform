@@ -21,6 +21,7 @@ import type {
   CreateKpiAssignmentInput,
   CreateKpiAssignmentTemplateInput,
   CreateKpiDefinitionInput,
+  UpdateKpiDefinitionInput,
   CreateKpiPeriodInput,
   CreateKpiPeriodScheduleInput,
   BulkCreateOrgUnitsInput,
@@ -401,6 +402,9 @@ export const api = {
       },
       create(data: CreateKpiDefinitionInput): Promise<KpiDefinition> {
         return apiFetch('/kpi/definitions', { method: 'POST', body: JSON.stringify(data) })
+      },
+      update(id: number, data: UpdateKpiDefinitionInput): Promise<KpiDefinition> {
+        return apiFetch(`/kpi/definitions/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
       },
       setActive(id: number, isActive: boolean): Promise<void> {
         return apiFetch(`/kpi/definitions/${id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) })
