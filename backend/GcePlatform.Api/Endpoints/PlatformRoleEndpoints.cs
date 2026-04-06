@@ -30,7 +30,7 @@ public static class PlatformRoleEndpoints
             var permissions = await platformAuth.GetPermissionsAsync(user, conn);
 
             var displayName = await conn.ExecuteScalarAsync<string>(
-                "SELECT COALESCE(DisplayName, UPN) FROM Sec.[User] WHERE UserId = @Id",
+                "SELECT COALESCE(DisplayName, UPN) FROM App.vUsers WHERE UserId = @Id",
                 new { Id = userId }) ?? upn;
 
             return Results.Ok(new CurrentUserDto(userId, upn, displayName, permissions));
@@ -42,7 +42,7 @@ public static class PlatformRoleEndpoints
             using var conn = db.CreateConnection();
             var items = await conn.QueryAsync<PlatformPermissionDto>(@"
                 SELECT PermissionId, PermissionCode, DisplayName, Description, Category, SortOrder
-                FROM App.PlatformPermission
+                FROM App.vPlatformPermissions
                 ORDER BY SortOrder, PermissionCode");
             var list = items.ToList();
             return Results.Ok(new ApiList<PlatformPermissionDto>(list, list.Count));
@@ -109,12 +109,11 @@ public static class PlatformRoleEndpoints
             if (role is null) return Results.NotFound();
 
             var permissions = await conn.QueryAsync<PlatformPermissionDto>(@"
-                SELECT pp.PermissionId, pp.PermissionCode, pp.DisplayName, pp.Description,
-                       pp.Category, pp.SortOrder
-                FROM App.PlatformRolePermission prp
-                JOIN App.PlatformPermission pp ON pp.PermissionId = prp.PermissionId
-                WHERE prp.PlatformRoleId = @Id
-                ORDER BY pp.SortOrder, pp.PermissionCode",
+                SELECT PermissionId, PermissionCode, DisplayName, Description,
+                       Category, SortOrder
+                FROM App.vPlatformRolePermissions
+                WHERE PlatformRoleId = @Id
+                ORDER BY SortOrder, PermissionCode",
                 new { Id = id });
 
             var members = await conn.QueryAsync<PlatformRoleMemberDto>(@"
@@ -140,13 +139,18 @@ public static class PlatformRoleEndpoints
             if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.PlatformRolesManage))
                 return Results.Forbid();
 
-            var rows = await conn.ExecuteAsync(@"
-                UPDATE App.PlatformRole
-                SET IsActive = @IsActive, ModifiedOnUtc = SYSUTCDATETIME(), ModifiedBy = SESSION_USER
-                WHERE PlatformRoleId = @Id",
-                new { Id = id, request.IsActive });
+            var exists = await conn.ExecuteScalarAsync<bool>(
+                "SELECT CAST(1 AS BIT) FROM App.vPlatformRoles WHERE PlatformRoleId = @Id",
+                new { Id = id });
 
-            return rows == 0 ? Results.NotFound() : Results.NoContent();
+            if (!exists)
+                return Results.NotFound();
+
+            await conn.ExecuteAsync("App.usp_SetPlatformRoleActive",
+                new { PlatformRoleId = id, request.IsActive },
+                commandType: System.Data.CommandType.StoredProcedure);
+
+            return Results.NoContent();
         }).RequireAuthorization();
 
         // PUT /platform-roles/{id}/permissions — replace full permission set
@@ -163,27 +167,16 @@ public static class PlatformRoleEndpoints
                 return Results.Forbid();
 
             if (!await conn.ExecuteScalarAsync<bool>(
-                    "SELECT CAST(1 AS BIT) FROM App.PlatformRole WHERE PlatformRoleId = @Id", new { Id = id }))
+                    "SELECT CAST(1 AS BIT) FROM App.vPlatformRoles WHERE PlatformRoleId = @Id", new { Id = id }))
                 return Results.NotFound();
 
-            // Delete + re-insert using plain SQL (TVP not supported by Dapper over Fabric SQL easily)
-            await conn.ExecuteAsync(
-                "DELETE FROM App.PlatformRolePermission WHERE PlatformRoleId = @Id", new { Id = id });
-
-            if (request.PermissionCodes.Any())
-            {
-                await conn.ExecuteAsync(@"
-                    INSERT INTO App.PlatformRolePermission (PlatformRoleId, PermissionId, GrantedBy)
-                    SELECT @RoleId, PermissionId, SESSION_USER
-                    FROM App.PlatformPermission
-                    WHERE PermissionCode IN @Codes",
-                    new { RoleId = id, Codes = request.PermissionCodes });
-            }
-
-            await conn.ExecuteAsync(@"
-                UPDATE App.PlatformRole
-                SET ModifiedOnUtc = SYSUTCDATETIME(), ModifiedBy = SESSION_USER
-                WHERE PlatformRoleId = @Id", new { Id = id });
+            await conn.ExecuteAsync("App.usp_SetPlatformRolePermissions",
+                new
+                {
+                    PlatformRoleId = id,
+                    PermissionCodesCsv = string.Join(",", request.PermissionCodes.Select(code => code.Trim())),
+                },
+                commandType: System.Data.CommandType.StoredProcedure);
 
             return Results.NoContent();
         }).RequireAuthorization();
@@ -216,14 +209,14 @@ public static class PlatformRoleEndpoints
                 return Results.Forbid();
 
             var actingUserId = await conn.ExecuteScalarAsync<int?>(
-                "SELECT UserId FROM Sec.[User] WHERE UPN = @Upn",
+                "SELECT UserId FROM App.vUsers WHERE UPN = @Upn AND IsActive = 1",
                 new { Upn = PlatformAuthService.GetUpn(user) });
 
             try
             {
                 var p = new DynamicParameters();
                 p.Add("@RoleCode", await conn.ExecuteScalarAsync<string>(
-                    "SELECT RoleCode FROM App.PlatformRole WHERE PlatformRoleId = @Id", new { Id = id }));
+                    "SELECT RoleCode FROM App.vPlatformRoles WHERE PlatformRoleId = @Id", new { Id = id }));
                 p.Add("@UserUPN", request.UserUpn.Trim().ToLowerInvariant());
                 p.Add("@AssignedByUserId", actingUserId);
                 await conn.ExecuteAsync("App.usp_AddPlatformRoleMember", p,

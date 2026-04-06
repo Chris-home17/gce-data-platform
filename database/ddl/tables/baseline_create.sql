@@ -1452,6 +1452,33 @@ AS
     LEFT JOIN Sec.Role   AS r ON r.RoleId    = p.PrincipalId;
 GO
 
+CREATE OR ALTER VIEW App.vPlatformPermissions
+AS
+    SELECT
+        PermissionId,
+        PermissionCode,
+        DisplayName,
+        Description,
+        Category,
+        SortOrder
+    FROM App.PlatformPermission;
+GO
+
+CREATE OR ALTER VIEW App.vPlatformRolePermissions
+AS
+    SELECT
+        prp.PlatformRoleId,
+        pp.PermissionId,
+        pp.PermissionCode,
+        pp.DisplayName,
+        pp.Description,
+        pp.Category,
+        pp.SortOrder
+    FROM App.PlatformRolePermission AS prp
+    JOIN App.PlatformPermission AS pp
+        ON pp.PermissionId = prp.PermissionId;
+GO
+
 -- --------------------------------------------------------------------------------
 -- App.vCoverageSummary
 -- Full coverage summary per user for coverage map screen
@@ -2235,6 +2262,63 @@ BEGIN
             DisplayName   = COALESCE(@DisplayName, DisplayName),
             ModifiedOnUtc = SYSUTCDATETIME()
         WHERE UserId = @UserId;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_SetPlatformRoleActive
+    @PlatformRoleId INT,
+    @IsActive       BIT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE App.PlatformRole
+    SET IsActive = @IsActive,
+        ModifiedOnUtc = SYSUTCDATETIME(),
+        ModifiedBy = SESSION_USER
+    WHERE PlatformRoleId = @PlatformRoleId;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_SetPlatformRolePermissions
+    @PlatformRoleId    INT,
+    @PermissionCodesCsv NVARCHAR(MAX) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM App.PlatformRole
+        WHERE PlatformRoleId = @PlatformRoleId
+    )
+        THROW 50210, 'Platform role not found.', 1;
+
+    DELETE FROM App.PlatformRolePermission
+    WHERE PlatformRoleId = @PlatformRoleId;
+
+    IF NULLIF(LTRIM(RTRIM(@PermissionCodesCsv)), '') IS NOT NULL
+    BEGIN
+        ;WITH Codes AS
+        (
+            SELECT DISTINCT LTRIM(RTRIM(value)) AS PermissionCode
+            FROM STRING_SPLIT(@PermissionCodesCsv, ',')
+            WHERE LTRIM(RTRIM(value)) <> ''
+        )
+        INSERT INTO App.PlatformRolePermission (PlatformRoleId, PermissionId, GrantedBy)
+        SELECT
+            @PlatformRoleId,
+            pp.PermissionId,
+            SESSION_USER
+        FROM App.PlatformPermission AS pp
+        JOIN Codes AS c
+            ON c.PermissionCode = pp.PermissionCode;
+    END
+
+    UPDATE App.PlatformRole
+    SET ModifiedOnUtc = SYSUTCDATETIME(),
+        ModifiedBy = SESSION_USER
+    WHERE PlatformRoleId = @PlatformRoleId;
 END;
 GO
 

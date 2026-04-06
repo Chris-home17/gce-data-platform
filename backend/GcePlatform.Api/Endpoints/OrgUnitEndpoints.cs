@@ -252,7 +252,7 @@ public static class OrgUnitEndpoints
 
             // Verify account exists upfront
             var accountId = await conn.QuerySingleOrDefaultAsync<int?>(
-                "SELECT AccountId FROM Dim.Account WHERE AccountCode = @AccountCode",
+                "SELECT AccountId FROM App.vAccounts WHERE AccountCode = @AccountCode",
                 new { req.AccountCode });
 
             if (!accountId.HasValue)

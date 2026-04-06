@@ -47,7 +47,7 @@ public class PlatformAuthService
             string.Equals(upn, _bootstrapSuperAdminUpn, StringComparison.OrdinalIgnoreCase))
         {
             var count = await conn.ExecuteScalarAsync<int>(
-                "SELECT COUNT(*) FROM App.PlatformRoleMembership prm JOIN Sec.[User] u ON u.UserId = prm.UserId WHERE u.UPN = @Upn",
+                "SELECT COUNT(*) FROM App.vPlatformRoleMembers WHERE UPN = @Upn",
                 new { Upn = upn });
 
             if (count == 0)
@@ -55,7 +55,7 @@ public class PlatformAuthService
         }
 
         var userId = await conn.ExecuteScalarAsync<int?>(
-            "SELECT UserId FROM Sec.[User] WHERE UPN = @Upn AND IsActive = 1",
+            "SELECT UserId FROM App.vUsers WHERE UPN = @Upn AND IsActive = 1",
             new { Upn = upn });
 
         if (userId is null)

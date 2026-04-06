@@ -51,6 +51,12 @@ GO
 IF OBJECT_ID('App.vKpiSubmissionUnlockState', 'V') IS NOT NULL
     DROP VIEW App.vKpiSubmissionUnlockState;
 GO
+IF OBJECT_ID('App.vPlatformRolePermissions', 'V') IS NOT NULL
+    DROP VIEW App.vPlatformRolePermissions;
+GO
+IF OBJECT_ID('App.vPlatformPermissions', 'V') IS NOT NULL
+    DROP VIEW App.vPlatformPermissions;
+GO
 IF OBJECT_ID('App.vSiteSubmissionDetails', 'V') IS NOT NULL
     DROP VIEW App.vSiteSubmissionDetails;
 GO
@@ -274,6 +280,12 @@ IF OBJECT_ID('App.usp_UpsertKpiDefinition', 'P') IS NOT NULL
 GO
 IF OBJECT_ID('App.RecordUserLogin', 'P') IS NOT NULL
     DROP PROCEDURE App.RecordUserLogin;
+GO
+IF OBJECT_ID('App.usp_SetPlatformRolePermissions', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_SetPlatformRolePermissions;
+GO
+IF OBJECT_ID('App.usp_SetPlatformRoleActive', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_SetPlatformRoleActive;
 GO
 IF OBJECT_ID('App.GetUserEffectiveAccess', 'P') IS NOT NULL
     DROP PROCEDURE App.GetUserEffectiveAccess;
