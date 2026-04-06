@@ -24,6 +24,8 @@ import {
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { usePermissions } from '@/hooks/usePermissions'
+import { PERMISSIONS } from '@/types/api'
 
 // ---------------------------------------------------------------------------
 // Nav structure
@@ -33,6 +35,8 @@ interface NavItem {
   label: string
   href: Route
   icon: React.ElementType
+  /** If set, item is hidden unless user has this permission (or is Super Admin) */
+  permission?: string
 }
 
 interface NavSection {
@@ -46,32 +50,32 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: 'Accounts', href: '/accounts', icon: Building2 },
       { label: 'Users', href: '/users', icon: Users },
-      { label: 'Roles', href: '/roles', icon: Shield },
-      { label: 'Policies', href: '/policies', icon: Lock },
-      { label: 'Delegations', href: '/delegations', icon: ArrowRightLeft },
+      { label: 'Roles', href: '/roles', icon: Shield, permission: PERMISSIONS.PLATFORM_ROLES_MANAGE },
+      { label: 'Policies', href: '/policies', icon: Lock, permission: PERMISSIONS.POLICIES_MANAGE },
+      { label: 'Delegations', href: '/delegations', icon: ArrowRightLeft, permission: PERMISSIONS.GRANTS_MANAGE },
     ],
   },
   {
     title: 'Catalogue',
     items: [
       { label: 'Packages', href: '/packages', icon: Package },
-      { label: 'BI Reports', href: '/reports', icon: BarChart2 },
+      { label: 'BI Reports', href: '/reports', icon: BarChart2, permission: PERMISSIONS.SUPER_ADMIN },
     ],
   },
   {
     title: 'Infrastructure',
     items: [
-      { label: 'Shared Geography', href: '/shared-geography', icon: Map },
-      { label: 'Sites', href: '/sites', icon: MapPin },
-      { label: 'Coverage', href: '/coverage', icon: Map },
-      { label: 'Source Mapping', href: '/source-mapping', icon: GitBranch },
+      { label: 'Shared Geography', href: '/shared-geography', icon: Map, permission: PERMISSIONS.SUPER_ADMIN },
+      { label: 'Org Units', href: '/sites', icon: MapPin },
+      { label: 'Coverage', href: '/coverage', icon: Map, permission: PERMISSIONS.SUPER_ADMIN },
+      { label: 'Source Mapping', href: '/source-mapping', icon: GitBranch, permission: PERMISSIONS.SUPER_ADMIN },
     ],
   },
   {
     title: 'KPI Platform',
     items: [
-      { label: 'KPI Library', href: '/kpi/definitions', icon: ListChecks },
-      { label: 'Periods', href: '/kpi/periods', icon: Calendar },
+      { label: 'KPI Library', href: '/kpi/definitions', icon: ListChecks, permission: PERMISSIONS.KPI_MANAGE },
+      { label: 'Periods', href: '/kpi/periods', icon: Calendar, permission: PERMISSIONS.KPI_MANAGE },
       { label: 'Assignments', href: '/kpi/assignments', icon: ClipboardList },
       { label: 'Monitoring', href: '/kpi/monitoring', icon: Activity },
     ],
@@ -117,6 +121,17 @@ function SidebarNavItem({ item }: { item: NavItem }) {
 // ---------------------------------------------------------------------------
 
 function SidebarContent() {
+  const { can, isSuperAdmin } = usePermissions()
+
+  const visibleSections = NAV_SECTIONS
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item =>
+        !item.permission || isSuperAdmin || can(item.permission)
+      ),
+    }))
+    .filter(section => section.items.length > 0)
+
   return (
     <div className="flex h-full flex-col gap-1 px-3 py-4">
       {/* Wordmark */}
@@ -131,7 +146,7 @@ function SidebarContent() {
       </div>
 
       {/* Nav sections */}
-      {NAV_SECTIONS.map((section) => (
+      {visibleSections.map((section) => (
         <div key={section.title} className="mb-3">
           <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
             {section.title}

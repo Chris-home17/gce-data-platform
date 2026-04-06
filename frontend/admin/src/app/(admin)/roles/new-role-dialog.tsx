@@ -24,6 +24,8 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { api } from '@/lib/api'
+import { usePermissions } from '@/hooks/usePermissions'
+import { PERMISSIONS } from '@/types/api'
 
 const schema = z.object({
   roleCode: z
@@ -38,6 +40,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>
 
 export function NewRoleDialog() {
+  const { can } = usePermissions()
   const [open, setOpen] = useState(false)
   const queryClient = useQueryClient()
 
@@ -63,6 +66,8 @@ export function NewRoleDialog() {
   function onSubmit(values: FormValues) {
     mutation.mutate(values)
   }
+
+  if (!can(PERMISSIONS.PLATFORM_ROLES_MANAGE)) return null
 
   return (
     <>

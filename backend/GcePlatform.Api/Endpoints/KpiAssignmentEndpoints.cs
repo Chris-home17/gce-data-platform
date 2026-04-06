@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using Dapper;
 using GcePlatform.Api.Data;
 using GcePlatform.Api.Models;
+using GcePlatform.Api.Services;
 
 namespace GcePlatform.Api.Endpoints;
 
@@ -49,9 +51,12 @@ public static class KpiAssignmentEndpoints
             return Results.Ok(new ApiList<KpiAssignmentTemplateDto>(list, list.Count));
         }).RequireAuthorization();
 
-        app.MapPost("/kpi/assignment-templates", async (CreateKpiAssignmentTemplateRequest request, DbConnectionFactory db) =>
+        app.MapPost("/kpi/assignment-templates", async (ClaimsPrincipal user, CreateKpiAssignmentTemplateRequest request, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+                return Results.Forbid();
 
             var p = new DynamicParameters();
             p.Add("@KpiCode", request.KpiCode);
@@ -119,9 +124,12 @@ public static class KpiAssignmentEndpoints
             return Results.Created($"/kpi/assignment-templates/{newId}", created);
         }).RequireAuthorization();
 
-        app.MapPost("/kpi/assignment-templates/{id:int}/materialize", async (int id, DbConnectionFactory db) =>
+        app.MapPost("/kpi/assignment-templates/{id:int}/materialize", async (ClaimsPrincipal user, int id, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+                return Results.Forbid();
 
             var exists = await conn.QuerySingleOrDefaultAsync<int?>(@"
                 SELECT AssignmentTemplateId
@@ -140,9 +148,12 @@ public static class KpiAssignmentEndpoints
         }).RequireAuthorization();
 
         app.MapMethods("/kpi/assignment-templates/{id:int}/status", new[] { "PATCH" },
-            async (int id, SetActiveRequest body, DbConnectionFactory db) =>
+            async (ClaimsPrincipal user, int id, SetActiveRequest body, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+                return Results.Forbid();
             var item = await conn.QuerySingleOrDefaultAsync<KpiAssignmentTemplateDto>(@"
                 SELECT
                     AssignmentTemplateId,
@@ -316,9 +327,12 @@ public static class KpiAssignmentEndpoints
 
         // PATCH /kpi/assignments/{id}/status
         app.MapMethods("/kpi/assignments/{id:int}/status", new[] { "PATCH" },
-            async (int id, SetActiveRequest body, DbConnectionFactory db) =>
+            async (ClaimsPrincipal user, int id, SetActiveRequest body, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+                return Results.Forbid();
             var item = await conn.QuerySingleOrDefaultAsync<KpiAssignmentDto>(@"
                 SELECT
                     AssignmentId,
@@ -365,9 +379,12 @@ public static class KpiAssignmentEndpoints
         }).RequireAuthorization();
 
         // POST /kpi/assignments
-        app.MapPost("/kpi/assignments", async (CreateKpiAssignmentRequest request, DbConnectionFactory db) =>
+        app.MapPost("/kpi/assignments", async (ClaimsPrincipal user, CreateKpiAssignmentRequest request, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+                return Results.Forbid();
 
             var p = new DynamicParameters();
             p.Add("@KpiCode", request.KpiCode);

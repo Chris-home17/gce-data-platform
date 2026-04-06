@@ -55,11 +55,46 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (DEV_BYPASS && !token.accessToken) {
         token.accessToken = 'dev-bypass-token'
       }
+      // Fetch permissions + userId once from the backend after initial sign-in.
+      // In dev bypass mode, skip the API call and grant all permissions locally.
+      if (token.accessToken && token.permissions === undefined) {
+        if (DEV_BYPASS) {
+          token.permissions = [
+            'platform.super_admin',
+            'accounts.manage',
+            'users.manage',
+            'grants.manage',
+            'kpi.manage',
+            'policies.manage',
+            'platform_roles.manage',
+          ]
+          token.userId = 1
+        } else {
+          try {
+            const res = await fetch(
+              `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/me`,
+              { headers: { Authorization: `Bearer ${token.accessToken}` } }
+            )
+            if (res.ok) {
+              const data = await res.json()
+              token.permissions = data.permissions ?? []
+              token.userId = data.userId ?? null
+            } else {
+              token.permissions = []
+            }
+          } catch {
+            token.permissions = []
+          }
+        }
+      }
       return token
     },
     async session({ session, token }) {
-      ;(session as typeof session & { accessToken?: string }).accessToken =
-        token.accessToken as string | undefined
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const s = session as any
+      s.accessToken = token.accessToken
+      s.permissions = token.permissions
+      s.userId = token.userId
       return session
     },
   },

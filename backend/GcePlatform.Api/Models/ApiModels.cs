@@ -850,6 +850,23 @@ public record GrantDelegationRequest(
 );
 
 // ---------------------------------------------------------------------------
+// Effective access — user detail, A-12
+// ---------------------------------------------------------------------------
+
+public record EffectiveAccessEntryDto(
+    string  GrantSource,       // DIRECT | ROLE | DELEGATION
+    string? SourceCode,        // RoleCode for ROLE; null otherwise
+    string? SourceName,        // RoleName or delegator DisplayName
+    string  AccessType,        // ALL | ACCOUNT
+    string  ScopeType,         // NONE | ORGUNIT
+    string? AccountCode,
+    string? AccountName,
+    string? ScopeOrgUnitCode,
+    string? ScopeOrgUnitName,
+    string? ScopeOrgUnitType
+);
+
+// ---------------------------------------------------------------------------
 // Error response
 // ---------------------------------------------------------------------------
 

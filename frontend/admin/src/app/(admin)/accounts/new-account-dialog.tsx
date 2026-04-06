@@ -27,6 +27,8 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { api } from '@/lib/api'
+import { usePermissions } from '@/hooks/usePermissions'
+import { PERMISSIONS } from '@/types/api'
 
 // ---------------------------------------------------------------------------
 // Zod schema
@@ -51,6 +53,7 @@ type CreateAccountValues = z.infer<typeof createAccountSchema>
 // ---------------------------------------------------------------------------
 
 export function NewAccountDialog() {
+  const { can } = usePermissions()
   const [open, setOpen] = useState(false)
   const queryClient = useQueryClient()
 
@@ -87,6 +90,8 @@ export function NewAccountDialog() {
     }
     setOpen(value)
   }
+
+  if (!can(PERMISSIONS.ACCOUNTS_MANAGE)) return null
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>

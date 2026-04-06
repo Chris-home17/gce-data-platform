@@ -24,6 +24,8 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { api } from '@/lib/api'
+import { usePermissions } from '@/hooks/usePermissions'
+import { PERMISSIONS } from '@/types/api'
 
 const schema = z.object({
   upn: z
@@ -36,6 +38,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>
 
 export function NewUserDialog() {
+  const { can } = usePermissions()
   const [open, setOpen] = useState(false)
   const queryClient = useQueryClient()
 
@@ -60,6 +63,8 @@ export function NewUserDialog() {
   function onSubmit(values: FormValues) {
     mutation.mutate(values)
   }
+
+  if (!can(PERMISSIONS.USERS_MANAGE)) return null
 
   return (
     <>

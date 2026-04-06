@@ -34,10 +34,15 @@ import {
 
 type Step = 'input' | 'preview' | 'results'
 
-export function ImportOrgUnitsDialog() {
+interface ImportOrgUnitsDialogProps {
+  /** When provided, pre-selects this account and hides the account selector */
+  defaultAccountCode?: string
+}
+
+export function ImportOrgUnitsDialog({ defaultAccountCode }: ImportOrgUnitsDialogProps = {}) {
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<Step>('input')
-  const [accountCode, setAccountCode] = useState('')
+  const [accountCode, setAccountCode] = useState(defaultAccountCode ?? '')
   const [inputTab, setInputTab] = useState('paste-csv')
   const [csvText, setCsvText] = useState('')
   const [indentedText, setIndentedText] = useState('')
@@ -93,7 +98,7 @@ export function ImportOrgUnitsDialog() {
   function handleOpen() {
     setOpen(true)
     setStep('input')
-    setAccountCode('')
+    setAccountCode(defaultAccountCode ?? '')
     setCsvText('')
     setIndentedText('')
     setValidatedRows([])
@@ -160,22 +165,24 @@ export function ImportOrgUnitsDialog() {
                 Bulk-import account hierarchy rows from a CSV or indented text. <strong>Region</strong>, <strong>SubRegion</strong>, <strong>Cluster</strong>, and <strong>Country</strong> rows attach existing Shared Geography items to the account. <strong>Area</strong>, <strong>Branch</strong>, and <strong>Site</strong> rows create local org units. Rows are processed in order, so parents must appear before their children.
               </p>
 
-              {/* Account selector */}
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">Account</label>
-                <Select value={accountCode} onValueChange={setAccountCode}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select account…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts?.items.map((a) => (
-                      <SelectItem key={a.accountId} value={a.accountCode}>
-                        {a.accountName} ({a.accountCode})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* Account selector — hidden when a default account is pre-selected */}
+              {!defaultAccountCode && (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Account</label>
+                  <Select value={accountCode} onValueChange={setAccountCode}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select account…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts?.items.map((a) => (
+                        <SelectItem key={a.accountId} value={a.accountCode}>
+                          {a.accountName} ({a.accountCode})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
 
               {/* Input method tabs */}
               <Tabs value={inputTab} onValueChange={setInputTab}>

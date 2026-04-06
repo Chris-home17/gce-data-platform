@@ -24,6 +24,8 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { api } from '@/lib/api'
+import { usePermissions } from '@/hooks/usePermissions'
+import { PERMISSIONS } from '@/types/api'
 
 const schema = z.object({
   packageCode: z
@@ -38,6 +40,7 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>
 
 export function NewPackageDialog() {
+  const { can } = usePermissions()
   const [open, setOpen] = useState(false)
   const queryClient = useQueryClient()
 
@@ -59,6 +62,8 @@ export function NewPackageDialog() {
       form.reset()
     },
   })
+
+  if (!can(PERMISSIONS.ACCOUNTS_MANAGE)) return null
 
   return (
     <>

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using GcePlatform.Api.Data;
 using GcePlatform.Api.Endpoints;
+using GcePlatform.Api.Services;
 using Microsoft.Identity.Web;
 using Serilog;
 
@@ -35,6 +36,11 @@ try
     // Data access
     // -----------------------------------------------------------------------
     builder.Services.AddSingleton<DbConnectionFactory>();
+
+    // -----------------------------------------------------------------------
+    // Platform auth (permission resolution)
+    // -----------------------------------------------------------------------
+    builder.Services.AddSingleton<PlatformAuthService>();
 
     // -----------------------------------------------------------------------
     // CORS — allow the Next.js dev server (and any configured origins in prod)
@@ -89,6 +95,7 @@ try
     // -----------------------------------------------------------------------
     // Endpoints
     // -----------------------------------------------------------------------
+    app.MapPlatformRoleEndpoints();
     app.MapAccountEndpoints();
     app.MapUserEndpoints();
     app.MapRoleEndpoints();

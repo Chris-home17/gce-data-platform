@@ -41,6 +41,7 @@ import type {
   CreateUserInput,
   CreateDelegationInput,
   Delegation,
+  EffectiveAccessEntry,
   Grant,
   GrantAccessInput,
   KpiAssignment,
@@ -173,6 +174,9 @@ export const api = {
     },
     delegations(id: number): Promise<ApiList<Delegation>> {
       return apiFetch(`/users/${id}/delegations`)
+    },
+    effectiveAccess(id: number): Promise<ApiList<EffectiveAccessEntry>> {
+      return apiFetch(`/users/${id}/effective-access`)
     },
   },
 

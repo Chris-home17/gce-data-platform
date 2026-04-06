@@ -5,7 +5,9 @@ import { PERMISSIONS } from '@/types/api'
 
 export function usePermissions() {
   const { data: session } = useSession()
-  const permissions: string[] = (session as typeof session & { permissions?: string[] })?.permissions ?? []
+  const s = session as typeof session & { permissions?: string[]; userId?: number }
+  const permissions: string[] = s?.permissions ?? []
+  const userId: number | undefined = s?.userId
 
   /** Returns true if the user has the given permission or is a Super Admin */
   const can = (permission: string): boolean =>
@@ -13,5 +15,5 @@ export function usePermissions() {
 
   const isSuperAdmin = permissions.includes(PERMISSIONS.SUPER_ADMIN)
 
-  return { permissions, can, isSuperAdmin }
+  return { permissions, can, isSuperAdmin, userId }
 }

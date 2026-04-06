@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using Dapper;
 using GcePlatform.Api.Data;
 using GcePlatform.Api.Models;
+using GcePlatform.Api.Services;
 
 namespace GcePlatform.Api.Endpoints;
 
@@ -66,9 +68,12 @@ public static class KpiDefinitionEndpoints
 
         // PATCH /kpi/definitions/{id}
         app.MapMethods("/kpi/definitions/{id:int}", new[] { "PATCH" },
-            async (int id, UpdateKpiDefinitionRequest request, DbConnectionFactory db) =>
+            async (ClaimsPrincipal user, int id, UpdateKpiDefinitionRequest request, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+                return Results.Forbid();
 
             // Fetch current record to get KpiCode (immutable) and IsActive (preserve)
             var current = await conn.QuerySingleOrDefaultAsync<KpiDefinitionDto>(@"
@@ -117,9 +122,12 @@ public static class KpiDefinitionEndpoints
 
         // PATCH /kpi/definitions/{id}/status
         app.MapMethods("/kpi/definitions/{id:int}/status", new[] { "PATCH" },
-            async (int id, SetActiveRequest body, DbConnectionFactory db) =>
+            async (ClaimsPrincipal user, int id, SetActiveRequest body, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+                return Results.Forbid();
             var item = await conn.QuerySingleOrDefaultAsync<KpiDefinitionDto>(@"
                 SELECT
                     KpiId,
@@ -151,9 +159,12 @@ public static class KpiDefinitionEndpoints
         }).RequireAuthorization();
 
         // POST /kpi/definitions
-        app.MapPost("/kpi/definitions", async (CreateKpiDefinitionRequest request, DbConnectionFactory db) =>
+        app.MapPost("/kpi/definitions", async (ClaimsPrincipal user, CreateKpiDefinitionRequest request, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+                return Results.Forbid();
 
             // Convert option list to pipe-delimited string expected by the stored proc
             string? optionsPipe = request.DropDownOptions is null

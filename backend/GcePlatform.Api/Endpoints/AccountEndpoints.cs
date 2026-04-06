@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using Dapper;
 using GcePlatform.Api.Data;
 using GcePlatform.Api.Models;
+using GcePlatform.Api.Services;
 
 namespace GcePlatform.Api.Endpoints;
 
@@ -92,9 +94,12 @@ public static class AccountEndpoints
         }).RequireAuthorization();
 
         // POST /accounts
-        app.MapPost("/accounts", async (CreateAccountRequest request, DbConnectionFactory db) =>
+        app.MapPost("/accounts", async (ClaimsPrincipal user, CreateAccountRequest request, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.AccountsManage))
+                return Results.Forbid();
 
             var p = new DynamicParameters();
             p.Add("@AccountCode", request.AccountCode.ToUpperInvariant());
@@ -121,9 +126,12 @@ public static class AccountEndpoints
 
         // PATCH /accounts/{id}/status
         app.MapMethods("/accounts/{id:int}/status", new[] { "PATCH" },
-            async (int id, SetActiveRequest req, DbConnectionFactory db) =>
+            async (ClaimsPrincipal user, int id, SetActiveRequest req, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.AccountsManage))
+                return Results.Forbid();
             var item = await conn.QuerySingleOrDefaultAsync<AccountDto>(
                 "SELECT AccountId, AccountCode, AccountName, CAST(IsActive AS bit) AS IsActive, SiteCount, UserCount FROM App.vAccounts WHERE AccountId = @Id",
                 new { Id = id });

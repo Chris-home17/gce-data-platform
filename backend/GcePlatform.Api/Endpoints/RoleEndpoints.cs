@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using Dapper;
 using GcePlatform.Api.Data;
 using GcePlatform.Api.Models;
+using GcePlatform.Api.Services;
 
 namespace GcePlatform.Api.Endpoints;
 
@@ -30,9 +32,12 @@ public static class RoleEndpoints
         }).RequireAuthorization();
 
         // POST /roles
-        app.MapPost("/roles", async (CreateRoleRequest request, DbConnectionFactory db) =>
+        app.MapPost("/roles", async (ClaimsPrincipal user, CreateRoleRequest request, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.PlatformRolesManage))
+                return Results.Forbid();
 
             var p = new DynamicParameters();
             p.Add("@RoleCode", request.RoleCode.Trim().ToUpperInvariant());
@@ -81,9 +86,12 @@ public static class RoleEndpoints
 
         // PATCH /roles/{id}/status
         app.MapMethods("/roles/{id:int}/status", new[] { "PATCH" },
-            async (int id, SetActiveRequest req, DbConnectionFactory db) =>
+            async (ClaimsPrincipal user, int id, SetActiveRequest req, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.PlatformRolesManage))
+                return Results.Forbid();
 
             var role = await conn.QuerySingleOrDefaultAsync<RoleDto>(@"
                 SELECT RoleId, RoleCode, RoleName, Description, IsActive,

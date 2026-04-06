@@ -1,4 +1,20 @@
 // ---------------------------------------------------------------------------
+// Platform permission codes — kept in sync with backend Permissions class
+// ---------------------------------------------------------------------------
+
+export const PERMISSIONS = {
+  SUPER_ADMIN:           'platform.super_admin',
+  ACCOUNTS_MANAGE:       'accounts.manage',
+  USERS_MANAGE:          'users.manage',
+  GRANTS_MANAGE:         'grants.manage',
+  KPI_MANAGE:            'kpi.manage',
+  POLICIES_MANAGE:       'policies.manage',
+  PLATFORM_ROLES_MANAGE: 'platform_roles.manage',
+} as const
+
+export type Permission = typeof PERMISSIONS[keyof typeof PERMISSIONS]
+
+// ---------------------------------------------------------------------------
 // API response wrappers
 // ---------------------------------------------------------------------------
 
@@ -65,6 +81,20 @@ export interface PackageGrant {
   packageCode: string
   packageName: string
   grantedOnUtc: string
+}
+
+/** From GET /users/{id}/effective-access */
+export interface EffectiveAccessEntry {
+  grantSource: 'DIRECT' | 'ROLE' | 'DELEGATION'
+  sourceCode: string | null   // RoleCode or delegator UPN
+  sourceName: string | null   // RoleName or delegator DisplayName
+  accessType: 'ALL' | 'ACCOUNT'
+  scopeType: 'NONE' | 'ORGUNIT'
+  accountCode: string | null
+  accountName: string | null
+  scopeOrgUnitCode: string | null
+  scopeOrgUnitName: string | null
+  scopeOrgUnitType: string | null
 }
 
 /** From App.vRoles (screen A-07) */

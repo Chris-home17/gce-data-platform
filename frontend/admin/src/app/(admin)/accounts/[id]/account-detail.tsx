@@ -7,9 +7,12 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { StatusBadge } from '@/components/shared/status-badge'
+import { PermissionGate } from '@/components/shared/permission-gate'
 import { AccountSitesTable } from '@/app/(admin)/sites/sites-table'
 import { AccountUsersTable } from '@/app/(admin)/users/users-table'
+import { ImportOrgUnitsDialog } from '@/app/(admin)/sites/import-org-units-dialog'
 import { api } from '@/lib/api'
+import { PERMISSIONS } from '@/types/api'
 
 // ---------------------------------------------------------------------------
 // Component
@@ -124,6 +127,11 @@ export function AccountDetail({ accountId }: AccountDetailProps) {
         </TabsList>
 
         <TabsContent value="structure" className="mt-4">
+          <div className="flex justify-end mb-3">
+            <PermissionGate permission={PERMISSIONS.ACCOUNTS_MANAGE}>
+              <ImportOrgUnitsDialog defaultAccountCode={account?.accountCode} />
+            </PermissionGate>
+          </div>
           <AccountSitesTable accountId={accountId} />
         </TabsContent>
 

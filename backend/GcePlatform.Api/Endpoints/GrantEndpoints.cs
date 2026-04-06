@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using Dapper;
 using GcePlatform.Api.Data;
 using GcePlatform.Api.Models;
+using GcePlatform.Api.Services;
 
 namespace GcePlatform.Api.Endpoints;
 
@@ -9,9 +11,12 @@ public static class GrantEndpoints
     public static WebApplication MapGrantEndpoints(this WebApplication app)
     {
         // POST /grants — App.GrantAccess wrapper
-        app.MapPost("/grants", async (GrantAccessRequest req, DbConnectionFactory db) =>
+        app.MapPost("/grants", async (ClaimsPrincipal user, GrantAccessRequest req, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.GrantsManage))
+                return Results.Forbid();
             var p = new DynamicParameters();
             p.Add("@PrincipalType",       req.PrincipalType);
             p.Add("@PrincipalIdentifier", req.PrincipalIdentifier);
@@ -29,9 +34,12 @@ public static class GrantEndpoints
         }).RequireAuthorization();
 
         // DELETE /grants/{id} — App.RevokeAccess
-        app.MapDelete("/grants/{id:int}", async (int id, DbConnectionFactory db) =>
+        app.MapDelete("/grants/{id:int}", async (ClaimsPrincipal user, int id, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.GrantsManage))
+                return Results.Forbid();
             var p = new DynamicParameters();
             p.Add("@PrincipalAccessGrantId", id);
 
@@ -53,9 +61,12 @@ public static class GrantEndpoints
         }).RequireAuthorization();
 
         // DELETE /package-grants/{id} — App.RevokePackageGrant
-        app.MapDelete("/package-grants/{id:int}", async (int id, DbConnectionFactory db) =>
+        app.MapDelete("/package-grants/{id:int}", async (ClaimsPrincipal user, int id, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.GrantsManage))
+                return Results.Forbid();
             var p = new DynamicParameters();
             p.Add("@PrincipalPackageGrantId", id);
 

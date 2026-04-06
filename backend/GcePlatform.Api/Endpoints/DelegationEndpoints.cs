@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using Dapper;
 using GcePlatform.Api.Data;
 using GcePlatform.Api.Models;
+using GcePlatform.Api.Services;
 using Microsoft.Data.SqlClient;
 
 namespace GcePlatform.Api.Endpoints;
@@ -41,7 +43,7 @@ public static class DelegationEndpoints
         }).RequireAuthorization();
 
         // POST /delegations — Sec.GrantDelegation
-        app.MapPost("/delegations", async (GrantDelegationRequest req, DbConnectionFactory db) =>
+        app.MapPost("/delegations", async (ClaimsPrincipal user, GrantDelegationRequest req, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             DateTime? validFromDate = null;
             DateTime? validToDate = null;
@@ -69,6 +71,10 @@ public static class DelegationEndpoints
             }
 
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.GrantsManage))
+                return Results.Forbid();
+
             var p = new DynamicParameters();
             p.Add("@DelegatorPrincipalType", req.DelegatorType);
             p.Add("@DelegatorIdentifier",    req.DelegatorIdentifier);
@@ -108,9 +114,12 @@ public static class DelegationEndpoints
         }).RequireAuthorization();
 
         // DELETE /delegations/{id} — deactivate by ID
-        app.MapDelete("/delegations/{id:int}", async (int id, DbConnectionFactory db) =>
+        app.MapDelete("/delegations/{id:int}", async (ClaimsPrincipal user, int id, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.GrantsManage))
+                return Results.Forbid();
             var affected = await conn.ExecuteScalarAsync<int>(@"
                 SELECT COUNT(1)
                 FROM App.vDelegations
@@ -130,9 +139,12 @@ public static class DelegationEndpoints
         }).RequireAuthorization();
 
         // PATCH /delegations/{id}/status
-        app.MapMethods("/delegations/{id:int}/status", new[] { "PATCH" }, async (int id, SetActiveRequest request, DbConnectionFactory db) =>
+        app.MapMethods("/delegations/{id:int}/status", new[] { "PATCH" }, async (ClaimsPrincipal user, int id, SetActiveRequest request, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.GrantsManage))
+                return Results.Forbid();
             var affected = await conn.ExecuteScalarAsync<int>(@"
                 SELECT COUNT(1)
                 FROM App.vDelegations

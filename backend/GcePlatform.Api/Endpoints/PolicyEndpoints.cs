@@ -1,8 +1,10 @@
+using System.Data;
+using System.Linq;
+using System.Security.Claims;
 using Dapper;
 using GcePlatform.Api.Data;
 using GcePlatform.Api.Models;
-using System.Data;
-using System.Linq;
+using GcePlatform.Api.Services;
 
 namespace GcePlatform.Api.Endpoints;
 
@@ -97,9 +99,12 @@ public static class PolicyEndpoints
         }).RequireAuthorization();
 
         // POST /policies
-        app.MapPost("/policies", async (CreateAccountRolePolicyRequest request, DbConnectionFactory db) =>
+        app.MapPost("/policies", async (ClaimsPrincipal user, CreateAccountRolePolicyRequest request, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.PoliciesManage))
+                return Results.Forbid();
 
             // Validate ORGUNIT scope has the required fields
             if (request.ScopeType == "ORGUNIT" &&
@@ -157,9 +162,12 @@ public static class PolicyEndpoints
         }).RequireAuthorization();
 
         // PUT /policies/{id}
-        app.MapPut("/policies/{id:int}", async (int id, UpdateAccountRolePolicyRequest request, DbConnectionFactory db) =>
+        app.MapPut("/policies/{id:int}", async (ClaimsPrincipal user, int id, UpdateAccountRolePolicyRequest request, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.PoliciesManage))
+                return Results.Forbid();
 
             var existing = await conn.QuerySingleOrDefaultAsync<AccountRolePolicyDto>(@"
                 SELECT AccountRolePolicyId, PolicyName, RoleCodeTemplate, RoleNameTemplate,
@@ -246,9 +254,12 @@ public static class PolicyEndpoints
 
         // PATCH /policies/{id}/status
         app.MapMethods("/policies/{id:int}/status", new[] { "PATCH" },
-            async (int id, SetActiveRequest req, DbConnectionFactory db) =>
+            async (ClaimsPrincipal user, int id, SetActiveRequest req, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.PoliciesManage))
+                return Results.Forbid();
 
             var exists = await conn.ExecuteScalarAsync<int>(@"
                 SELECT COUNT(1)

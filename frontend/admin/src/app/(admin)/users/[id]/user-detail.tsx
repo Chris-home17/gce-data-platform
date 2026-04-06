@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import type { ColumnDef } from '@tanstack/react-table'
-import { ArrowLeft, ShieldCheck, MapPin, Building2, AlertTriangle, Trash2, ShieldPlus } from 'lucide-react'
+import { ArrowLeft, ShieldCheck, MapPin, Building2, AlertTriangle, Trash2, ShieldPlus, Eye } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -13,7 +13,9 @@ import { DataTable } from '@/components/shared/data-table'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { GrantAccessDialog } from '@/components/shared/grant-access-dialog'
 import { api } from '@/lib/api'
-import type { Delegation, Grant, PackageGrant, Role } from '@/types/api'
+import { usePermissions } from '@/hooks/usePermissions'
+import { PERMISSIONS } from '@/types/api'
+import type { Delegation, EffectiveAccessEntry, Grant, PackageGrant, Role } from '@/types/api'
 
 // ---------------------------------------------------------------------------
 // Column definitions
@@ -211,7 +213,65 @@ const delegationColumns: ColumnDef<Delegation, unknown>[] = [
   },
 ]
 
+const effectiveAccessColumns: ColumnDef<EffectiveAccessEntry, unknown>[] = [
+  {
+    id: 'account',
+    header: 'Account',
+    cell: ({ row }) => {
+      const { accessType, accountCode, accountName } = row.original
+      if (accessType === 'ALL')
+        return <Badge variant="outline" className="text-xs">All Accounts</Badge>
+      return (
+        <div>
+          <span className="text-sm font-medium">{accountName}</span>
+          <span className="ml-2 font-mono text-xs text-muted-foreground">{accountCode}</span>
+        </div>
+      )
+    },
+  },
+  {
+    id: 'scope',
+    header: 'Scope',
+    cell: ({ row }) => {
+      const { scopeType, scopeOrgUnitCode, scopeOrgUnitName, scopeOrgUnitType } = row.original
+      if (scopeType === 'NONE')
+        return <span className="text-sm text-muted-foreground">All sites</span>
+      return (
+        <div>
+          <span className="text-sm">{scopeOrgUnitName}</span>
+          <span className="ml-2 font-mono text-xs text-muted-foreground">{scopeOrgUnitType} / {scopeOrgUnitCode}</span>
+        </div>
+      )
+    },
+  },
+  {
+    id: 'source',
+    header: 'Access via',
+    cell: ({ row }) => {
+      const { grantSource, sourceCode, sourceName } = row.original
+      if (grantSource === 'DIRECT')
+        return <Badge variant="secondary" className="text-xs">Direct grant</Badge>
+      if (grantSource === 'ROLE')
+        return (
+          <div className="flex items-center gap-1.5">
+            <Badge variant="outline" className="text-xs border-blue-300 text-blue-700 bg-blue-50">Role</Badge>
+            <span className="text-sm font-medium">{sourceName}</span>
+            <span className="font-mono text-xs text-muted-foreground">{sourceCode}</span>
+          </div>
+        )
+      // DELEGATION
+      return (
+        <div className="flex items-center gap-1.5">
+          <Badge variant="outline" className="text-xs border-amber-300 text-amber-700 bg-amber-50">Delegated</Badge>
+          <span className="text-sm">{sourceName ?? sourceCode}</span>
+        </div>
+      )
+    },
+  },
+]
+
 function RevokeGrantButton({ grantId, userId }: { grantId: number; userId: number }) {
+  const { can } = usePermissions()
   const queryClient = useQueryClient()
   const mutation = useMutation({
     mutationFn: () => api.grants.revoke(grantId),
@@ -221,6 +281,7 @@ function RevokeGrantButton({ grantId, userId }: { grantId: number; userId: numbe
       queryClient.invalidateQueries({ queryKey: ['users'] })
     },
   })
+  if (!can(PERMISSIONS.GRANTS_MANAGE)) return null
   return (
     <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
       <Trash2 className="h-3.5 w-3.5" />
@@ -229,6 +290,7 @@ function RevokeGrantButton({ grantId, userId }: { grantId: number; userId: numbe
 }
 
 function RevokePackageGrantButton({ grantId, userId }: { grantId: number; userId: number }) {
+  const { can } = usePermissions()
   const queryClient = useQueryClient()
   const mutation = useMutation({
     mutationFn: () => api.grants.revokePackage(grantId),
@@ -238,6 +300,7 @@ function RevokePackageGrantButton({ grantId, userId }: { grantId: number; userId
       queryClient.invalidateQueries({ queryKey: ['users'] })
     },
   })
+  if (!can(PERMISSIONS.GRANTS_MANAGE)) return null
   return (
     <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
       <Trash2 className="h-3.5 w-3.5" />
@@ -251,7 +314,9 @@ function RevokePackageGrantButton({ grantId, userId }: { grantId: number; userId
 export function UserDetail({ userId }: { userId: number }) {
   const router = useRouter()
   const queryClient = useQueryClient()
+  const { can } = usePermissions()
   const [grantDialogOpen, setGrantDialogOpen] = useState(false)
+  const [activeTab, setActiveTab] = useState('effective')
 
   const { data: user, isLoading, isError } = useQuery({
     queryKey: ['users', userId],
@@ -279,6 +344,12 @@ export function UserDetail({ userId }: { userId: number }) {
   const { data: delegationsData, isLoading: delegationsLoading } = useQuery({
     queryKey: ['user-delegations', userId],
     queryFn: () => api.users.delegations(userId),
+    enabled: !!user,
+  })
+
+  const { data: effectiveData, isLoading: effectiveLoading } = useQuery({
+    queryKey: ['user-effective-access', userId],
+    queryFn: () => api.users.effectiveAccess(userId),
     enabled: !!user,
   })
 
@@ -329,10 +400,12 @@ export function UserDetail({ userId }: { userId: number }) {
             <p className="mt-0.5 text-sm text-muted-foreground">{user.upn}</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={() => setGrantDialogOpen(true)}>
-              <ShieldPlus className="mr-1.5 h-4 w-4" />
-              Grant Access
-            </Button>
+            {can(PERMISSIONS.GRANTS_MANAGE) && (
+              <Button size="sm" variant="outline" onClick={() => setGrantDialogOpen(true)}>
+                <ShieldPlus className="mr-1.5 h-4 w-4" />
+                Grant Access
+              </Button>
+            )}
             <StatusBadge status={user.isActive ? 'Active' : 'Inactive'} />
           </div>
         </div>
@@ -348,33 +421,51 @@ export function UserDetail({ userId }: { userId: number }) {
             <div className="text-2xl font-bold tabular-nums">{isLoading ? '—' : user?.roleCount ?? 0}</div>
           </CardContent>
         </Card>
-        <Card>
+        <Card
+          className="cursor-pointer hover:border-primary/50 transition-colors"
+          onClick={() => {
+            setActiveTab('effective')
+            document.getElementById('user-tabs')?.scrollIntoView({ behavior: 'smooth' })
+          }}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Sites</CardTitle>
             <MapPin className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tabular-nums">{isLoading ? '—' : user?.siteCount ?? 0}</div>
+            <p className="text-xs text-muted-foreground mt-1">View effective access →</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card
+          className="cursor-pointer hover:border-primary/50 transition-colors"
+          onClick={() => {
+            setActiveTab('effective')
+            document.getElementById('user-tabs')?.scrollIntoView({ behavior: 'smooth' })
+          }}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Accounts</CardTitle>
             <Building2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold tabular-nums">{isLoading ? '—' : user?.accountCount ?? 0}</div>
+            <p className="text-xs text-muted-foreground mt-1">View effective access →</p>
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="roles">
+      <Tabs id="user-tabs" value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
+          <TabsTrigger value="effective">
+            <Eye className="mr-1.5 h-3.5 w-3.5" />
+            Effective Access {!effectiveLoading && effectiveData ? `(${effectiveData.totalCount})` : ''}
+          </TabsTrigger>
           <TabsTrigger value="roles">
             Roles {!rolesLoading && rolesData ? `(${rolesData.totalCount})` : ''}
           </TabsTrigger>
           <TabsTrigger value="grants">
-            Access Grants {!grantsLoading && grantsData ? `(${grantsData.totalCount})` : ''}
+            Direct Grants {!grantsLoading && grantsData ? `(${grantsData.totalCount})` : ''}
           </TabsTrigger>
           <TabsTrigger value="packages">
             Package Grants {!pkgGrantsLoading && pkgGrantsData ? `(${pkgGrantsData.totalCount})` : ''}
@@ -383,6 +474,16 @@ export function UserDetail({ userId }: { userId: number }) {
             Delegations {!delegationsLoading && delegationsData ? `(${delegationsData.totalCount})` : ''}
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="effective" className="mt-4">
+          {effectiveData?.items.length === 0 && !effectiveLoading ? (
+            <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+              No effective access found. Assign a role or add a direct grant.
+            </div>
+          ) : (
+            <DataTable columns={effectiveAccessColumns} data={effectiveData?.items ?? []} isLoading={effectiveLoading} />
+          )}
+        </TabsContent>
 
         <TabsContent value="roles" className="mt-4">
           {rolesData?.items.length === 0 && !rolesLoading ? (

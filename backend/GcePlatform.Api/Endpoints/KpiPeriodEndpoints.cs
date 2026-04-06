@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using Dapper;
 using GcePlatform.Api.Data;
 using GcePlatform.Api.Models;
+using GcePlatform.Api.Services;
 
 namespace GcePlatform.Api.Endpoints;
 
@@ -35,9 +37,12 @@ public static class KpiPeriodEndpoints
             return Results.Ok(new ApiList<KpiPeriodScheduleDto>(list, list.Count));
         }).RequireAuthorization();
 
-        app.MapPost("/kpi/period-schedules", async (CreateKpiPeriodScheduleRequest request, DbConnectionFactory db) =>
+        app.MapPost("/kpi/period-schedules", async (ClaimsPrincipal user, CreateKpiPeriodScheduleRequest request, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+                return Results.Forbid();
 
             var p = new DynamicParameters();
             p.Add("@ScheduleName", request.ScheduleName);
@@ -90,9 +95,12 @@ public static class KpiPeriodEndpoints
             return Results.Created($"/kpi/period-schedules/{newId}", created);
         }).RequireAuthorization();
 
-        app.MapPost("/kpi/period-schedules/{id:int}/generate", async (int id, DbConnectionFactory db) =>
+        app.MapPost("/kpi/period-schedules/{id:int}/generate", async (ClaimsPrincipal user, int id, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+                return Results.Forbid();
 
             var exists = await conn.QuerySingleOrDefaultAsync<int?>(@"
                 SELECT PeriodScheduleId
@@ -113,9 +121,12 @@ public static class KpiPeriodEndpoints
         }).RequireAuthorization();
 
         app.MapMethods("/kpi/period-schedules/{id:int}/status", new[] { "PATCH" },
-            async (int id, SetActiveRequest body, DbConnectionFactory db) =>
+            async (ClaimsPrincipal user, int id, SetActiveRequest body, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+                return Results.Forbid();
             var item = await conn.QuerySingleOrDefaultAsync<KpiPeriodScheduleDto>(@"
                 SELECT
                     PeriodScheduleId,
@@ -209,9 +220,12 @@ public static class KpiPeriodEndpoints
         }).RequireAuthorization();
 
         // POST /kpi/periods
-        app.MapPost("/kpi/periods", async (CreateKpiPeriodRequest request, DbConnectionFactory db) =>
+        app.MapPost("/kpi/periods", async (ClaimsPrincipal user, CreateKpiPeriodRequest request, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+                return Results.Forbid();
 
             var p = new DynamicParameters();
             p.Add("@PeriodYear", request.PeriodYear);
@@ -240,9 +254,12 @@ public static class KpiPeriodEndpoints
         }).RequireAuthorization();
 
         // POST /kpi/periods/{id}/open
-        app.MapPost("/kpi/periods/{id:int}/open", async (int id, DbConnectionFactory db) =>
+        app.MapPost("/kpi/periods/{id:int}/open", async (ClaimsPrincipal user, int id, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+                return Results.Forbid();
 
             await conn.ExecuteAsync("App.usp_OpenPeriod",
                 new { PeriodId = id },
@@ -263,9 +280,12 @@ public static class KpiPeriodEndpoints
         }).RequireAuthorization();
 
         // POST /kpi/periods/{id}/close
-        app.MapPost("/kpi/periods/{id:int}/close", async (int id, DbConnectionFactory db) =>
+        app.MapPost("/kpi/periods/{id:int}/close", async (ClaimsPrincipal user, int id, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+                return Results.Forbid();
 
             await conn.ExecuteAsync("App.usp_ClosePeriod",
                 new { PeriodId = id },
