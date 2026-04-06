@@ -294,6 +294,119 @@ BEGIN
 END;
 GO
 
+-- Platform roles ------------------------------------------------------------------
+IF OBJECT_ID('App.PlatformPermission', 'U') IS NULL
+BEGIN
+    CREATE TABLE App.PlatformPermission
+    (
+        PermissionId    INT IDENTITY(1,1)   NOT NULL PRIMARY KEY,
+        PermissionCode  NVARCHAR(100)       NOT NULL,
+        DisplayName     NVARCHAR(200)       NOT NULL,
+        Description     NVARCHAR(500)       NULL,
+        Category        NVARCHAR(100)       NULL,
+        SortOrder       INT                 NOT NULL CONSTRAINT DF_PlatformPermission_Sort DEFAULT (0),
+        IsActive        BIT                 NOT NULL CONSTRAINT DF_PlatformPermission_IsActive DEFAULT (1),
+        CreatedOnUtc    DATETIME2           NOT NULL CONSTRAINT DF_PlatformPermission_Created DEFAULT (SYSUTCDATETIME()),
+        ModifiedOnUtc   DATETIME2           NOT NULL CONSTRAINT DF_PlatformPermission_Modified DEFAULT (SYSUTCDATETIME()),
+        CreatedBy       NVARCHAR(128)       NOT NULL CONSTRAINT DF_PlatformPermission_CreatedBy DEFAULT (SESSION_USER),
+        ModifiedBy      NVARCHAR(128)       NOT NULL CONSTRAINT DF_PlatformPermission_ModifiedBy DEFAULT (SESSION_USER)
+    );
+
+    CREATE UNIQUE INDEX UX_PlatformPermission_Code
+        ON App.PlatformPermission (PermissionCode);
+    CREATE INDEX IX_PlatformPermission_Sort
+        ON App.PlatformPermission (SortOrder, PermissionCode);
+END;
+GO
+
+IF OBJECT_ID('App.PlatformRole', 'U') IS NULL
+BEGIN
+    CREATE TABLE App.PlatformRole
+    (
+        PlatformRoleId  INT IDENTITY(1,1)   NOT NULL PRIMARY KEY,
+        RoleCode        NVARCHAR(100)       NOT NULL,
+        RoleName        NVARCHAR(200)       NOT NULL,
+        Description     NVARCHAR(500)       NULL,
+        IsActive        BIT                 NOT NULL CONSTRAINT DF_PlatformRole_IsActive DEFAULT (1),
+        CreatedOnUtc    DATETIME2           NOT NULL CONSTRAINT DF_PlatformRole_Created DEFAULT (SYSUTCDATETIME()),
+        ModifiedOnUtc   DATETIME2           NOT NULL CONSTRAINT DF_PlatformRole_Modified DEFAULT (SYSUTCDATETIME()),
+        CreatedBy       NVARCHAR(128)       NOT NULL CONSTRAINT DF_PlatformRole_CreatedBy DEFAULT (SESSION_USER),
+        ModifiedBy      NVARCHAR(128)       NOT NULL CONSTRAINT DF_PlatformRole_ModifiedBy DEFAULT (SESSION_USER)
+    );
+
+    CREATE UNIQUE INDEX UX_PlatformRole_Code
+        ON App.PlatformRole (RoleCode);
+    CREATE INDEX IX_PlatformRole_IsActive
+        ON App.PlatformRole (IsActive, RoleName);
+END;
+GO
+
+IF OBJECT_ID('App.PlatformRolePermission', 'U') IS NULL
+BEGIN
+    CREATE TABLE App.PlatformRolePermission
+    (
+        PlatformRoleId  INT             NOT NULL,
+        PermissionId    INT             NOT NULL,
+        GrantedOnUtc    DATETIME2       NOT NULL CONSTRAINT DF_PlatformRolePermission_Granted DEFAULT (SYSUTCDATETIME()),
+        GrantedBy       NVARCHAR(128)   NOT NULL CONSTRAINT DF_PlatformRolePermission_GrantedBy DEFAULT (SESSION_USER),
+        CONSTRAINT PK_PlatformRolePermission PRIMARY KEY (PlatformRoleId, PermissionId),
+        CONSTRAINT FK_PlatformRolePermission_Role FOREIGN KEY (PlatformRoleId) REFERENCES App.PlatformRole (PlatformRoleId),
+        CONSTRAINT FK_PlatformRolePermission_Permission FOREIGN KEY (PermissionId) REFERENCES App.PlatformPermission (PermissionId)
+    );
+
+    CREATE INDEX IX_PlatformRolePermission_Permission
+        ON App.PlatformRolePermission (PermissionId);
+END;
+GO
+
+IF OBJECT_ID('App.PlatformRoleMembership', 'U') IS NULL
+BEGIN
+    CREATE TABLE App.PlatformRoleMembership
+    (
+        PlatformRoleId    INT         NOT NULL,
+        UserId            INT         NOT NULL,
+        AssignedOnUtc     DATETIME2   NOT NULL CONSTRAINT DF_PlatformRoleMembership_Assigned DEFAULT (SYSUTCDATETIME()),
+        AssignedByUserId  INT         NULL,
+        CONSTRAINT PK_PlatformRoleMembership PRIMARY KEY (PlatformRoleId, UserId),
+        CONSTRAINT FK_PlatformRoleMembership_Role FOREIGN KEY (PlatformRoleId) REFERENCES App.PlatformRole (PlatformRoleId),
+        CONSTRAINT FK_PlatformRoleMembership_User FOREIGN KEY (UserId) REFERENCES Sec.[User] (UserId),
+        CONSTRAINT FK_PlatformRoleMembership_AssignedBy FOREIGN KEY (AssignedByUserId) REFERENCES Sec.[User] (UserId)
+    );
+
+    CREATE INDEX IX_PlatformRoleMembership_User
+        ON App.PlatformRoleMembership (UserId);
+END;
+GO
+
+IF NOT EXISTS (SELECT 1 FROM App.PlatformPermission WHERE PermissionCode = 'platform.super_admin')
+    INSERT INTO App.PlatformPermission (PermissionCode, DisplayName, Description, Category, SortOrder)
+    VALUES ('platform.super_admin', 'Platform Super Admin', 'Full platform administration access.', 'Platform', 10);
+GO
+IF NOT EXISTS (SELECT 1 FROM App.PlatformPermission WHERE PermissionCode = 'accounts.manage')
+    INSERT INTO App.PlatformPermission (PermissionCode, DisplayName, Description, Category, SortOrder)
+    VALUES ('accounts.manage', 'Manage Accounts', 'Create and maintain customer accounts and structures.', 'Administration', 20);
+GO
+IF NOT EXISTS (SELECT 1 FROM App.PlatformPermission WHERE PermissionCode = 'users.manage')
+    INSERT INTO App.PlatformPermission (PermissionCode, DisplayName, Description, Category, SortOrder)
+    VALUES ('users.manage', 'Manage Users', 'Create users and manage memberships.', 'Administration', 30);
+GO
+IF NOT EXISTS (SELECT 1 FROM App.PlatformPermission WHERE PermissionCode = 'grants.manage')
+    INSERT INTO App.PlatformPermission (PermissionCode, DisplayName, Description, Category, SortOrder)
+    VALUES ('grants.manage', 'Manage Grants', 'Manage grants, delegations, and package access.', 'Administration', 40);
+GO
+IF NOT EXISTS (SELECT 1 FROM App.PlatformPermission WHERE PermissionCode = 'kpi.manage')
+    INSERT INTO App.PlatformPermission (PermissionCode, DisplayName, Description, Category, SortOrder)
+    VALUES ('kpi.manage', 'Manage KPI', 'Manage KPI library, schedules, assignments, and periods.', 'KPI', 50);
+GO
+IF NOT EXISTS (SELECT 1 FROM App.PlatformPermission WHERE PermissionCode = 'policies.manage')
+    INSERT INTO App.PlatformPermission (PermissionCode, DisplayName, Description, Category, SortOrder)
+    VALUES ('policies.manage', 'Manage Policies', 'Manage account role, access, and package policies.', 'Administration', 60);
+GO
+IF NOT EXISTS (SELECT 1 FROM App.PlatformPermission WHERE PermissionCode = 'platform_roles.manage')
+    INSERT INTO App.PlatformPermission (PermissionCode, DisplayName, Description, Category, SortOrder)
+    VALUES ('platform_roles.manage', 'Manage Platform Roles', 'Manage platform roles and their permissions.', 'Platform', 70);
+GO
+
 -- Grant tables --------------------------------------------------------------------
 IF OBJECT_ID('Sec.PrincipalPackageGrant', 'U') IS NULL
 BEGIN
@@ -1461,7 +1574,8 @@ AS
         Description,
         Category,
         SortOrder
-    FROM App.PlatformPermission;
+    FROM App.PlatformPermission
+    WHERE IsActive = 1;
 GO
 
 CREATE OR ALTER VIEW App.vPlatformRolePermissions
@@ -1476,7 +1590,46 @@ AS
         pp.SortOrder
     FROM App.PlatformRolePermission AS prp
     JOIN App.PlatformPermission AS pp
-        ON pp.PermissionId = prp.PermissionId;
+        ON pp.PermissionId = prp.PermissionId
+    WHERE pp.IsActive = 1;
+GO
+
+CREATE OR ALTER VIEW App.vPlatformRoles
+AS
+    SELECT
+        pr.PlatformRoleId,
+        pr.RoleCode,
+        pr.RoleName,
+        pr.Description,
+        pr.IsActive,
+        ISNULL(members.MemberCount, 0)         AS MemberCount,
+        ISNULL(permissions.PermissionCount, 0) AS PermissionCount
+    FROM App.PlatformRole AS pr
+    OUTER APPLY
+    (
+        SELECT COUNT(*) AS MemberCount
+        FROM App.PlatformRoleMembership AS prm
+        WHERE prm.PlatformRoleId = pr.PlatformRoleId
+    ) AS members
+    OUTER APPLY
+    (
+        SELECT COUNT(*) AS PermissionCount
+        FROM App.PlatformRolePermission AS prp
+        WHERE prp.PlatformRoleId = pr.PlatformRoleId
+    ) AS permissions;
+GO
+
+CREATE OR ALTER VIEW App.vPlatformRoleMembers
+AS
+    SELECT
+        prm.PlatformRoleId,
+        prm.UserId,
+        u.UPN,
+        COALESCE(u.DisplayName, u.UPN) AS DisplayName,
+        prm.AssignedOnUtc
+    FROM App.PlatformRoleMembership AS prm
+    JOIN App.vUsers AS u
+        ON u.UserId = prm.UserId;
 GO
 
 -- --------------------------------------------------------------------------------
@@ -2262,6 +2415,121 @@ BEGIN
             DisplayName   = COALESCE(@DisplayName, DisplayName),
             ModifiedOnUtc = SYSUTCDATETIME()
         WHERE UserId = @UserId;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_UpsertPlatformRole
+    @RoleCode        NVARCHAR(100),
+    @RoleName        NVARCHAR(200),
+    @Description     NVARCHAR(500) = NULL,
+    @PlatformRoleId  INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT @PlatformRoleId = PlatformRoleId
+    FROM App.PlatformRole
+    WHERE RoleCode = @RoleCode;
+
+    IF @PlatformRoleId IS NULL
+    BEGIN
+        INSERT INTO App.PlatformRole
+            (RoleCode, RoleName, Description)
+        VALUES
+            (@RoleCode, @RoleName, @Description);
+
+        SET @PlatformRoleId = SCOPE_IDENTITY();
+    END
+    ELSE
+    BEGIN
+        UPDATE App.PlatformRole
+        SET RoleName = @RoleName,
+            Description = @Description,
+            IsActive = 1,
+            ModifiedOnUtc = SYSUTCDATETIME(),
+            ModifiedBy = SESSION_USER
+        WHERE PlatformRoleId = @PlatformRoleId;
+    END
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_GetUserPlatformPermissions
+    @UserId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT DISTINCT
+        pp.PermissionCode
+    FROM App.PlatformRoleMembership AS prm
+    JOIN App.PlatformRole AS pr
+        ON pr.PlatformRoleId = prm.PlatformRoleId
+    JOIN App.PlatformRolePermission AS prp
+        ON prp.PlatformRoleId = prm.PlatformRoleId
+    JOIN App.PlatformPermission AS pp
+        ON pp.PermissionId = prp.PermissionId
+    WHERE prm.UserId = @UserId
+      AND pr.IsActive = 1
+      AND pp.IsActive = 1
+    ORDER BY pp.PermissionCode;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_AddPlatformRoleMember
+    @RoleCode          NVARCHAR(100),
+    @UserUPN           NVARCHAR(320),
+    @AssignedByUserId  INT = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @PlatformRoleId INT;
+    DECLARE @UserId INT;
+
+    SELECT @PlatformRoleId = PlatformRoleId
+    FROM App.PlatformRole
+    WHERE RoleCode = @RoleCode
+      AND IsActive = 1;
+
+    IF @PlatformRoleId IS NULL
+        THROW 50201, 'Platform role not found.', 1;
+
+    SELECT @UserId = UserId
+    FROM Sec.[User]
+    WHERE UPN = @UserUPN
+      AND IsActive = 1;
+
+    IF @UserId IS NULL
+        THROW 50202, 'User not found or inactive.', 1;
+
+    IF EXISTS (
+        SELECT 1
+        FROM App.PlatformRoleMembership
+        WHERE PlatformRoleId = @PlatformRoleId
+          AND UserId = @UserId
+    )
+        THROW 50203, 'User is already a member of this platform role.', 1;
+
+    INSERT INTO App.PlatformRoleMembership
+        (PlatformRoleId, UserId, AssignedByUserId)
+    VALUES
+        (@PlatformRoleId, @UserId, @AssignedByUserId);
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_RemovePlatformRoleMember
+    @PlatformRoleId INT,
+    @UserId         INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DELETE FROM App.PlatformRoleMembership
+    WHERE PlatformRoleId = @PlatformRoleId
+      AND UserId = @UserId;
+
+    IF @@ROWCOUNT = 0
+        THROW 50204, 'User is not a member of this platform role.', 1;
 END;
 GO
 

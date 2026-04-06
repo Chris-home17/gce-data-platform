@@ -51,6 +51,12 @@ GO
 IF OBJECT_ID('App.vKpiSubmissionUnlockState', 'V') IS NOT NULL
     DROP VIEW App.vKpiSubmissionUnlockState;
 GO
+IF OBJECT_ID('App.vPlatformRoleMembers', 'V') IS NOT NULL
+    DROP VIEW App.vPlatformRoleMembers;
+GO
+IF OBJECT_ID('App.vPlatformRoles', 'V') IS NOT NULL
+    DROP VIEW App.vPlatformRoles;
+GO
 IF OBJECT_ID('App.vPlatformRolePermissions', 'V') IS NOT NULL
     DROP VIEW App.vPlatformRolePermissions;
 GO
@@ -281,6 +287,18 @@ GO
 IF OBJECT_ID('App.RecordUserLogin', 'P') IS NOT NULL
     DROP PROCEDURE App.RecordUserLogin;
 GO
+IF OBJECT_ID('App.usp_RemovePlatformRoleMember', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_RemovePlatformRoleMember;
+GO
+IF OBJECT_ID('App.usp_AddPlatformRoleMember', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_AddPlatformRoleMember;
+GO
+IF OBJECT_ID('App.usp_GetUserPlatformPermissions', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_GetUserPlatformPermissions;
+GO
+IF OBJECT_ID('App.usp_UpsertPlatformRole', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_UpsertPlatformRole;
+GO
 IF OBJECT_ID('App.usp_SetPlatformRolePermissions', 'P') IS NOT NULL
     DROP PROCEDURE App.usp_SetPlatformRolePermissions;
 GO
@@ -418,6 +436,18 @@ IF OBJECT_ID('Audit.RetentionPolicy', 'U') IS NOT NULL
 GO
 IF OBJECT_ID('Audit.ApplicationLog', 'U') IS NOT NULL
     DROP TABLE Audit.ApplicationLog;
+GO
+IF OBJECT_ID('App.PlatformRoleMembership', 'U') IS NOT NULL
+    DROP TABLE App.PlatformRoleMembership;
+GO
+IF OBJECT_ID('App.PlatformRolePermission', 'U') IS NOT NULL
+    DROP TABLE App.PlatformRolePermission;
+GO
+IF OBJECT_ID('App.PlatformRole', 'U') IS NOT NULL
+    DROP TABLE App.PlatformRole;
+GO
+IF OBJECT_ID('App.PlatformPermission', 'U') IS NOT NULL
+    DROP TABLE App.PlatformPermission;
 GO
 IF OBJECT_ID('Sec.PrincipalDelegation', 'U') IS NOT NULL
     DROP TABLE Sec.PrincipalDelegation;
