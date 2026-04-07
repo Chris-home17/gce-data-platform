@@ -4,7 +4,8 @@
       "Bash(chmod +x \"/Users/chrisdw/Documents/Developer/Claude Code/gce-data-platform/database/scripts/run-migrations.sh\")",
       "Bash(printf %s '/*:*)",
       "Bash(npx tsc:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(xargs ls:*)"
     ]
   }
 }

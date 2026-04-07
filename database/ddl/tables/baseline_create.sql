@@ -269,14 +269,17 @@ BEGIN
         RoleCode        NVARCHAR(100)   NOT NULL,
         RoleName        NVARCHAR(200)   NOT NULL,
         Description     NVARCHAR(400)   NULL,
+        AccountId       INT             NULL,
         CreatedOnUtc    DATETIME2       NOT NULL CONSTRAINT DF_Role_Created DEFAULT (SYSUTCDATETIME()),
         ModifiedOnUtc   DATETIME2       NOT NULL CONSTRAINT DF_Role_Modified DEFAULT (SYSUTCDATETIME()),
         CreatedBy       NVARCHAR(128)   NOT NULL CONSTRAINT DF_Role_CreatedBy DEFAULT (SESSION_USER),
         ModifiedBy      NVARCHAR(128)   NOT NULL CONSTRAINT DF_Role_ModifiedBy DEFAULT (SESSION_USER),
-        CONSTRAINT FK_Role_Principal FOREIGN KEY (RoleId) REFERENCES Sec.Principal (PrincipalId)
+        CONSTRAINT FK_Role_Principal FOREIGN KEY (RoleId) REFERENCES Sec.Principal (PrincipalId),
+        CONSTRAINT FK_Role_Account   FOREIGN KEY (AccountId) REFERENCES Dim.Account (AccountId)
     );
 
     CREATE UNIQUE INDEX UX_Role_Code ON Sec.Role (RoleCode);
+    CREATE INDEX IX_Role_AccountId ON Sec.Role (AccountId) WHERE AccountId IS NOT NULL;
 END;
 GO
 
@@ -1160,6 +1163,9 @@ AS
         r.RoleName,
         r.Description,
         p.IsActive,
+        r.AccountId,
+        a.AccountCode,
+        a.AccountName,
         r.CreatedOnUtc,
         r.ModifiedOnUtc,
         ISNULL(members.MemberCount, 0)  AS MemberCount,
@@ -1167,6 +1173,7 @@ AS
         ISNULL(grants.PackageGrantCount, 0) AS PackageGrantCount
     FROM Sec.Role AS r
     JOIN Sec.Principal AS p ON p.PrincipalId = r.RoleId
+    LEFT JOIN Dim.Account AS a ON a.AccountId = r.AccountId
     OUTER APPLY
     (
         SELECT COUNT(*) AS MemberCount
@@ -2643,6 +2650,7 @@ CREATE OR ALTER PROCEDURE App.UpsertRole
     @RoleCode       NVARCHAR(100),
     @RoleName       NVARCHAR(200),
     @Description    NVARCHAR(400) = NULL,
+    @AccountId      INT           = NULL,
     @RoleId         INT OUTPUT
 AS
 BEGIN
@@ -2683,8 +2691,9 @@ BEGIN
         WHERE PrincipalId = @ExistingRoleId;
 
         UPDATE Sec.Role
-        SET RoleName = COALESCE(@RoleName, RoleName),
+        SET RoleName    = COALESCE(@RoleName, RoleName),
             Description = @Description,
+            AccountId   = COALESCE(@AccountId, AccountId),
             ModifiedOnUtc = SYSUTCDATETIME(),
             ModifiedBy = SESSION_USER
         WHERE RoleId = @ExistingRoleId;
@@ -2698,8 +2707,8 @@ BEGIN
             ModifiedBy = SESSION_USER
         WHERE PrincipalId = @ExistingRoleId;
 
-        INSERT INTO Sec.Role (RoleId, RoleCode, RoleName, Description)
-        VALUES (@ExistingRoleId, @RoleCode, @RoleName, @Description);
+        INSERT INTO Sec.Role (RoleId, RoleCode, RoleName, Description, AccountId)
+        VALUES (@ExistingRoleId, @RoleCode, @RoleName, @Description, @AccountId);
     END
 
     SET @RoleId = @ExistingRoleId;
@@ -2898,7 +2907,7 @@ BEGIN
                 )
             WHERE p.ScopeType = 'ORGUNIT';
 
-            -- Upsert missing roles using App.UpsertRole
+            -- Upsert missing roles using App.UpsertRole (all policy-generated roles are account-scoped)
             DECLARE @RoleId INT, @RoleCode NVARCHAR(100), @RoleName NVARCHAR(200);
 
             DECLARE RoleCur CURSOR LOCAL FAST_FORWARD FOR
@@ -2910,7 +2919,7 @@ BEGIN
             FETCH NEXT FROM RoleCur INTO @RoleCode, @RoleName;
             WHILE @@FETCH_STATUS = 0
             BEGIN
-                EXEC App.UpsertRole @RoleCode = @RoleCode, @RoleName = @RoleName, @RoleId = @RoleId OUTPUT;
+                EXEC App.UpsertRole @RoleCode = @RoleCode, @RoleName = @RoleName, @AccountId = @AccountId, @RoleId = @RoleId OUTPUT;
                 FETCH NEXT FROM RoleCur INTO @RoleCode, @RoleName;
             END
             CLOSE RoleCur;
@@ -7310,6 +7319,7 @@ BEGIN
                 @RoleCode = @ResolvedRoleCode,
                 @RoleName = @ResolvedRoleName,
                 @Description = NULL,
+                @AccountId = @AccountId,
                 @RoleId = @RoleId OUTPUT;
 
             INSERT INTO Sec.PrincipalAccessGrant (PrincipalId, AccessType, AccountId, ScopeType, OrgUnitId)

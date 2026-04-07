@@ -109,6 +109,9 @@ export interface Role {
   roleName: string
   description: string | null
   isActive: boolean
+  accountId: number | null
+  accountCode: string | null
+  accountName: string | null
   memberCount: number
   accessGrantCount: number
   packageGrantCount: number
@@ -783,4 +786,48 @@ export interface SubmissionToken {
 export interface CreateSubmissionTokenInput {
   siteOrgUnitId: number
   periodId: number
+}
+
+// ---------------------------------------------------------------------------
+// Platform Roles & Permissions
+// ---------------------------------------------------------------------------
+
+export interface PlatformRole {
+  platformRoleId: number
+  roleCode: string
+  roleName: string
+  description: string | null
+  isActive: boolean
+  memberCount: number
+  permissionCount: number
+}
+
+export interface PlatformPermission {
+  permissionCode: string
+  displayName: string
+  description: string | null
+  category: string
+}
+
+export interface PlatformRoleMember {
+  userId: number
+  upn: string
+  displayName: string
+  assignedOnUtc: string
+}
+
+export interface PlatformRoleDetail {
+  role: PlatformRole
+  permissions: PlatformPermission[]
+  members: PlatformRoleMember[]
+}
+
+export interface CreatePlatformRoleInput {
+  roleCode: string
+  roleName: string
+  description?: string
+}
+
+export interface SetPlatformRolePermissionsInput {
+  permissionCodes: string[]
 }

@@ -374,6 +374,15 @@ BEGIN
     DELETE FROM @RoleProcess WHERE RoleCode = @RoleCode;
 END;
 
+-- Set account association for account-specific seeded roles
+UPDATE r SET AccountId = a.AccountId
+FROM Sec.Role AS r JOIN Dim.Account AS a ON a.AccountCode = 'DHL'
+WHERE r.RoleCode IN ('FIN_DHL_EU');
+
+UPDATE r SET AccountId = a.AccountId
+FROM Sec.Role AS r JOIN Dim.Account AS a ON a.AccountCode = 'UPS'
+WHERE r.RoleCode IN ('FIN_UPS_LATAM');
+
 -- Seed users ----------------------------------------------------------------------
 DECLARE @UserSeed TABLE (Id INT IDENTITY(1,1) PRIMARY KEY, UPN NVARCHAR(320), DisplayName NVARCHAR(200));
 INSERT INTO @UserSeed (UPN, DisplayName)

@@ -18,6 +18,12 @@ import type {
   CoverageSummary,
   CreateAccountInput,
   CreateBiReportInput,
+  CreatePlatformRoleInput,
+  PlatformRole,
+  PlatformPermission,
+  PlatformRoleDetail,
+  SetPlatformRolePermissionsInput,
+  PlatformRoleMember,
   CreateKpiAssignmentInput,
   CreateKpiAssignmentTemplateInput,
   CreateKpiDefinitionInput,
@@ -182,8 +188,9 @@ export const api = {
   },
 
   roles: {
-    list(): Promise<ApiList<Role>> {
-      return apiFetch('/roles')
+    list(params?: { accountId?: number }): Promise<ApiList<Role>> {
+      const qs = params?.accountId ? `?accountId=${params.accountId}` : ''
+      return apiFetch(`/roles${qs}`)
     },
     get(id: number): Promise<Role> {
       return apiFetch(`/roles/${id}`)
@@ -509,6 +516,35 @@ export const api = {
       revoke(tokenId: string): Promise<void> {
         return apiFetch(`/kpi/submission-tokens/${tokenId}`, { method: 'DELETE' })
       },
+    },
+  },
+  platformRoles: {
+    list(): Promise<ApiList<PlatformRole>> {
+      return apiFetch('/platform-roles')
+    },
+    get(id: number): Promise<PlatformRoleDetail> {
+      return apiFetch(`/platform-roles/${id}`)
+    },
+    create(data: CreatePlatformRoleInput): Promise<PlatformRole> {
+      return apiFetch('/platform-roles', { method: 'POST', body: JSON.stringify(data) })
+    },
+    setActive(id: number, isActive: boolean): Promise<void> {
+      return apiFetch(`/platform-roles/${id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) })
+    },
+    addMember(id: number, data: { userUpn: string }): Promise<void> {
+      return apiFetch(`/platform-roles/${id}/members`, { method: 'POST', body: JSON.stringify(data) })
+    },
+    removeMember(id: number, userId: number): Promise<void> {
+      return apiFetch(`/platform-roles/${id}/members/${userId}`, { method: 'DELETE' })
+    },
+    setPermissions(id: number, data: SetPlatformRolePermissionsInput): Promise<void> {
+      return apiFetch(`/platform-roles/${id}/permissions`, { method: 'PUT', body: JSON.stringify(data) })
+    },
+  },
+
+  platformPermissions: {
+    list(): Promise<ApiList<PlatformPermission>> {
+      return apiFetch('/platform-permissions')
     },
   },
 } as const

@@ -750,6 +750,9 @@ public record RoleDto(
     string  RoleName,
     string? Description,
     bool    IsActive,
+    int?    AccountId,
+    string? AccountCode,
+    string? AccountName,
     int     MemberCount,
     int     AccessGrantCount,
     int     PackageGrantCount

@@ -10,8 +10,8 @@ public static class RoleEndpoints
 {
     public static WebApplication MapRoleEndpoints(this WebApplication app)
     {
-        // GET /roles
-        app.MapGet("/roles", async (DbConnectionFactory db) =>
+        // GET /roles?accountId={id}  (omit to get all; provide to get account-specific + global)
+        app.MapGet("/roles", async (int? accountId, DbConnectionFactory db) =>
         {
             using var conn = db.CreateConnection();
             var items = await conn.QueryAsync<RoleDto>(@"
@@ -21,11 +21,18 @@ public static class RoleEndpoints
                     RoleName,
                     Description,
                     IsActive,
+                    AccountId,
+                    AccountCode,
+                    AccountName,
                     MemberCount,
                     AccessGrantCount,
                     PackageGrantCount
                 FROM App.vRoles
-                ORDER BY RoleCode");
+                WHERE @AccountId IS NULL
+                   OR AccountId = @AccountId
+                   OR AccountId IS NULL
+                ORDER BY RoleCode",
+                new { AccountId = accountId });
 
             var list = items.ToList();
             return Results.Ok(new ApiList<RoleDto>(list, list.Count));
@@ -53,6 +60,7 @@ public static class RoleEndpoints
 
             var created = await conn.QuerySingleAsync<RoleDto>(@"
                 SELECT RoleId, RoleCode, RoleName, Description, IsActive,
+                       AccountId, AccountCode, AccountName,
                        MemberCount, AccessGrantCount, PackageGrantCount
                 FROM App.vRoles
                 WHERE RoleId = @Id",
@@ -72,6 +80,9 @@ public static class RoleEndpoints
                     RoleName,
                     Description,
                     IsActive,
+                    AccountId,
+                    AccountCode,
+                    AccountName,
                     MemberCount,
                     AccessGrantCount,
                     PackageGrantCount
@@ -95,6 +106,7 @@ public static class RoleEndpoints
 
             var role = await conn.QuerySingleOrDefaultAsync<RoleDto>(@"
                 SELECT RoleId, RoleCode, RoleName, Description, IsActive,
+                       AccountId, AccountCode, AccountName,
                        MemberCount, AccessGrantCount, PackageGrantCount
                 FROM App.vRoles
                 WHERE RoleId = @Id",

@@ -13,6 +13,7 @@ import { usePathname } from 'next/navigation'
 import { Topbar } from '@/components/layout/topbar'
 
 const TITLE_MAP: Record<string, string> = {
+  '/dashboard': 'Dashboard',
   '/accounts': 'Accounts',
   '/users': 'Users',
   '/roles': 'Roles',
@@ -20,6 +21,7 @@ const TITLE_MAP: Record<string, string> = {
   '/delegations': 'Delegations',
   '/packages': 'Packages',
   '/reports': 'BI Reports',
+  '/platform-roles': 'Platform Roles',
   '/shared-geography': 'Shared Geography',
   '/sites': 'Org Units',
   '/coverage': 'Coverage Map',
@@ -31,10 +33,8 @@ const TITLE_MAP: Record<string, string> = {
 }
 
 function resolveTitle(pathname: string): string {
-  // Exact match first
   if (TITLE_MAP[pathname]) return TITLE_MAP[pathname]
 
-  // Prefix match for detail pages (e.g. /accounts/123 → "Accounts")
   const prefix = Object.keys(TITLE_MAP).find(
     (key) => key !== '/' && pathname.startsWith(key + '/')
   )

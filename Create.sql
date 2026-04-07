@@ -190,14 +190,17 @@ BEGIN
         RoleCode        NVARCHAR(100)   NOT NULL,
         RoleName        NVARCHAR(200)   NOT NULL,
         Description     NVARCHAR(400)   NULL,
+        AccountId       INT             NULL,
         CreatedOnUtc    DATETIME2       NOT NULL CONSTRAINT DF_Role_Created DEFAULT (SYSUTCDATETIME()),
         ModifiedOnUtc   DATETIME2       NOT NULL CONSTRAINT DF_Role_Modified DEFAULT (SYSUTCDATETIME()),
         CreatedBy       NVARCHAR(128)   NOT NULL CONSTRAINT DF_Role_CreatedBy DEFAULT (SESSION_USER),
         ModifiedBy      NVARCHAR(128)   NOT NULL CONSTRAINT DF_Role_ModifiedBy DEFAULT (SESSION_USER),
-        CONSTRAINT FK_Role_Principal FOREIGN KEY (RoleId) REFERENCES Sec.Principal (PrincipalId)
+        CONSTRAINT FK_Role_Principal FOREIGN KEY (RoleId) REFERENCES Sec.Principal (PrincipalId),
+        CONSTRAINT FK_Role_Account   FOREIGN KEY (AccountId) REFERENCES Dim.Account (AccountId)
     );
 
     CREATE UNIQUE INDEX UX_Role_Code ON Sec.Role (RoleCode);
+    CREATE INDEX IX_Role_AccountId ON Sec.Role (AccountId) WHERE AccountId IS NOT NULL;
 END;
 GO
 
