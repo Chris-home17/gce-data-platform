@@ -58,6 +58,7 @@ export function NewRoleDialog() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['roles'] })
+      queryClient.invalidateQueries({ queryKey: ['coverage'] })
       setOpen(false)
       form.reset()
     },

@@ -637,6 +637,11 @@ export function OnboardUserWizard({ open, onOpenChange, accountId }: OnboardUser
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
+      queryClient.invalidateQueries({ queryKey: ['roles'] })
+      queryClient.invalidateQueries({ queryKey: ['org-units'] })
+      queryClient.invalidateQueries({ queryKey: ['delegations'] })
+      queryClient.invalidateQueries({ queryKey: ['coverage'] })
       setDone(true)
       setError(null)
     },

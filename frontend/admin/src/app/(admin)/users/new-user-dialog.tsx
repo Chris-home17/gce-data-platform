@@ -55,6 +55,7 @@ export function NewUserDialog() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
+      queryClient.invalidateQueries({ queryKey: ['accounts'] })
       setOpen(false)
       form.reset()
     },
