@@ -75,15 +75,25 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    title: 'Platform Admin',
+    title: 'Tenants',
     items: [
       { label: 'All Accounts', href: '/accounts', icon: Building2 },
-      { label: 'Platform Roles', href: '/platform-roles', icon: ShieldCheck, permission: PERMISSIONS.SUPER_ADMIN },
       { label: 'Packages', href: '/packages', icon: Package },
-      { label: 'BI Reports', href: '/reports', icon: BarChart2, permission: PERMISSIONS.SUPER_ADMIN },
+    ],
+  },
+  {
+    title: 'KPI Management',
+    items: [
       { label: 'KPI Library', href: '/kpi/definitions', icon: ListChecks, permission: PERMISSIONS.KPI_MANAGE },
       { label: 'KPI Periods', href: '/kpi/periods', icon: Calendar, permission: PERMISSIONS.KPI_MANAGE },
       { label: 'KPI Assignments', href: '/kpi/assignments', icon: ClipboardList },
+    ],
+  },
+  {
+    title: 'Platform Config',
+    items: [
+      { label: 'Platform Roles', href: '/platform-roles', icon: ShieldCheck, permission: PERMISSIONS.SUPER_ADMIN },
+      { label: 'BI Reports', href: '/reports', icon: BarChart2, permission: PERMISSIONS.SUPER_ADMIN },
       { label: 'Coverage', href: '/coverage', icon: Map, permission: PERMISSIONS.SUPER_ADMIN },
       { label: 'Source Mapping', href: '/source-mapping', icon: GitBranch, permission: PERMISSIONS.SUPER_ADMIN },
       { label: 'Shared Geography', href: '/shared-geography', icon: Map, permission: PERMISSIONS.SUPER_ADMIN },
