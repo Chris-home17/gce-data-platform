@@ -16,6 +16,9 @@ import AzureAD from 'next-auth/providers/microsoft-entra-id'
 import Credentials from 'next-auth/providers/credentials'
 
 const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_BYPASS === 'true'
+const BASE_SCOPES = ['openid', 'profile', 'email', 'offline_access']
+const API_SCOPE = process.env.AZURE_AD_API_SCOPE?.trim()
+const AUTHORIZATION_SCOPE = [...BASE_SCOPES, ...(API_SCOPE ? [API_SCOPE] : [])].join(' ')
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: DEV_BYPASS
@@ -41,7 +44,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
           tenantId: process.env.AZURE_AD_TENANT_ID!,
           authorization: {
-            params: { scope: 'openid profile email offline_access' },
+            params: { scope: AUTHORIZATION_SCOPE },
           },
         }),
       ],

@@ -9,8 +9,10 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { RowActions } from '@/components/shared/row-actions'
+import { usePermissions } from '@/hooks/usePermissions'
 import { api } from '@/lib/api'
 import type { OrgUnit, OrgUnitType } from '@/types/api'
+import { PERMISSIONS } from '@/types/api'
 import { ImportOrgUnitsDialog } from './import-org-units-dialog'
 
 function pathDepth(path: string): number {
@@ -86,6 +88,7 @@ function SkeletonRows() {
 interface OrgUnitRowProps {
   unit: OrgUnit
   canDrag: boolean
+  canManage: boolean
   isDragged: boolean
   isValidDropTarget: boolean
   isInvalidDropTarget: boolean
@@ -99,6 +102,7 @@ interface OrgUnitRowProps {
 function OrgUnitRow({
   unit,
   canDrag,
+  canManage,
   isDragged,
   isValidDropTarget,
   isInvalidDropTarget,
@@ -172,11 +176,13 @@ function OrgUnitRow({
       </td>
 
       <td className="w-[40px] pl-1 pr-3 py-2.5">
-        <RowActions
-          isActive={unit.isActive}
-          onToggle={() => api.orgUnits.setActive(unit.orgUnitId, !unit.isActive)}
-          invalidateKeys={[['org-units']]}
-        />
+        {canManage ? (
+          <RowActions
+            isActive={unit.isActive}
+            onToggle={() => api.orgUnits.setActive(unit.orgUnitId, !unit.isActive)}
+            invalidateKeys={[['org-units']]}
+          />
+        ) : null}
       </td>
     </tr>
   )
@@ -189,6 +195,7 @@ function SitesTreeTable({
   accountId?: number
   showAccountFilter: boolean
 }) {
+  const { can } = usePermissions()
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all')
   const [draggedUnitId, setDraggedUnitId] = useState<number | null>(null)
   const [hoveredUnitId, setHoveredUnitId] = useState<number | null>(null)
@@ -234,7 +241,8 @@ function SitesTreeTable({
     },
   })
 
-  const canReorganize = currentAccountId != null
+  const canManage = can(PERMISSIONS.ACCOUNTS_MANAGE)
+  const canReorganize = canManage && currentAccountId != null
 
   function handleDragStart(unit: OrgUnit) {
     if (!canReorganize || allowedParentTypes(unit.orgUnitType).length === 0 || moveMutation.isPending) return
@@ -304,9 +312,11 @@ function SitesTreeTable({
       )}
 
       <div className="rounded-md border border-dashed bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-        {canReorganize
-          ? 'Drag an org unit onto a valid parent row to reorganize the structure. Hierarchy rules are enforced automatically.'
-          : 'Select a single account to enable drag-and-drop reorganisation.'}
+        {canManage
+          ? canReorganize
+            ? 'Drag an org unit onto a valid parent row to reorganize the structure. Hierarchy rules are enforced automatically.'
+            : 'Select a single account to enable drag-and-drop reorganisation.'
+          : 'You have read-only access to org units.'}
       </div>
 
       {isError ? (
@@ -352,6 +362,7 @@ function SitesTreeTable({
                       key={unit.orgUnitId}
                       unit={unit}
                       canDrag={canReorganize && allowedParentTypes(unit.orgUnitType).length > 0 && !moveMutation.isPending}
+                      canManage={canManage}
                       isDragged={isDragged}
                       isValidDropTarget={validDropTarget}
                       isInvalidDropTarget={invalidDropTarget}

@@ -24,23 +24,25 @@ export function AccountsTable() {
     queryFn: () => api.accounts.list(),
   })
 
-  // For non-super-admins, fetch their grants to scope the account list
-  const { data: myGrants, isLoading: grantsLoading } = useQuery({
-    queryKey: ['user-grants', userId],
-    queryFn: () => api.users.grants(userId!),
+  // For non-super-admins, fetch effective access so role-based and delegated
+  // account scope is respected, not just direct user grants.
+  const { data: myAccess, isLoading: accessLoading } = useQuery({
+    queryKey: ['user-effective-access', userId],
+    queryFn: () => api.users.effectiveAccess(userId!),
     enabled: !isSuperAdmin && !!userId,
   })
 
-  // Account codes this user has explicit grants for (null = show all)
+  // Account codes this user can reach via direct grants, role membership, or delegation.
   const allowedAccountCodes = useMemo(() => {
-    if (isSuperAdmin || !myGrants) return null
+    if (isSuperAdmin) return null
+    if (!myAccess) return new Set<string>()
     const codes = new Set(
-      myGrants.items
+      myAccess.items
         .filter(g => g.accessType === 'ACCOUNT' && g.accountCode)
         .map(g => g.accountCode)
     )
-    return codes.size > 0 ? codes : null
-  }, [isSuperAdmin, myGrants])
+    return codes
+  }, [isSuperAdmin, myAccess])
 
   const filtered = useMemo(() => {
     if (!data?.items) return []
@@ -58,7 +60,7 @@ export function AccountsTable() {
   }, [data, search, allowedAccountCodes])
 
   // Auto-redirect Account Directors with a single account directly to that account
-  const loadingComplete = !isLoading && (!(!isSuperAdmin && !!userId) || !grantsLoading)
+  const loadingComplete = !isLoading && (!(!isSuperAdmin && !!userId) || !accessLoading)
   useEffect(() => {
     if (!isSuperAdmin && loadingComplete && filtered.length === 1) {
       router.replace(`/accounts/${filtered[0].accountId}`)

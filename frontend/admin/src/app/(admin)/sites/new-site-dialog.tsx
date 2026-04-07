@@ -31,7 +31,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { api } from '@/lib/api'
+import { usePermissions } from '@/hooks/usePermissions'
 import type { OrgUnitType } from '@/types/api'
+import { PERMISSIONS } from '@/types/api'
 
 const GEO_TYPES = ['Region', 'SubRegion', 'Cluster', 'Country'] as const
 const LOCAL_TYPES = ['Area', 'Branch', 'Site'] as const
@@ -94,8 +96,11 @@ function allowedParentTypes(type?: OrgUnitType): OrgUnitType[] {
 }
 
 export function NewSiteDialog() {
+  const { can } = usePermissions()
   const [open, setOpen] = useState(false)
   const queryClient = useQueryClient()
+
+  if (!can(PERMISSIONS.ACCOUNTS_MANAGE)) return null
 
   const { data: accounts } = useQuery({
     queryKey: ['accounts'],

@@ -23,7 +23,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
+import { usePermissions } from '@/hooks/usePermissions'
 import type { BulkOrgUnitResult } from '@/types/api'
+import { PERMISSIONS } from '@/types/api'
 import {
   parseCsv,
   parseIndented,
@@ -40,6 +42,7 @@ interface ImportOrgUnitsDialogProps {
 }
 
 export function ImportOrgUnitsDialog({ defaultAccountCode }: ImportOrgUnitsDialogProps = {}) {
+  const { can } = usePermissions()
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<Step>('input')
   const [accountCode, setAccountCode] = useState(defaultAccountCode ?? '')
@@ -145,6 +148,8 @@ export function ImportOrgUnitsDialog({ defaultAccountCode }: ImportOrgUnitsDialo
   const hasErrors = validatedRows.some((r) => r.status === 'error')
   const errorCount = validatedRows.filter((r) => r.status === 'error').length
   const warningCount = validatedRows.filter((r) => r.status === 'warning').length
+
+  if (!can(PERMISSIONS.ACCOUNTS_MANAGE)) return null
 
   return (
     <>

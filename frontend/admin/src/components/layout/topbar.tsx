@@ -1,5 +1,6 @@
 'use client'
 
+import { useQueryClient } from '@tanstack/react-query'
 import { useSession, signOut } from 'next-auth/react'
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
@@ -16,6 +17,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { MobileSidebar } from './sidebar'
+
+const SELECTED_ACCOUNT_STORAGE_KEY = 'gce:selectedAccountId'
 
 // ---------------------------------------------------------------------------
 // Breadcrumb helpers
@@ -94,10 +97,19 @@ interface TopbarProps {
 }
 
 export function Topbar({ title: _title }: TopbarProps) {
+  const queryClient = useQueryClient()
   const { data: session } = useSession()
   const user = session?.user
   const pathname = usePathname()
   const crumbs = buildBreadcrumbs(pathname)
+
+  async function handleSignOut() {
+    queryClient.clear()
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(SELECTED_ACCOUNT_STORAGE_KEY)
+    }
+    await signOut({ redirectTo: '/login' })
+  }
 
   return (
     <header className="flex h-14 shrink-0 items-center justify-between border-b bg-background px-4 lg:px-6">
@@ -156,7 +168,7 @@ export function Topbar({ title: _title }: TopbarProps) {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="cursor-pointer text-destructive focus:text-destructive"
-              onClick={() => signOut({ redirectTo: '/login' })}
+              onClick={() => { void handleSignOut() }}
             >
               <LogOut className="mr-2 h-4 w-4" />
               Sign out

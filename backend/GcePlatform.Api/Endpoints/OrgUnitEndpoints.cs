@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using Dapper;
 using GcePlatform.Api.Data;
 using GcePlatform.Api.Models;
+using GcePlatform.Api.Services;
 
 namespace GcePlatform.Api.Endpoints;
 
@@ -212,9 +214,12 @@ public static class OrgUnitEndpoints
 
         // PATCH /org-units/{id}/status
         app.MapMethods("/org-units/{id:int}/status", new[] { "PATCH" },
-            async (int id, SetActiveRequest req, DbConnectionFactory db) =>
+            async (int id, SetActiveRequest req, ClaimsPrincipal user, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.AccountsManage))
+                return Results.Forbid();
+
             var exists = await conn.QuerySingleOrDefaultAsync<int?>(
                 "SELECT OrgUnitId FROM App.vOrgUnits WHERE OrgUnitId = @Id",
                 new { Id = id });
@@ -230,9 +235,12 @@ public static class OrgUnitEndpoints
         }).RequireAuthorization();
 
         // POST /org-units
-        app.MapPost("/org-units", async (CreateOrgUnitRequest req, DbConnectionFactory db) =>
+        app.MapPost("/org-units", async (CreateOrgUnitRequest req, ClaimsPrincipal user, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.AccountsManage))
+                return Results.Forbid();
+
             var p = new DynamicParameters();
             if (req.OrgUnitType is "Region" or "SubRegion" or "Cluster" or "Country")
             {
@@ -284,9 +292,11 @@ public static class OrgUnitEndpoints
         }).RequireAuthorization();
 
         // POST /org-units/bulk
-        app.MapPost("/org-units/bulk", async (BulkCreateOrgUnitsRequest req, DbConnectionFactory db) =>
+        app.MapPost("/org-units/bulk", async (BulkCreateOrgUnitsRequest req, ClaimsPrincipal user, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.AccountsManage))
+                return Results.Forbid();
 
             // Verify account exists upfront
             var accountId = await conn.QuerySingleOrDefaultAsync<int?>(
@@ -361,9 +371,11 @@ public static class OrgUnitEndpoints
             return Results.Ok(new BulkCreateOrgUnitsResponse(results));
         }).RequireAuthorization();
 
-        app.MapPost("/org-units/{id:int}/move", async (int id, MoveOrgUnitRequest req, DbConnectionFactory db) =>
+        app.MapPost("/org-units/{id:int}/move", async (int id, MoveOrgUnitRequest req, ClaimsPrincipal user, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.AccountsManage))
+                return Results.Forbid();
 
             var existing = await conn.QuerySingleOrDefaultAsync<OrgUnitDto>(@"
                 SELECT
