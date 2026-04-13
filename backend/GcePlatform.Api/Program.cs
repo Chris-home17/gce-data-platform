@@ -45,9 +45,8 @@ try
     // -----------------------------------------------------------------------
     // CORS — allow the Next.js dev server (and any configured origins in prod)
     // -----------------------------------------------------------------------
-    var allowedOrigins = builder.Configuration
-        .GetSection("AllowedOrigins")
-        .Get<string[]>() ?? Array.Empty<string>();
+    var allowedOrigins = (builder.Configuration["CORS_ALLOWED_ORIGINS"] ?? "")
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     builder.Services.AddCors(options =>
     {
