@@ -6,7 +6,8 @@
       "Bash(npx tsc:*)",
       "mcp__ide__getDiagnostics",
       "Bash(xargs ls:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(npx next:*)"
     ]
   }
 }
