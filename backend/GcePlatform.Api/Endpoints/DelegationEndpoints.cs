@@ -224,15 +224,17 @@ public static class DelegationEndpoints
         {
             DateTime? validFromDate = null;
             DateTime? validToDate = null;
+            DateOnly parsedValidFromDate = default;
+            DateOnly parsedValidToDate = default;
 
             if (!string.IsNullOrWhiteSpace(req.ValidFromDate) &&
-                !DateOnly.TryParse(req.ValidFromDate, out var parsedValidFromDate))
+                !DateOnly.TryParse(req.ValidFromDate, out parsedValidFromDate))
             {
                 return Results.BadRequest(new ApiError("INVALID_VALID_FROM_DATE", "Valid from date is invalid."));
             }
 
             if (!string.IsNullOrWhiteSpace(req.ValidToDate) &&
-                !DateOnly.TryParse(req.ValidToDate, out var parsedValidToDate))
+                !DateOnly.TryParse(req.ValidToDate, out parsedValidToDate))
             {
                 return Results.BadRequest(new ApiError("INVALID_VALID_TO_DATE", "Valid to date is invalid."));
             }
