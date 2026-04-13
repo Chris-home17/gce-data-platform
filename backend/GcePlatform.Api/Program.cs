@@ -45,17 +45,7 @@ try
     // -----------------------------------------------------------------------
     // CORS — allow the Next.js dev server (and any configured origins in prod)
     // -----------------------------------------------------------------------
-    var allowedOrigins = (builder.Configuration["CORS_ALLOWED_ORIGINS"] ?? "")
-        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-    builder.Services.AddCors(options =>
-    {
-        options.AddDefaultPolicy(policy =>
-            policy.WithOrigins(allowedOrigins)
-                  .AllowAnyHeader()
-                  .AllowAnyMethod()
-                  .AllowCredentials());
-    });
+    // CORS is handled by Azure App Service built-in CORS (Portal → API → CORS)
 
     // -----------------------------------------------------------------------
     // Build
@@ -63,7 +53,6 @@ try
     var app = builder.Build();
 
     app.UseSerilogRequestLogging();
-    app.UseCors();
 
     // In Development, accept the frontend's dev-bypass-token without JWT validation.
     // This avoids the Microsoft Graph token signature mismatch until a proper API
