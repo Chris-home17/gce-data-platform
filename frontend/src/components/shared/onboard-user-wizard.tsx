@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { api } from '@/lib/api'
-import type { Role, Package, Account } from '@/types/api'
+import type { Role, Package } from '@/types/api'
 
 // ---------------------------------------------------------------------------
 // Step indicator

@@ -23,7 +23,6 @@ import type {
   PlatformPermission,
   PlatformRoleDetail,
   SetPlatformRolePermissionsInput,
-  PlatformRoleMember,
   CreateKpiAssignmentInput,
   CreateKpiAssignmentTemplateInput,
   CreateKpiDefinitionInput,

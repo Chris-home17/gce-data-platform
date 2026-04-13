@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useState, useEffect, useCallback } from 'react'
+import { Suspense, useState, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -10,11 +10,7 @@ import {
   AlertCircle,
   Clock,
   Building2,
-  MapPin,
   Calendar,
-  ArrowUp,
-  ArrowDown,
-  ChevronRight,
   Send,
   TrendingUp,
   TrendingDown,
@@ -23,8 +19,6 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
 import { api } from '@/lib/api'
 import type { AssignmentWithSubmission, SubmissionTokenContext } from '@/types/api'
 

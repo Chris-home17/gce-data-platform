@@ -53,8 +53,6 @@ export function NewSourceMappingDialog() {
     enabled: open,
   })
 
-  const accountCode = undefined // watched below after form init
-
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {

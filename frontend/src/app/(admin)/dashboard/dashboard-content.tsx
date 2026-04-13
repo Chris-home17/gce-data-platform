@@ -69,7 +69,7 @@ interface QuickActionProps {
   variant?: 'default' | 'outline'
 }
 
-function QuickAction({ label, description, icon: Icon, onClick, variant = 'outline' }: QuickActionProps) {
+function QuickAction({ label, description, icon: Icon, onClick, variant: _variant = 'outline' }: QuickActionProps) {
   return (
     <button
       onClick={onClick}

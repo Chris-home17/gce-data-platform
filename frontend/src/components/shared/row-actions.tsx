@@ -17,7 +17,7 @@ interface RowActionsProps {
   entityLabel?: string
 }
 
-export function RowActions({ isActive, onToggle, invalidateKeys, entityLabel = 'item' }: RowActionsProps) {
+export function RowActions({ isActive, onToggle, invalidateKeys, entityLabel: _entityLabel = 'item' }: RowActionsProps) {
   const queryClient = useQueryClient()
 
   const mutation = useMutation({

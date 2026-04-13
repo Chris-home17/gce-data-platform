@@ -16,7 +16,6 @@ import {
   Clock,
   Link2,
   Building2,
-  MapPin,
   Calendar,
   AlertCircle,
 } from 'lucide-react'

@@ -26,7 +26,6 @@ import { api } from '@/lib/api'
 import { usePermissions } from '@/hooks/usePermissions'
 import { PERMISSIONS } from '@/types/api'
 import type { Delegation, EffectiveAccessEntry, Grant, PackageGrant, Role } from '@/types/api'
-import { cn } from '@/lib/utils'
 
 // ---------------------------------------------------------------------------
 // Column definitions
