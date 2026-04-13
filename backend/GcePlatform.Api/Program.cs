@@ -43,8 +43,19 @@ try
     builder.Services.AddSingleton<PlatformAuthService>();
 
     // -----------------------------------------------------------------------
-    // CORS — handled by Azure App Service built-in CORS (Portal → API → CORS)
+    // CORS — allowed origins are configured per environment in appsettings.
+    // Development: http://localhost:3000
+    // Production:  the Azure Static Web App URL
     // -----------------------------------------------------------------------
+    var allowedOrigins = builder.Configuration
+        .GetSection("AllowedOrigins")
+        .Get<string[]>() ?? [];
+
+    builder.Services.AddCors(options =>
+        options.AddDefaultPolicy(policy =>
+            policy.WithOrigins(allowedOrigins)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()));
 
     // -----------------------------------------------------------------------
     // Build
@@ -52,6 +63,7 @@ try
     var app = builder.Build();
 
     app.UseSerilogRequestLogging();
+    app.UseCors();
 
     // In Development, accept the frontend's dev-bypass-token without JWT validation.
     // This avoids the Microsoft Graph token signature mismatch until a proper API
