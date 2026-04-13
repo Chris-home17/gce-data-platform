@@ -100,8 +100,6 @@ export function NewSiteDialog() {
   const [open, setOpen] = useState(false)
   const queryClient = useQueryClient()
 
-  if (!can(PERMISSIONS.ACCOUNTS_MANAGE)) return null
-
   const { data: accounts } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => api.accounts.list(),
@@ -174,6 +172,8 @@ export function NewSiteDialog() {
       form.reset()
     },
   })
+
+  if (!can(PERMISSIONS.ACCOUNTS_MANAGE)) return null
 
   const isGeoType = GEO_TYPES.includes((watchedType ?? '') as typeof GEO_TYPES[number])
   const isLocalType = LOCAL_TYPES.includes((watchedType ?? '') as typeof LOCAL_TYPES[number])
