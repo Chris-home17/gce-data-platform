@@ -5,7 +5,8 @@
       "Bash(printf %s '/*:*)",
       "Bash(npx tsc:*)",
       "mcp__ide__getDiagnostics",
-      "Bash(xargs ls:*)"
+      "Bash(xargs ls:*)",
+      "Bash(npm install:*)"
     ]
   }
 }
