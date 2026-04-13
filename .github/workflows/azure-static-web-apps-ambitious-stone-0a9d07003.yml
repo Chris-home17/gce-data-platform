@@ -24,7 +24,7 @@ jobs:
         uses: Azure/static-web-apps-deploy@v1
         env:
           NEXT_PUBLIC_DEV_BYPASS: "false"
-          NEXT_PUBLIC_API_BASE_URL: "https://app-gcplatform-web-weu-001.azurewebsites.net"
+          NEXT_PUBLIC_API_BASE_URL: "https://app-gcplatform-web-weu-001-c2fyeebzh6hyhhf0.westeurope-01.azurewebsites.net"
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_AMBITIOUS_STONE_0A9D07003 }}
           repo_token: ${{ secrets.GITHUB_TOKEN }} # Used for Github integrations (i.e. PR comments)
