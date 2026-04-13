@@ -15,8 +15,9 @@ public sealed class DbConnectionFactory
 
     public DbConnectionFactory(IConfiguration configuration)
     {
-        _connectionString = configuration.GetConnectionString("AzureSql")
-            ?? throw new InvalidOperationException("ConnectionStrings:AzureSql is not configured.");
+        _connectionString = configuration.GetConnectionString("AzureSql");
+        if (string.IsNullOrWhiteSpace(_connectionString))
+            throw new InvalidOperationException("ConnectionStrings:AzureSql is not configured or is empty.");
     }
 
     public SqlConnection CreateConnection() => new SqlConnection(_connectionString);
