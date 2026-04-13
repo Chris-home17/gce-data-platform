@@ -390,6 +390,7 @@ export interface KpiDefinition {
   externalId: string
   kpiCode: string
   kpiName: string
+  kpiDescription: string | null
   category: string
   unit: string
   dataType: 'Numeric' | 'Percentage' | 'Boolean' | 'Text' | 'Currency' | 'DropDown' | string

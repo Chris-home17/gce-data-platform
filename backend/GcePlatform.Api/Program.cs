@@ -43,9 +43,8 @@ try
     builder.Services.AddSingleton<PlatformAuthService>();
 
     // -----------------------------------------------------------------------
-    // CORS — allow the Next.js dev server (and any configured origins in prod)
+    // CORS — handled by Azure App Service built-in CORS (Portal → API → CORS)
     // -----------------------------------------------------------------------
-    // CORS is handled by Azure App Service built-in CORS (Portal → API → CORS)
 
     // -----------------------------------------------------------------------
     // Build
