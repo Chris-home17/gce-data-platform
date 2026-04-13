@@ -15,8 +15,8 @@ public sealed class DbConnectionFactory
 
     public DbConnectionFactory(IConfiguration configuration)
     {
-        _connectionString = configuration.GetConnectionString("FabricSql")
-            ?? throw new InvalidOperationException("ConnectionStrings:FabricSql is not configured.");
+        _connectionString = configuration.GetConnectionString("AzureSql")
+            ?? throw new InvalidOperationException("ConnectionStrings:AzureSql is not configured.");
     }
 
     public SqlConnection CreateConnection() => new SqlConnection(_connectionString);
