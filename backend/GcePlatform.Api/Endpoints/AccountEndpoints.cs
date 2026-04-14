@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Dapper;
 using GcePlatform.Api.Data;
+using GcePlatform.Api.Helpers;
 using GcePlatform.Api.Models;
 using GcePlatform.Api.Services;
 
@@ -336,6 +337,103 @@ public static class AccountEndpoints
                                     direction: System.Data.ParameterDirection.Output);
 
             await conn.ExecuteAsync("App.UpsertAccount", p,
+                commandType: System.Data.CommandType.StoredProcedure);
+
+            return Results.NoContent();
+        }).RequireAuthorization();
+
+        // GET /accounts/{id}/branding
+        app.MapGet("/accounts/{id:int}/branding", async (int id, ClaimsPrincipal user, DbConnectionFactory db, PlatformAuthService platformAuth) =>
+        {
+            using var conn = db.CreateConnection();
+
+            // Same access check as GET /accounts/{id}
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
+            {
+                var currentUserId = await GetCurrentUserIdAsync(user, db);
+                if (currentUserId is null)
+                    return Results.NotFound(new ApiError("ACCOUNT_NOT_FOUND", $"Account {id} not found."));
+
+                var canAccess = await conn.ExecuteScalarAsync<bool>(@"
+                    WITH UserGrants AS
+                    (
+                        SELECT eff.AccessType, eff.AccountId, eff.ScopeType, eff.OrgUnitId
+                        FROM Sec.vUserGrantPrincipals AS gp
+                        JOIN Sec.vPrincipalEffectiveAccess AS eff ON eff.PrincipalId = gp.GrantPrincipalId
+                        WHERE gp.UserPrincipalId = @UserId
+                    )
+                    SELECT CAST(
+                        CASE WHEN EXISTS
+                        (
+                            SELECT 1 FROM UserGrants AS g
+                            WHERE
+                                (g.ScopeType = 'NONE' AND (g.AccessType = 'ALL' OR (g.AccessType = 'ACCOUNT' AND g.AccountId = @AccountId)))
+                                OR
+                                (g.ScopeType = 'ORGUNIT' AND EXISTS
+                                (
+                                    SELECT 1 FROM Dim.OrgUnit AS base
+                                    JOIN Dim.OrgUnit AS site ON site.Path LIKE base.Path + '%'
+                                    WHERE base.OrgUnitId = g.OrgUnitId
+                                      AND site.AccountId = @AccountId
+                                      AND (g.AccessType = 'ALL' OR (g.AccessType = 'ACCOUNT' AND g.AccountId = @AccountId))
+                                ))
+                        )
+                        THEN 1 ELSE 0 END AS bit)",
+                    new { UserId = currentUserId.Value, AccountId = id });
+
+                if (!canAccess)
+                    return Results.NotFound(new ApiError("ACCOUNT_NOT_FOUND", $"Account {id} not found."));
+            }
+
+            var raw = await conn.QuerySingleOrDefaultAsync<AccountBrandingRaw?>(@"
+                SELECT
+                    AccountId,
+                    PrimaryColor,
+                    PrimaryColor2,
+                    SecondaryColor,
+                    SecondaryColor2,
+                    AccentColor,
+                    TextOnPrimaryOverride,
+                    TextOnSecondaryOverride,
+                    LogoDataUrl
+                FROM Dim.Account
+                WHERE AccountId = @Id",
+                new { Id = id });
+
+            if (raw is null)
+                return Results.NotFound(new ApiError("ACCOUNT_NOT_FOUND", $"Account {id} not found."));
+
+            return Results.Ok(BrandingHelper.Resolve(raw));
+        }).RequireAuthorization();
+
+        // PUT /accounts/{id}/branding
+        app.MapPut("/accounts/{id:int}/branding", async (int id, UpdateAccountBrandingRequest request, ClaimsPrincipal user, DbConnectionFactory db, PlatformAuthService platformAuth) =>
+        {
+            using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.AccountsManage))
+                return Results.Forbid();
+
+            var exists = await conn.ExecuteScalarAsync<int>(
+                "SELECT COUNT(1) FROM Dim.Account WHERE AccountId = @Id",
+                new { Id = id });
+
+            if (exists == 0)
+                return Results.NotFound(new ApiError("ACCOUNT_NOT_FOUND", $"Account {id} not found."));
+
+            var p = new DynamicParameters();
+            p.Add("@AccountId",               id);
+            p.Add("@PrimaryColor",            BrandingHelper.NormalizeColor(request.PrimaryColor));
+            p.Add("@PrimaryColor2",           BrandingHelper.NormalizeColor(request.PrimaryColor2));
+            p.Add("@SecondaryColor",          BrandingHelper.NormalizeColor(request.SecondaryColor));
+            p.Add("@SecondaryColor2",         BrandingHelper.NormalizeColor(request.SecondaryColor2));
+            p.Add("@AccentColor",             BrandingHelper.NormalizeColor(request.AccentColor));
+            p.Add("@TextOnPrimaryOverride",   BrandingHelper.NormalizeColor(request.TextOnPrimaryOverride));
+            p.Add("@TextOnSecondaryOverride", BrandingHelper.NormalizeColor(request.TextOnSecondaryOverride));
+            // Treat blank logo URL as null (clear)
+            p.Add("@LogoDataUrl", string.IsNullOrWhiteSpace(request.LogoDataUrl) ? null : request.LogoDataUrl.Trim());
+
+            await conn.ExecuteAsync("App.UpdateAccountBranding", p,
                 commandType: System.Data.CommandType.StoredProcedure);
 
             return Results.NoContent();

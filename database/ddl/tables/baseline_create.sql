@@ -55,6 +55,21 @@ BEGIN
 END;
 GO
 
+-- Branding columns (added separately to be idempotent against existing deployments)
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('Dim.Account') AND name = 'PrimaryColor')
+BEGIN
+    ALTER TABLE Dim.Account ADD
+        PrimaryColor              NVARCHAR(7)    NULL,
+        PrimaryColor2             NVARCHAR(7)    NULL,
+        SecondaryColor            NVARCHAR(7)    NULL,
+        SecondaryColor2           NVARCHAR(7)    NULL,
+        AccentColor               NVARCHAR(7)    NULL,
+        TextOnPrimaryOverride     NVARCHAR(7)    NULL,
+        TextOnSecondaryOverride   NVARCHAR(7)    NULL,
+        LogoDataUrl               NVARCHAR(MAX)  NULL;
+END;
+GO
+
 IF OBJECT_ID('Dim.SharedGeoUnit', 'U') IS NULL
 BEGIN
     CREATE TABLE Dim.SharedGeoUnit
@@ -1049,7 +1064,16 @@ AS
         ISNULL(pkgPol.PackagePolicyCount, 0)AS PackagePolicyCount,
         -- Total policy count
         ISNULL(accPol.AccessPolicyCount, 0) +
-        ISNULL(pkgPol.PackagePolicyCount, 0)AS TotalPolicyCount
+        ISNULL(pkgPol.PackagePolicyCount, 0)AS TotalPolicyCount,
+        -- Branding
+        a.PrimaryColor,
+        a.PrimaryColor2,
+        a.SecondaryColor,
+        a.SecondaryColor2,
+        a.AccentColor,
+        a.TextOnPrimaryOverride,
+        a.TextOnSecondaryOverride,
+        a.LogoDataUrl
     FROM Dim.Account AS a
     -- Site count
     OUTER APPLY
@@ -3032,6 +3056,37 @@ BEGIN
 
         SET @AccountId = @ExistingId;
     END
+END;
+GO
+
+-- Updates only the branding fields for an account. Caller is responsible for
+-- normalizing colors (trim, uppercase hex) before calling this procedure.
+CREATE OR ALTER PROCEDURE App.UpdateAccountBranding
+    @AccountId               INT,
+    @PrimaryColor            NVARCHAR(7)    = NULL,
+    @PrimaryColor2           NVARCHAR(7)    = NULL,
+    @SecondaryColor          NVARCHAR(7)    = NULL,
+    @SecondaryColor2         NVARCHAR(7)    = NULL,
+    @AccentColor             NVARCHAR(7)    = NULL,
+    @TextOnPrimaryOverride   NVARCHAR(7)    = NULL,
+    @TextOnSecondaryOverride NVARCHAR(7)    = NULL,
+    @LogoDataUrl             NVARCHAR(MAX)  = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE Dim.Account
+    SET PrimaryColor             = @PrimaryColor,
+        PrimaryColor2            = @PrimaryColor2,
+        SecondaryColor           = @SecondaryColor,
+        SecondaryColor2          = @SecondaryColor2,
+        AccentColor              = @AccentColor,
+        TextOnPrimaryOverride    = @TextOnPrimaryOverride,
+        TextOnSecondaryOverride  = @TextOnSecondaryOverride,
+        LogoDataUrl              = @LogoDataUrl,
+        ModifiedOnUtc            = SYSUTCDATETIME(),
+        ModifiedBy               = SESSION_USER
+    WHERE AccountId = @AccountId;
 END;
 GO
 

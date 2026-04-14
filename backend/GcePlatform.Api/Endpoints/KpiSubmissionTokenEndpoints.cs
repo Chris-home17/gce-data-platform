@@ -1,5 +1,6 @@
 using Dapper;
 using GcePlatform.Api.Data;
+using GcePlatform.Api.Helpers;
 using GcePlatform.Api.Models;
 using System.Security.Claims;
 using System.Text.Json;
@@ -121,6 +122,21 @@ public static class KpiSubmissionTokenEndpoints
 
             var assignments = rawAssignments;
 
+            var brandingRaw = await conn.QuerySingleOrDefaultAsync<AccountBrandingRaw?>(@"
+                SELECT
+                    AccountId,
+                    PrimaryColor,
+                    PrimaryColor2,
+                    SecondaryColor,
+                    SecondaryColor2,
+                    AccentColor,
+                    TextOnPrimaryOverride,
+                    TextOnSecondaryOverride,
+                    LogoDataUrl
+                FROM Dim.Account
+                WHERE AccountCode = @AccountCode",
+                new { header.AccountCode });
+
             var ctx = new SubmissionTokenContextDto(
                 TokenId:        header.TokenId,
                 SiteCode:       header.SiteCode,
@@ -131,7 +147,8 @@ public static class KpiSubmissionTokenEndpoints
                 PeriodStatus:   header.PeriodStatus,
                 PeriodCloseDate: header.PeriodCloseDate,
                 ExpiresAtUtc:   header.ExpiresAtUtc,
-                Assignments:    assignments
+                Assignments:    assignments,
+                Branding:       BrandingHelper.Resolve(brandingRaw)
             );
 
             return Results.Ok(ctx);

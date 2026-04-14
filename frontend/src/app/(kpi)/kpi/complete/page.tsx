@@ -31,6 +31,18 @@ const KPI_MONITORING_REFRESH_EVENT = 'gce:kpi-monitoring-refresh'
 const PAGE_STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
+  /* Default brand tokens — overridden at runtime when account branding is set */
+  :root {
+    --kpi-primary:          #1B6B3A;
+    --kpi-primary2:         #22C55E;
+    --kpi-accent:           #1B4332;
+    --kpi-accent-hover:     #1B6B3A;
+    --kpi-required-color:   #D97706;
+    --kpi-category-color:   #9B9589;
+    --kpi-progress-track:   #E5E3DD;
+    --kpi-divider-color:    #E8E6E1;
+  }
+
   .kpi-page {
     font-family: 'IBM Plex Sans', sans-serif;
     background: #F7F6F3;
@@ -47,14 +59,14 @@ const PAGE_STYLES = `
 
   .kpi-progress-bar {
     height: 3px;
-    background: #E5E3DD;
+    background: var(--kpi-progress-track);
     border-radius: 2px;
     overflow: hidden;
   }
 
   .kpi-progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, #1B6B3A, #22C55E);
+    background: linear-gradient(90deg, var(--kpi-primary), var(--kpi-primary2));
     border-radius: 2px;
     transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
   }
@@ -67,8 +79,8 @@ const PAGE_STYLES = `
   }
 
   .kpi-card:focus-within {
-    box-shadow: 0 0 0 2px #1B6B3A20, 0 4px 16px rgba(0,0,0,0.06);
-    border-color: #1B6B3A40;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--kpi-primary) 12%, transparent), 0 4px 16px rgba(0,0,0,0.06);
+    border-color: color-mix(in srgb, var(--kpi-primary) 25%, transparent);
   }
 
   .kpi-card.is-submitted {
@@ -94,14 +106,14 @@ const PAGE_STYLES = `
   }
 
   .kpi-save-btn {
-    background: #1B4332;
+    background: var(--kpi-accent);
     color: #fff;
     border: none;
     transition: background 0.15s, transform 0.1s;
   }
 
   .kpi-save-btn:hover:not(:disabled) {
-    background: #1B6B3A;
+    background: var(--kpi-accent-hover);
     transform: translateY(-1px);
   }
 
@@ -136,8 +148,16 @@ const PAGE_STYLES = `
     font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: #9B9589;
+    color: var(--kpi-category-color);
     font-family: 'IBM Plex Sans', sans-serif;
+  }
+
+  .kpi-required {
+    color: var(--kpi-required-color);
+  }
+
+  .kpi-divider {
+    background-color: var(--kpi-divider-color);
   }
 
   .required-dot::before {
@@ -329,7 +349,7 @@ function KpiRow({ assignment, index, onSaved }: KpiRowProps) {
               <CheckCircle2 className="w-3.5 h-3.5" /> Submitted
             </span>
           ) : (
-            <span className="text-xs text-amber-600 font-medium">
+            <span className="kpi-required text-xs font-medium">
               {assignment.isRequired ? 'Required' : 'Optional'}
             </span>
           )}
@@ -640,25 +660,85 @@ function KpiCompleteContent() {
     )
   }
 
+  // Client-side text color computation (WCAG contrast) — used so the header
+  // is always readable regardless of whether the backend has been restarted.
+  function resolveTextColor(hex: string): string {
+    if (!/^#[0-9A-Fa-f]{6}$/.test(hex)) return '#000000'
+    const r = parseInt(hex.slice(1, 3), 16) / 255
+    const g = parseInt(hex.slice(3, 5), 16) / 255
+    const b = parseInt(hex.slice(5, 7), 16) / 255
+    const lin = (c: number) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+    const L = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+    return (1.05 / (L + 0.05)) >= (L + 0.05) / 0.05 ? '#FFFFFF' : '#000000'
+  }
+
+  const branding = ctx.branding
+  const branded = !!branding?.primaryColor
+
+  // Compute text color client-side — this is authoritative for the header
+  const computedTextOnPrimary = branded ? resolveTextColor(branding!.primaryColor!) : '#111827'
+
+  // Derive a readable accent for required labels from the accent or primary color
+  const accentColor = branding?.accentColor ?? branding?.primaryColor
+
+  const brandingOverride = branded
+    ? `:root {
+        --kpi-primary:        ${branding!.primaryColor};
+        --kpi-primary2:       ${branding!.primaryColor2 ?? branding!.primaryColor};
+        --kpi-accent:         ${accentColor};
+        --kpi-accent-hover:   ${branding!.primaryColor2 ?? branding!.primaryColor};
+        --kpi-required-color: ${accentColor};
+        --kpi-category-color: ${branding!.secondaryColor ?? branding!.primaryColor};
+        --kpi-progress-track: ${branding!.secondaryColor ?? branding!.primaryColor};
+        --kpi-divider-color:  ${branding!.secondaryColor ?? branding!.primaryColor};
+      }`
+    : ''
+
+  // Inline styles for the header
+  const headerStyle = branded
+    ? { background: branding!.primaryColor!, borderBottomColor: 'transparent' }
+    : {}
+  const titleStyle = branded ? { color: computedTextOnPrimary }                              : {}
+  const metaStyle  = branded ? { color: computedTextOnPrimary, opacity: 0.8 as number }      : {}
+  const doneStyle  = branded ? { color: computedTextOnPrimary }                              : {}
+  // Progress bar track in the branded header — semi-transparent white
+  const trackStyle = branded ? { background: `${computedTextOnPrimary}22` }                 : {}
+
   return (
     <div className="kpi-page">
+      {brandingOverride && <style dangerouslySetInnerHTML={{ __html: brandingOverride }} />}
       {/* Sticky header */}
-      <header className="sticky-header">
+      <header className="sticky-header" style={headerStyle}>
         <div className="max-w-2xl mx-auto px-5 py-4">
           {/* Site + period info */}
           <div className="flex items-start justify-between gap-3 mb-3">
-            <div>
-              <h1 className="display-font text-xl text-gray-900 leading-tight fade-in">
-                {ctx.siteName}
-              </h1>
+            <div className="min-w-0">
+              {/* Logo inline with site name */}
+              <div className="flex items-center gap-3 fade-in">
+                {branding?.logoDataUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={branding.logoDataUrl}
+                    alt={ctx.accountName}
+                    className="h-8 max-w-[100px] object-contain shrink-0"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                  />
+                )}
+                <h1
+                  className="display-font text-xl leading-tight"
+                  style={branded ? titleStyle : { color: '#111827' }}
+                >
+                  {ctx.siteName}
+                </h1>
+              </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 fade-in fade-in-delay-1">
-                <span className="inline-flex items-center gap-1 text-xs text-gray-400">
+                <span className="inline-flex items-center gap-1 text-xs" style={branded ? metaStyle : { color: '#9CA3AF' }}>
                   <Building2 className="w-3 h-3" /> {ctx.accountName}
                 </span>
-                <span className="inline-flex items-center gap-1 text-xs text-gray-400">
+                <span className="inline-flex items-center gap-1 text-xs" style={branded ? metaStyle : { color: '#9CA3AF' }}>
                   <Calendar className="w-3 h-3" /> {ctx.periodLabel}
                 </span>
-                <span className="inline-flex items-center gap-1 text-xs text-gray-400">
+                <span className="inline-flex items-center gap-1 text-xs" style={branded ? metaStyle : { color: '#9CA3AF' }}>
                   <Clock className="w-3 h-3" /> Until {formatDate(ctx.periodCloseDate)}
                 </span>
               </div>
@@ -677,9 +757,9 @@ function KpiCompleteContent() {
           {/* Progress bar */}
           <div className="fade-in fade-in-delay-3">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-gray-500 font-medium">
+              <span className="text-xs font-medium" style={branded ? metaStyle : { color: '#6B7280' }}>
                 {allDone ? (
-                  <span className="text-green-700 flex items-center gap-1">
+                  <span className="flex items-center gap-1" style={branded ? doneStyle : { color: '#15803D' }}>
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     All required KPIs submitted
                   </span>
@@ -687,9 +767,9 @@ function KpiCompleteContent() {
                   `${submittedRequired} of ${totalRequired} required KPIs submitted`
                 )}
               </span>
-              <span className="mono-font text-xs font-medium text-gray-500">{progressPct}%</span>
+              <span className="mono-font text-xs font-medium" style={branded ? metaStyle : { color: '#6B7280' }}>{progressPct}%</span>
             </div>
-            <div className="kpi-progress-bar">
+            <div className="kpi-progress-bar" style={branded ? trackStyle : {}}>
               <div className="kpi-progress-fill" style={{ width: `${progressPct}%` }} />
             </div>
           </div>
@@ -702,7 +782,7 @@ function KpiCompleteContent() {
           <section key={category}>
             <div className="flex items-center gap-3 mb-3">
               <span className="category-label">{category}</span>
-              <div className="flex-1 h-px bg-gray-200" />
+              <div className="kpi-divider flex-1 h-px" />
               <span className="text-[11px] text-gray-400 mono-font">
                 {items.filter((i) => i.isSubmitted).length}/{items.length}
               </span>

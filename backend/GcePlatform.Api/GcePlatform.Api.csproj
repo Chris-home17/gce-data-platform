@@ -19,6 +19,26 @@
     <!-- Structured logging (7.x targets net6.0) -->
     <PackageReference Include="Serilog.AspNetCore" Version="7.0.0" />
     <PackageReference Include="Serilog.Sinks.Console" Version="5.0.1" />
+    <!-- EF Core — used only for migration management; runtime data access uses Dapper -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Migration SQL scripts embedded in the assembly -->
+    <!-- InitialCreate: full baseline (linked to the authoritative database/ source files) -->
+    <EmbeddedResource Include="..\..\database\ddl\tables\baseline_create.sql">
+      <LogicalName>GcePlatform.Api.Migrations.Scripts.InitialCreate.Up.sql</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\database\scripts\drop-all.sql">
+      <LogicalName>GcePlatform.Api.Migrations.Scripts.InitialCreate.Down.sql</LogicalName>
+    </EmbeddedResource>
+    <!-- AccountBranding: branding delta scripts -->
+    <EmbeddedResource Include="Migrations\Scripts\AccountBranding.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\AccountBranding.Down.sql" />
   </ItemGroup>
 
 </Project>

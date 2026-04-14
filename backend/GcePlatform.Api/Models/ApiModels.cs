@@ -25,6 +25,52 @@ public record CreateAccountRequest(
 );
 
 // ---------------------------------------------------------------------------
+// Account Branding
+// ---------------------------------------------------------------------------
+
+/// <summary>Raw DB projection — includes override fields for server-side resolution.</summary>
+public record AccountBrandingRaw(
+    int     AccountId,
+    string? PrimaryColor,
+    string? PrimaryColor2,
+    string? SecondaryColor,
+    string? SecondaryColor2,
+    string? AccentColor,
+    string? TextOnPrimaryOverride,
+    string? TextOnSecondaryOverride,
+    string? LogoDataUrl
+);
+
+/// <summary>
+/// Resolved branding DTO sent to the frontend.
+/// TextOnPrimary and TextOnSecondary are always final computed values —
+/// the frontend never needs to recompute them.
+/// </summary>
+public record AccountBrandingDto(
+    int     AccountId,
+    string? PrimaryColor,
+    string? PrimaryColor2,
+    string? SecondaryColor,
+    string? SecondaryColor2,
+    string? AccentColor,
+    string  TextOnPrimary,
+    string  TextOnSecondary,
+    string? LogoDataUrl
+);
+
+/// <summary>Admin request to save branding fields for an account.</summary>
+public record UpdateAccountBrandingRequest(
+    string? PrimaryColor,
+    string? PrimaryColor2,
+    string? SecondaryColor,
+    string? SecondaryColor2,
+    string? AccentColor,
+    string? TextOnPrimaryOverride,
+    string? TextOnSecondaryOverride,
+    string? LogoDataUrl
+);
+
+// ---------------------------------------------------------------------------
 // Package  (App.vPackages — screen A-03)
 // ---------------------------------------------------------------------------
 
@@ -673,16 +719,17 @@ public record AssignmentWithSubmissionDto(
 );
 
 public record SubmissionTokenContextDto(
-    Guid     TokenId,
-    string   SiteCode,
-    string   SiteName,
-    string   AccountCode,
-    string   AccountName,
-    string   PeriodLabel,
-    string   PeriodStatus,
-    DateTime PeriodCloseDate,
-    DateTime ExpiresAtUtc,
-    IEnumerable<AssignmentWithSubmissionDto> Assignments
+    Guid                     TokenId,
+    string                   SiteCode,
+    string                   SiteName,
+    string                   AccountCode,
+    string                   AccountName,
+    string                   PeriodLabel,
+    string                   PeriodStatus,
+    DateTime                 PeriodCloseDate,
+    DateTime                 ExpiresAtUtc,
+    IEnumerable<AssignmentWithSubmissionDto> Assignments,
+    AccountBrandingDto?      Branding
 );
 
 // ---------------------------------------------------------------------------

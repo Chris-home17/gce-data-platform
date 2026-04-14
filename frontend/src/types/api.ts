@@ -42,6 +42,34 @@ export interface Account {
   userCount: number
 }
 
+/**
+ * Resolved branding for an account.
+ * textOnPrimary and textOnSecondary are always final computed values —
+ * the frontend never needs to recompute them.
+ */
+export interface AccountBranding {
+  accountId: number
+  primaryColor: string | null
+  primaryColor2: string | null
+  secondaryColor: string | null
+  secondaryColor2: string | null
+  accentColor: string | null
+  textOnPrimary: string
+  textOnSecondary: string
+  logoDataUrl: string | null
+}
+
+export interface UpdateAccountBrandingInput {
+  primaryColor?: string | null
+  primaryColor2?: string | null
+  secondaryColor?: string | null
+  secondaryColor2?: string | null
+  accentColor?: string | null
+  textOnPrimaryOverride?: string | null
+  textOnSecondaryOverride?: string | null
+  logoDataUrl?: string | null
+}
+
 /** From App.vUsers (screen A-11) */
 export interface User {
   userId: number
@@ -767,6 +795,7 @@ export interface SubmissionTokenContext {
   periodCloseDate: string
   expiresAtUtc: string
   assignments: AssignmentWithSubmission[]
+  branding?: AccountBranding | null
 }
 
 export interface SubmissionToken {

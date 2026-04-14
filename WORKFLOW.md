@@ -148,20 +148,109 @@ Or open a Pull Request on GitHub for code review before merging.
 
 ---
 
+## Database Migrations (EF Core)
+
+The project uses EF Core exclusively for **migration management**. All runtime queries use Dapper. The EF context (`PlatformDbContext`) has no DbSets — it is a thin wrapper that gives `dotnet ef` a target.
+
+### Migration inventory
+
+| Migration ID | Description |
+|---|---|
+| `20260414000001_InitialCreate` | Full baseline DDL — use for empty-database restores |
+| `20260414000002_AccountBranding` | Adds branding columns, updates `App.vAccounts`, adds `App.UpdateAccountBranding` |
+
+### Common commands
+
+Run from `backend/GcePlatform.Api/`:
+
+```bash
+# List migrations and their applied status
+dotnet ef migrations list
+
+# Apply all pending migrations (creates __EFMigrationsHistory if absent)
+dotnet ef database update
+
+# Roll back to a specific migration
+dotnet ef database update 20260414000001_InitialCreate
+
+# Add a new migration (generates the .cs files; write your SQL in the Up/Down methods)
+dotnet ef migrations add MyNewChange
+```
+
+### Fresh database setup (empty DB)
+
+```bash
+# 1. Create the Azure SQL database
+# 2. Grant your identity access (see below)
+# 3. Update appsettings.Development.json with server/db name
+# 4. Apply all migrations in one command:
+dotnet ef database update
+# 5. Optionally seed test data:
+#    Run database/dml/seed_test_data.sql in SSMS / Azure Data Studio
+```
+
+### Production database (already populated, pre-branding)
+
+The production DB was created before migrations were introduced. To adopt EF migrations without re-creating the database:
+
+**Step 1** — Let EF create the `__EFMigrationsHistory` tracking table:
+
+```sql
+-- Run this in SSMS / Azure Data Studio against the production database
+IF OBJECT_ID('__EFMigrationsHistory') IS NULL
+CREATE TABLE [__EFMigrationsHistory] (
+    [MigrationId]    NVARCHAR(150) NOT NULL,
+    [ProductVersion] NVARCHAR(32)  NOT NULL,
+    CONSTRAINT [PK___EFMigrationsHistory] PRIMARY KEY ([MigrationId])
+);
+```
+
+**Step 2** — Mark the InitialCreate migration as already applied (the DB already has that schema):
+
+```sql
+INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
+VALUES ('20260414000001_InitialCreate', '8.0.11');
+```
+
+**Step 3** — Apply only the pending migration(s):
+
+```bash
+dotnet ef database update
+# Applies: 20260414000002_AccountBranding
+```
+
+### Adding future migrations
+
+1. Make your SQL changes in `baseline_create.sql` (keep the baseline current)
+2. Run `dotnet ef migrations add YourMigrationName` — this creates empty migration files
+3. In the generated `Up()` method, call `migrationBuilder.Sql("...", suppressTransaction: true)` with your DDL
+4. Provide a matching `Down()` reversal
+5. Test locally with `dotnet ef database update`
+6. For production: `dotnet ef database update` (only the new migration runs — prior ones are already in `__EFMigrationsHistory`)
+
+---
+
 ## Adding a New DEV Database
 
 1. Create the Azure SQL database (Serverless recommended for dev cost)
-2. Run `database/ddl/tables/baseline_create.sql` to initialise the schema
-3. Optionally run `database/dml/seed_test_data.sql`
-4. Grant your identity access:
-   ```sql
-   CREATE USER [your-name@company.com] FROM EXTERNAL PROVIDER;
-   ALTER ROLE db_datareader ADD MEMBER [your-name@company.com];
-   ALTER ROLE db_datawriter ADD MEMBER [your-name@company.com];
-   GRANT EXECUTE TO [your-name@company.com];
+2. Grant your identity access (see below)
+3. Update `backend/GcePlatform.Api/appsettings.Development.json` with the new server/database name
+4. Commit the updated `appsettings.Development.json`
+5. Run migrations to create the schema:
+   ```bash
+   cd backend/GcePlatform.Api
+   dotnet ef database update
    ```
-5. Update `backend/GcePlatform.Api/appsettings.Development.json` with the new server/database name
-6. Commit the updated `appsettings.Development.json`
+6. Optionally seed test data by running `database/dml/seed_test_data.sql`
+
+Grant your identity access (run in SSMS / Azure Data Studio):
+
+```sql
+CREATE USER [your-name@company.com] FROM EXTERNAL PROVIDER;
+ALTER ROLE db_datareader ADD MEMBER [your-name@company.com];
+ALTER ROLE db_datawriter ADD MEMBER [your-name@company.com];
+GRANT EXECUTE TO [your-name@company.com];
+```
 
 ---
 

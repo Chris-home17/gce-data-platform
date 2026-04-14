@@ -347,6 +347,9 @@ GO
 IF OBJECT_ID('App.UpsertAccount', 'P') IS NOT NULL
     DROP PROCEDURE App.UpsertAccount;
 GO
+IF OBJECT_ID('App.UpdateAccountBranding', 'P') IS NOT NULL
+    DROP PROCEDURE App.UpdateAccountBranding;
+GO
 IF OBJECT_ID('App.UpsertRole', 'P') IS NOT NULL
     DROP PROCEDURE App.UpsertRole;
 GO

@@ -45,6 +45,14 @@ BEGIN
     DELETE FROM @AccountProcess WHERE AccountCode = @AccountCode;
 END;
 
+-- Seed branding for one account (DHL) -------------------------------------------
+UPDATE Dim.Account
+SET PrimaryColor   = '#D40511',
+    PrimaryColor2  = '#B8040E',
+    SecondaryColor = '#FFCC00',
+    AccentColor    = '#D40511'
+WHERE AccountCode = 'DHL';
+
 -- Seed shared geography repository -----------------------------------------------
 DECLARE @SharedGeoSeed TABLE
 (

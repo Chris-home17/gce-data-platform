@@ -12,6 +12,7 @@
 import { getSession } from 'next-auth/react'
 import type {
   Account,
+  AccountBranding,
   ApiList,
   AssignReportToPackageInput,
   BiReport,
@@ -44,6 +45,7 @@ import type {
   CreateSourceMappingInput,
   CreateSubmissionTokenInput,
   CreateUserInput,
+  UpdateAccountBrandingInput,
   CreateDelegationInput,
   Delegation,
   DelegationScopeOptions,
@@ -153,6 +155,12 @@ export const api = {
     },
     setActive(id: number, isActive: boolean): Promise<void> {
       return apiFetch(`/accounts/${id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) })
+    },
+    getBranding(id: number): Promise<AccountBranding | null> {
+      return apiFetch(`/accounts/${id}/branding`)
+    },
+    updateBranding(id: number, data: UpdateAccountBrandingInput): Promise<void> {
+      return apiFetch(`/accounts/${id}/branding`, { method: 'PUT', body: JSON.stringify(data) })
     },
   },
 

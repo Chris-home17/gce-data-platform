@@ -25,6 +25,7 @@ import { AccountSitesTable } from '@/app/(admin)/sites/sites-table'
 import { AccountUsersTable } from '@/app/(admin)/users/users-table'
 import { ImportOrgUnitsDialog } from '@/app/(admin)/sites/import-org-units-dialog'
 import { OnboardUserWizard } from '@/components/shared/onboard-user-wizard'
+import { AccountBrandingTab } from './account-branding-tab'
 import { api } from '@/lib/api'
 import { PERMISSIONS } from '@/types/api'
 import type { CoverageSummary } from '@/types/api'
@@ -512,6 +513,7 @@ export function AccountDetail({ accountId }: AccountDetailProps) {
           <TabsTrigger value="access">Access & Roles</TabsTrigger>
           <TabsTrigger value="kpi">KPI</TabsTrigger>
           <TabsTrigger value="coverage">Coverage</TabsTrigger>
+          <TabsTrigger value="branding">Branding</TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="mt-5">
@@ -537,6 +539,13 @@ export function AccountDetail({ accountId }: AccountDetailProps) {
 
         <TabsContent value="coverage" className="mt-5">
           <AccountCoverageTab accountId={accountId} />
+        </TabsContent>
+
+        <TabsContent value="branding" className="mt-5">
+          <AccountBrandingTab
+            accountId={accountId}
+            accountName={account?.accountName ?? ''}
+          />
         </TabsContent>
       </Tabs>
 
