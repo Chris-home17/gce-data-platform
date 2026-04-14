@@ -215,9 +215,29 @@ VALUES ('20260414000001_InitialCreate', '8.0.11');
 **Step 3** — Apply only the pending migration(s):
 
 ```bash
-dotnet ef database update
+# Authenticate with your Azure identity (device code flow works from any terminal)
+az login --use-device-code
+
+# Run from the API project directory, passing the production connection string
+cd backend/GcePlatform.Api
+dotnet ef database update --connection "Server=tcp:YOUR-PROD-SERVER.database.windows.net,1433;Database=YOUR-PROD-DB;Authentication=Active Directory Default;Encrypt=True;TrustServerCertificate=False;"
 # Applies: 20260414000002_AccountBranding
 ```
+
+Your `az login` identity must have `db_datareader`, `db_datawriter`, and `EXECUTE` permissions on the production database, plus `ALTER` rights to create tables and modify schema.
+
+### Applying future migrations to production
+
+Same two steps every time:
+
+```bash
+az login --use-device-code
+
+cd backend/GcePlatform.Api
+dotnet ef database update --connection "Server=tcp:YOUR-PROD-SERVER.database.windows.net,1433;Database=YOUR-PROD-DB;Authentication=Active Directory Default;Encrypt=True;TrustServerCertificate=False;"
+```
+
+EF checks `__EFMigrationsHistory` and only runs migrations that haven't been applied yet.
 
 ### Adding future migrations
 
