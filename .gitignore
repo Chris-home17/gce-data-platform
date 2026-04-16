@@ -21,7 +21,9 @@ bin/
 obj/
 
 # Test and coverage artifacts
-coverage/
+# Scope to root-level or backend test output, not the Next.js app route at frontend/src/app/(admin)/coverage/
+/coverage/
+backend/**/coverage/
 TestResults/
 *.trx
 
