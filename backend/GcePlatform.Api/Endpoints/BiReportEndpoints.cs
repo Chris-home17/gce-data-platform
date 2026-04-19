@@ -77,6 +77,35 @@ public static class BiReportEndpoints
             return Results.Created($"/reports/{newId}", item);
         }).RequireAuthorization();
 
+        // PUT /reports/{id} — update name and URI
+        app.MapPut("/reports/{id:int}", async (int id, UpdateBiReportRequest req, DbConnectionFactory db) =>
+        {
+            using var conn = db.CreateConnection();
+            var existing = await conn.QuerySingleOrDefaultAsync<BiReportDto>(
+                "SELECT BiReportId, ReportCode, ReportName, ReportUri, CAST(IsActive AS bit) AS IsActive, PackageCount, ISNULL(PackageList,'') AS PackageList FROM App.vBiReports WHERE BiReportId = @Id",
+                new { Id = id });
+
+            if (existing is null)
+                return Results.NotFound(new ApiError("REPORT_NOT_FOUND", $"Report {id} not found."));
+
+            var p = new DynamicParameters();
+            p.Add("@ReportCode", existing.ReportCode);
+            p.Add("@ReportName", req.ReportName);
+            p.Add("@ReportUri",  req.ReportUri);
+            p.Add("@IsActive",   existing.IsActive ? 1 : 0);
+            p.Add("@BiReportId", dbType: System.Data.DbType.Int32,
+                                 direction: System.Data.ParameterDirection.Output);
+
+            await conn.ExecuteAsync("App.UpsertBiReport", p,
+                commandType: System.Data.CommandType.StoredProcedure);
+
+            var updated = await conn.QuerySingleOrDefaultAsync<BiReportDto>(
+                "SELECT BiReportId, ReportCode, ReportName, ReportUri, CAST(IsActive AS bit) AS IsActive, PackageCount, ISNULL(PackageList,'') AS PackageList FROM App.vBiReports WHERE BiReportId = @Id",
+                new { Id = id });
+
+            return Results.Ok(updated);
+        }).RequireAuthorization();
+
         // POST /reports/assign  — add or remove a report↔package link
         app.MapPost("/reports/assign", async (AssignReportToPackageRequest req, DbConnectionFactory db) =>
         {

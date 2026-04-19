@@ -109,6 +109,11 @@ public record CreateBiReportRequest(
     string? ReportUri
 );
 
+public record UpdateBiReportRequest(
+    string  ReportName,
+    string? ReportUri
+);
+
 public record AssignReportToPackageRequest(
     string ReportCode,
     string PackageCode,
@@ -1054,6 +1059,34 @@ public record EffectiveAccessEntryDto(
     string? ScopeOrgUnitCode,
     string? ScopeOrgUnitName,
     string? ScopeOrgUnitType
+);
+
+// ---------------------------------------------------------------------------
+// Resolved effective access — App.GetUserEffectiveAccess SP result
+// ---------------------------------------------------------------------------
+
+public record EffectiveSiteDto(
+    string  AccountCode,
+    string  AccountName,
+    string  SiteCode,
+    string  SiteName,
+    string? CountryCode,
+    string? Path,
+    string? SourceSystem,
+    string? SourceOrgUnitId,
+    string? SourceOrgUnitName
+);
+
+public record EffectiveReportDto(
+    string  PackageCode,
+    string  PackageName,
+    string  ReportCode,
+    string  ReportName
+);
+
+public record ResolvedAccessDto(
+    IEnumerable<EffectiveSiteDto>   Sites,
+    IEnumerable<EffectiveReportDto> Reports
 );
 
 // ---------------------------------------------------------------------------

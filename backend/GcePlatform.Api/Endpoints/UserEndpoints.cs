@@ -304,6 +304,23 @@ public static class UserEndpoints
             return Results.Ok(new ApiList<EffectiveAccessEntryDto>(list, list.Count));
         }).RequireAuthorization();
 
+        // GET /users/{id}/resolved-access — actual sites + reports via App.GetUserEffectiveAccess SP
+        app.MapGet("/users/{id:int}/resolved-access", async (int id, DbConnectionFactory db) =>
+        {
+            using var conn = db.CreateConnection();
+            var upn = await conn.QuerySingleOrDefaultAsync<string>(
+                "SELECT u.UPN FROM Sec.[User] AS u WHERE u.UserId = @Id", new { Id = id });
+            if (upn is null) return Results.NotFound();
+
+            using var multi = await conn.QueryMultipleAsync(
+                "EXEC App.GetUserEffectiveAccess @UserUPN", new { UserUPN = upn });
+
+            var sites   = (await multi.ReadAsync<EffectiveSiteDto>()).ToList();
+            var reports = (await multi.ReadAsync<EffectiveReportDto>()).ToList();
+
+            return Results.Ok(new ResolvedAccessDto(sites, reports));
+        }).RequireAuthorization();
+
         // GET /users/{id}/delegations
         app.MapGet("/users/{id:int}/delegations", async (int id, DbConnectionFactory db) =>
         {

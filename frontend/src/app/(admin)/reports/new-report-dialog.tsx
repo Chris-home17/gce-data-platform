@@ -116,7 +116,7 @@ export function NewReportDialog() {
                     <FormLabel>Report URI <span className="text-muted-foreground">(optional)</span></FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="powerbi://workspaces/..."
+                        placeholder="https://app.powerbi.com/groups/<workspace-id>/reports/<report-id>"
                         className="font-mono text-sm"
                         {...field}
                       />

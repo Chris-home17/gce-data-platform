@@ -45,6 +45,9 @@
     <!-- KpiPackageMultiTag: multi-tag support for KPI packages -->
     <EmbeddedResource Include="Migrations\Scripts\KpiPackageMultiTag.Up.sql" />
     <EmbeddedResource Include="Migrations\Scripts\KpiPackageMultiTag.Down.sql" />
+    <!-- KpiDefinitionSnapshot: freeze KPI library metadata at submission time -->
+    <EmbeddedResource Include="Migrations\Scripts\KpiDefinitionSnapshot.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\KpiDefinitionSnapshot.Down.sql" />
   </ItemGroup>
 
 </Project>

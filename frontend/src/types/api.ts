@@ -130,6 +130,33 @@ export interface EffectiveAccessEntry {
   scopeOrgUnitType: string | null
 }
 
+/** From App.GetUserEffectiveAccess SP — resolved site access */
+export interface EffectiveSite {
+  accountCode: string
+  accountName: string
+  siteCode: string
+  siteName: string
+  countryCode: string | null
+  path: string | null
+  sourceSystem: string | null
+  sourceOrgUnitId: string | null
+  sourceOrgUnitName: string | null
+}
+
+/** From App.GetUserEffectiveAccess SP — resolved report access */
+export interface EffectiveReport {
+  packageCode: string
+  packageName: string
+  reportCode: string
+  reportName: string
+}
+
+/** From GET /users/{id}/resolved-access */
+export interface ResolvedAccess {
+  sites: EffectiveSite[]
+  reports: EffectiveReport[]
+}
+
 /** From App.vRoles (screen A-07) */
 export interface Role {
   roleId: number
@@ -769,6 +796,11 @@ export interface CreatePackageInput {
 
 export interface CreateBiReportInput {
   reportCode: string
+  reportName: string
+  reportUri?: string
+}
+
+export interface UpdateBiReportInput {
   reportName: string
   reportUri?: string
 }

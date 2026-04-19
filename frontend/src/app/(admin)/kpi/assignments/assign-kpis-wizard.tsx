@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
+  AlertCircle,
   ChevronDown,
   ChevronRight,
   Loader2,
@@ -13,6 +14,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -126,6 +128,16 @@ function isTailoringDirty(v: KpiTailoringValues): boolean {
 function parseOptionalNumber(s: string): number | null {
   const n = parseFloat(s)
   return isNaN(n) ? null : n
+}
+
+function getTailoringErrors(kpi: EffectiveKpi, values: KpiTailoringValues): string[] {
+  if (!['Numeric', 'Percentage', 'Currency'].includes(kpi.dataType ?? '')) return []
+  const errors: string[] = []
+  if (!values.targetValue) errors.push('targetValue')
+  if (!values.thresholdGreen) errors.push('thresholdGreen')
+  if (!values.thresholdAmber) errors.push('thresholdAmber')
+  if (!values.thresholdRed) errors.push('thresholdRed')
+  return errors
 }
 
 // ---------------------------------------------------------------------------
@@ -715,12 +727,21 @@ interface KpiTailoringRowProps {
   kpi: EffectiveKpi
   values: KpiTailoringValues
   onChange: (patch: Partial<KpiTailoringValues>) => void
+  fieldErrors: string[]
+  showErrors: boolean
 }
 
-function KpiTailoringRow({ kpi, values, onChange }: KpiTailoringRowProps) {
+function KpiTailoringRow({ kpi, values, onChange, fieldErrors, showErrors }: KpiTailoringRowProps) {
   const [expanded, setExpanded] = useState(false)
   const isDirty = isTailoringDirty(values)
   const supportsThresholds = ['Numeric', 'Percentage', 'Currency'].includes(kpi.dataType ?? '')
+  const hasErrors = showErrors && fieldErrors.length > 0
+
+  useEffect(() => {
+    if (hasErrors) setExpanded(true)
+  }, [hasErrors])
+
+  const err = (field: string) => showErrors && fieldErrors.includes(field)
 
   return (
     <div className="rounded-md border">
@@ -748,10 +769,16 @@ function KpiTailoringRow({ kpi, values, onChange }: KpiTailoringRowProps) {
                 {kpi.sourcePackageName}
               </Badge>
             )}
-            {isDirty && (
+            {isDirty && !hasErrors && (
               <Badge className="text-xs py-0 bg-primary/10 text-primary border-primary/20">
                 <Sparkles className="h-2.5 w-2.5 mr-1" />
                 Customised
+              </Badge>
+            )}
+            {hasErrors && (
+              <Badge className="text-xs py-0 bg-destructive/10 text-destructive border-destructive/20">
+                <AlertCircle className="h-2.5 w-2.5 mr-1" />
+                Required fields missing
               </Badge>
             )}
           </div>
@@ -777,15 +804,21 @@ function KpiTailoringRow({ kpi, values, onChange }: KpiTailoringRowProps) {
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium">Target value</label>
+                  <label className="text-xs font-medium">
+                    Target value <span className="text-destructive">*</span>
+                  </label>
                   <input
                     type="number"
                     step="0.01"
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className={cn(
+                      "flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                      err('targetValue') ? "border-destructive focus-visible:ring-destructive" : "border-input"
+                    )}
                     value={values.targetValue}
                     onChange={(e) => onChange({ targetValue: e.target.value })}
-                    placeholder="—"
+                    placeholder="Required"
                   />
+                  {err('targetValue') && <p className="text-xs text-destructive">Required</p>}
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium">Direction</label>
@@ -808,16 +841,20 @@ function KpiTailoringRow({ kpi, values, onChange }: KpiTailoringRowProps) {
                 {(['thresholdGreen', 'thresholdAmber', 'thresholdRed'] as const).map((field) => (
                   <div key={field} className="space-y-1.5">
                     <label className="text-xs font-medium capitalize">
-                      {field.replace('threshold', '')}
+                      {field.replace('threshold', '')} <span className="text-destructive">*</span>
                     </label>
                     <input
                       type="number"
                       step="0.01"
-                      className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      className={cn(
+                        "flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                        err(field) ? "border-destructive focus-visible:ring-destructive" : "border-input"
+                      )}
                       value={values[field]}
                       onChange={(e) => onChange({ [field]: e.target.value })}
-                      placeholder="—"
+                      placeholder="Required"
                     />
+                    {err(field) && <p className="text-xs text-destructive">Required</p>}
                   </div>
                 ))}
               </div>
@@ -898,6 +935,8 @@ interface StepTailorProps {
   onTailoringChange: (kpiCode: string, patch: Partial<KpiTailoringValues>) => void
   onMaterializeNowChange: (v: boolean) => void
   onApplyRequiredToAll: (v: boolean) => void
+  tailoringErrors: Map<string, string[]>
+  showErrors: boolean
 }
 
 function StepTailor({
@@ -907,6 +946,8 @@ function StepTailor({
   onTailoringChange,
   onMaterializeNowChange,
   onApplyRequiredToAll,
+  tailoringErrors,
+  showErrors,
 }: StepTailorProps) {
   return (
     <div className="space-y-4">
@@ -933,6 +974,16 @@ function StepTailor({
         </Button>
       </div>
 
+      {showErrors && tailoringErrors.size > 0 && (
+        <div className="flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/5 px-3 py-2.5">
+          <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+          <p className="text-sm text-destructive">
+            {tailoringErrors.size === 1
+              ? '1 KPI is missing required threshold values. Expand the row to complete it.'
+              : `${tailoringErrors.size} KPIs are missing required threshold values. Expand each row to complete them.`}
+          </p>
+        </div>
+      )}
       <div className="space-y-2 max-h-[440px] overflow-y-auto pr-1">
         {effectiveKpis.map((kpi) => (
           <KpiTailoringRow
@@ -940,6 +991,8 @@ function StepTailor({
             kpi={kpi}
             values={tailoring.get(kpi.kpiCode) ?? defaultTailoring()}
             onChange={(patch) => onTailoringChange(kpi.kpiCode, patch)}
+            fieldErrors={tailoringErrors.get(kpi.kpiCode) ?? []}
+            showErrors={showErrors}
           />
         ))}
       </div>
@@ -976,6 +1029,7 @@ export function AssignKpisWizard() {
   const [cart, setCart] = useState<CartEntry[]>([])
   const [tailoring, setTailoring] = useState<Map<string, KpiTailoringValues>>(new Map())
   const [materializeNow, setMaterializeNow] = useState(true)
+  const [showTailoringErrors, setShowTailoringErrors] = useState(false)
 
   const queryClient = useQueryClient()
 
@@ -1179,6 +1233,17 @@ export function AssignKpisWizard() {
 
   const isStep1Valid = effectiveKpis.length > 0
 
+  const tailoringErrors = useMemo(() => {
+    const map = new Map<string, string[]>()
+    for (const kpi of effectiveKpis) {
+      const errors = getTailoringErrors(kpi, tailoring.get(kpi.kpiCode) ?? defaultTailoring())
+      if (errors.length > 0) map.set(kpi.kpiCode, errors)
+    }
+    return map
+  }, [effectiveKpis, tailoring])
+
+  const isStep2Valid = tailoringErrors.size === 0
+
   const commitMutation = useMutation({
     mutationFn: () => {
       const items: BatchKpiAssignmentTemplateItem[] = effectiveKpis.map((kpi) => {
@@ -1227,6 +1292,7 @@ export function AssignKpisWizard() {
     setCart([])
     setTailoring(new Map())
     setMaterializeNow(true)
+    setShowTailoringErrors(false)
     commitMutation.reset()
   }
 
@@ -1273,6 +1339,8 @@ export function AssignKpisWizard() {
               onTailoringChange={updateTailoring}
               onMaterializeNowChange={setMaterializeNow}
               onApplyRequiredToAll={applyRequiredToAll}
+              tailoringErrors={tailoringErrors}
+              showErrors={showTailoringErrors}
             />
           )}
         </div>
@@ -1286,7 +1354,10 @@ export function AssignKpisWizard() {
             {step > 0 && (
               <Button
                 variant="outline"
-                onClick={() => setStep((s) => (s - 1) as 0 | 1 | 2)}
+                onClick={() => {
+                  setShowTailoringErrors(false)
+                  setStep((s) => (s - 1) as 0 | 1 | 2)
+                }}
                 disabled={commitMutation.isPending}
               >
                 Back
@@ -1301,7 +1372,13 @@ export function AssignKpisWizard() {
               </Button>
             ) : (
               <Button
-                onClick={() => commitMutation.mutate()}
+                onClick={() => {
+                  if (!isStep2Valid) {
+                    setShowTailoringErrors(true)
+                    return
+                  }
+                  commitMutation.mutate()
+                }}
                 disabled={commitMutation.isPending || assignableCount === 0}
               >
                 {commitMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

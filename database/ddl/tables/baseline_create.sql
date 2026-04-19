@@ -4726,6 +4726,8 @@ BEGIN
         SubmissionText          NVARCHAR(1000)      NULL,  -- also used for DropDown selections
         SubmissionBoolean       BIT                 NULL,  -- used when DataType = 'Boolean'
         SubmissionNotes         NVARCHAR(500)       NULL,
+        -- Snapshot of KPI.Definition at submission time so library edits never alter history
+        DefinitionSnapshot      NVARCHAR(MAX)       NULL,
         -- Source
         SourceType              NVARCHAR(20)        NOT NULL
             CONSTRAINT CK_KpiSub_SourceType
@@ -6572,6 +6574,45 @@ BEGIN
         THROW 50204, 'Submitter user not found.', 1;
     END
 
+    -- Snapshot the full effective assignment state at first submission:
+    -- library defaults + assignment-level overrides + template custom name/description
+    DECLARE @DefinitionSnapshot NVARCHAR(MAX);
+    SELECT @DefinitionSnapshot = (
+        SELECT
+            d.KPICode,
+            d.KPIName,
+            d.KPIDescription,
+            COALESCE(tmpl.CustomKpiName,        d.KPIName)        AS EffectiveKpiName,
+            COALESCE(tmpl.CustomKpiDescription, d.KPIDescription) AS EffectiveKpiDescription,
+            d.Category,
+            d.Unit,
+            d.DataType,
+            d.AllowMultiValue,
+            d.CollectionType,
+            a.IsRequired,
+            a.TargetValue,
+            a.ThresholdGreen,
+            a.ThresholdAmber,
+            a.ThresholdRed,
+            COALESCE(a.ThresholdDirection, d.ThresholdDirection)  AS EffectiveThresholdDirection,
+            a.SubmitterGuidance,
+            JSON_QUERY(opts.OptionsJson) AS DropDownOptions
+        FROM KPI.Assignment AS a
+        JOIN KPI.Definition AS d ON d.KPIID = a.KPIID
+        LEFT JOIN KPI.AssignmentTemplate AS tmpl ON tmpl.AssignmentTemplateID = a.AssignmentTemplateID
+        OUTER APPLY (
+            SELECT CASE WHEN d.DataType = 'DropDown' THEN (
+                SELECT opt.OptionValue, opt.SortOrder
+                FROM KPI.DropDownOption AS opt
+                WHERE opt.KPIID = d.KPIID AND opt.IsActive = 1
+                ORDER BY opt.SortOrder
+                FOR JSON PATH
+            ) ELSE NULL END AS OptionsJson
+        ) AS opts
+        WHERE a.AssignmentID = @AssignmentID
+        FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+    );
+
     -- Get existing submission if any
     DECLARE @ExistingSubmissionID  INT;
     DECLARE @ExistingLockState     NVARCHAR(25);
@@ -6615,11 +6656,13 @@ BEGIN
         INSERT INTO KPI.Submission
             (AssignmentID, SubmittedByPrincipalId, SubmittedAt,
              SubmissionValue, SubmissionText, SubmissionBoolean, SubmissionNotes,
-             SourceType, LockState, LockedAt, LockedByPrincipalId)
+             SourceType, LockState, LockedAt, LockedByPrincipalId,
+             DefinitionSnapshot)
         VALUES
             (@AssignmentID, @SubmitterPrincipalId, SYSUTCDATETIME(),
              @SubmissionValue, @SubmissionText, @SubmissionBoolean, @SubmissionNotes,
-             @SourceType, @NewLockState, @LockedAt, @LockedByPrincipalId);
+             @SourceType, @NewLockState, @LockedAt, @LockedByPrincipalId,
+             @DefinitionSnapshot);
 
         SET @SubmissionID = SCOPE_IDENTITY();
 

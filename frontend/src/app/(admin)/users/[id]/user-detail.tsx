@@ -8,6 +8,8 @@ import {
   AlertTriangle,
   ArrowLeft,
   Building2,
+  FileText,
+  Globe,
   MapPin,
   Shield,
   ShieldCheck,
@@ -25,7 +27,7 @@ import { GrantAccessDialog } from '@/components/shared/grant-access-dialog'
 import { api } from '@/lib/api'
 import { usePermissions } from '@/hooks/usePermissions'
 import { PERMISSIONS } from '@/types/api'
-import type { Delegation, EffectiveAccessEntry, Grant, PackageGrant, Role } from '@/types/api'
+import type { Delegation, EffectiveAccessEntry, EffectiveSite, EffectiveReport, Grant, PackageGrant, Role } from '@/types/api'
 
 // ---------------------------------------------------------------------------
 // Column definitions
@@ -227,6 +229,67 @@ const delegationColumns: ColumnDef<Delegation, unknown>[] = [
   },
 ]
 
+const effectiveSiteColumns: ColumnDef<EffectiveSite, unknown>[] = [
+  {
+    id: 'account',
+    header: 'Account',
+    cell: ({ row }) => (
+      <div>
+        <span className="text-sm font-medium">{row.original.accountName}</span>
+        <span className="ml-2 font-mono text-xs text-muted-foreground">{row.original.accountCode}</span>
+      </div>
+    ),
+  },
+  {
+    id: 'site',
+    header: 'Site',
+    cell: ({ row }) => (
+      <div>
+        <span className="text-sm font-medium">{row.original.siteName}</span>
+        <span className="ml-2 font-mono text-xs text-muted-foreground">{row.original.siteCode}</span>
+      </div>
+    ),
+  },
+  {
+    accessorKey: 'countryCode',
+    header: 'Country',
+    cell: ({ row }) => (
+      <span className="font-mono text-sm text-muted-foreground">{row.original.countryCode ?? '—'}</span>
+    ),
+    meta: { className: 'w-[90px]' },
+  },
+  {
+    accessorKey: 'sourceOrgUnitName',
+    header: 'Org Unit',
+    cell: ({ row }) => (
+      <span className="text-sm text-muted-foreground">{row.original.sourceOrgUnitName ?? '—'}</span>
+    ),
+  },
+]
+
+const effectiveReportColumns: ColumnDef<EffectiveReport, unknown>[] = [
+  {
+    id: 'package',
+    header: 'Package',
+    cell: ({ row }) => (
+      <div>
+        <span className="text-sm font-medium">{row.original.packageName}</span>
+        <span className="ml-2 font-mono text-xs text-muted-foreground">{row.original.packageCode}</span>
+      </div>
+    ),
+  },
+  {
+    id: 'report',
+    header: 'Report',
+    cell: ({ row }) => (
+      <div>
+        <span className="text-sm font-medium">{row.original.reportName}</span>
+        <span className="ml-2 font-mono text-xs text-muted-foreground">{row.original.reportCode}</span>
+      </div>
+    ),
+  },
+]
+
 // ---------------------------------------------------------------------------
 // Revoke buttons
 // ---------------------------------------------------------------------------
@@ -353,6 +416,12 @@ export function UserDetail({ userId }: { userId: number }) {
     enabled: !!user,
   })
 
+  const { data: resolvedData, isLoading: resolvedLoading } = useQuery({
+    queryKey: ['user-resolved-access', userId],
+    queryFn: () => api.users.resolvedAccess(userId),
+    enabled: !!user,
+  })
+
   const removeFromRole = useMutation({
     mutationFn: (roleId: number) => api.roles.removeMember(roleId, userId),
     onSuccess: () => {
@@ -470,6 +539,12 @@ export function UserDetail({ userId }: { userId: number }) {
           <TabsTrigger value="delegations">
             Delegations
             {!delegationsLoading && delegationsData ? ` (${delegationsData.totalCount})` : ''}
+          </TabsTrigger>
+          <TabsTrigger value="effective-access">
+            Effective Access
+            {!resolvedLoading && resolvedData
+              ? ` (${resolvedData.sites.length + resolvedData.reports.length})`
+              : ''}
           </TabsTrigger>
         </TabsList>
 
@@ -590,6 +665,61 @@ export function UserDetail({ userId }: { userId: number }) {
               isLoading={delegationsLoading}
             />
           )}
+        </TabsContent>
+
+        {/* Effective Access: resolved sites + reports from App.GetUserEffectiveAccess */}
+        <TabsContent value="effective-access" className="mt-5 space-y-6">
+          <p className="text-sm text-muted-foreground">
+            The actual sites and reports this user can access, resolved from all grants, roles, and delegations.
+          </p>
+
+          {/* Sites */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <Globe className="h-4 w-4 text-muted-foreground" />
+              Sites
+              {!resolvedLoading && resolvedData && (
+                <Badge variant="secondary" className="text-xs font-normal">
+                  {resolvedData.sites.length}
+                </Badge>
+              )}
+            </h3>
+            {!resolvedLoading && resolvedData?.sites.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">
+                No site access.
+              </div>
+            ) : (
+              <DataTable
+                columns={effectiveSiteColumns}
+                data={resolvedData?.sites ?? []}
+                isLoading={resolvedLoading}
+              />
+            )}
+          </div>
+
+          {/* Reports */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <FileText className="h-4 w-4 text-muted-foreground" />
+              Reports
+              {!resolvedLoading && resolvedData && (
+                <Badge variant="secondary" className="text-xs font-normal">
+                  {resolvedData.reports.length}
+                </Badge>
+              )}
+            </h3>
+            {!resolvedLoading && resolvedData?.reports.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">
+                No report access.
+              </div>
+            ) : (
+              <DataTable
+                columns={effectiveReportColumns}
+                data={resolvedData?.reports ?? []}
+                isLoading={resolvedLoading}
+              />
+            )}
+          </div>
         </TabsContent>
       </Tabs>
 

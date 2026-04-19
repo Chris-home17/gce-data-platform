@@ -1,13 +1,81 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
+import { CheckCircle, ExternalLink, MoreHorizontal, Pencil, XCircle } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { DataTable } from '@/components/shared/data-table'
 import { StatusBadge } from '@/components/shared/status-badge'
-import { RowActions } from '@/components/shared/row-actions'
+import { EditReportDialog } from './edit-report-dialog'
 import { api } from '@/lib/api'
 import type { BiReport } from '@/types/api'
+
+function ReportRowActions({ report }: { report: BiReport }) {
+  const [editOpen, setEditOpen] = useState(false)
+  const queryClient = useQueryClient()
+
+  const toggleMutation = useMutation({
+    mutationFn: () => api.reports.setActive(report.biReportId, !report.isActive),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['reports'] }),
+  })
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 w-7 p-0 data-[state=open]:bg-muted"
+            disabled={toggleMutation.isPending}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MoreHorizontal className="h-4 w-4" />
+            <span className="sr-only">Actions</span>
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {report.reportUri && (
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); window.open(report.reportUri!, '_blank', 'noopener,noreferrer') }}>
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Open Report
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setEditOpen(true) }}>
+            <Pencil className="mr-2 h-4 w-4" />
+            Edit
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {report.isActive ? (
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={(e) => { e.stopPropagation(); toggleMutation.mutate() }}
+            >
+              <XCircle className="mr-2 h-4 w-4" />
+              Deactivate
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); toggleMutation.mutate() }}>
+              <CheckCircle className="mr-2 h-4 w-4 text-emerald-600" />
+              Activate
+            </DropdownMenuItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <EditReportDialog report={report} open={editOpen} onOpenChange={setEditOpen} />
+    </>
+  )
+}
 
 const columns: ColumnDef<BiReport, unknown>[] = [
   {
@@ -61,13 +129,7 @@ const columns: ColumnDef<BiReport, unknown>[] = [
   {
     id: 'actions',
     header: '',
-    cell: ({ row }) => (
-      <RowActions
-        isActive={row.original.isActive}
-        onToggle={() => api.reports.setActive(row.original.biReportId, !row.original.isActive)}
-        invalidateKeys={[['reports']]}
-      />
-    ),
+    cell: ({ row }) => <ReportRowActions report={row.original} />,
     meta: { className: 'w-[40px]' },
   },
 ]

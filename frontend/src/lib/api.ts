@@ -21,6 +21,7 @@ import type {
   CoverageSummary,
   CreateAccountInput,
   CreateBiReportInput,
+  UpdateBiReportInput,
   CreatePlatformRoleInput,
   PlatformRole,
   PlatformPermission,
@@ -52,6 +53,7 @@ import type {
   Delegation,
   DelegationScopeOptions,
   EffectiveAccessEntry,
+  ResolvedAccess,
   Grant,
   GrantAccessInput,
   KpiAssignment,
@@ -203,6 +205,9 @@ export const api = {
     effectiveAccess(id: number): Promise<ApiList<EffectiveAccessEntry>> {
       return apiFetch(`/users/${id}/effective-access`)
     },
+    resolvedAccess(id: number): Promise<ResolvedAccess> {
+      return apiFetch(`/users/${id}/resolved-access`)
+    },
   },
 
   roles: {
@@ -316,6 +321,9 @@ export const api = {
     },
     create(data: CreateBiReportInput): Promise<BiReport> {
       return apiFetch('/reports', { method: 'POST', body: JSON.stringify(data) })
+    },
+    update(id: number, data: UpdateBiReportInput): Promise<BiReport> {
+      return apiFetch(`/reports/${id}`, { method: 'PUT', body: JSON.stringify(data) })
     },
     assign(data: AssignReportToPackageInput): Promise<void> {
       return apiFetch('/reports/assign', { method: 'POST', body: JSON.stringify(data) })
