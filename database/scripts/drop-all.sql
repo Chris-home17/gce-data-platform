@@ -108,6 +108,15 @@ GO
 IF OBJECT_ID('App.vKpiPeriodSchedules', 'V') IS NOT NULL
     DROP VIEW App.vKpiPeriodSchedules;
 GO
+IF OBJECT_ID('App.vKpiPackageItems', 'V') IS NOT NULL
+    DROP VIEW App.vKpiPackageItems;
+GO
+IF OBJECT_ID('App.vKpiPackages', 'V') IS NOT NULL
+    DROP VIEW App.vKpiPackages;
+GO
+IF OBJECT_ID('App.vTags', 'V') IS NOT NULL
+    DROP VIEW App.vTags;
+GO
 IF OBJECT_ID('App.vKpiDefinitions', 'V') IS NOT NULL
     DROP VIEW App.vKpiDefinitions;
 GO
@@ -229,6 +238,27 @@ IF OBJECT_ID('App.usp_SetKpiAssignmentActive', 'P') IS NOT NULL
 GO
 IF OBJECT_ID('App.usp_SetKpiAssignmentTemplateActive', 'P') IS NOT NULL
     DROP PROCEDURE App.usp_SetKpiAssignmentTemplateActive;
+GO
+IF OBJECT_ID('App.usp_SetKpiPackageTags', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_SetKpiPackageTags;
+GO
+IF OBJECT_ID('App.usp_SetKpiPackageItems', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_SetKpiPackageItems;
+GO
+IF OBJECT_ID('App.usp_SetKpiPackageActive', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_SetKpiPackageActive;
+GO
+IF OBJECT_ID('App.usp_UpsertKpiPackage', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_UpsertKpiPackage;
+GO
+IF OBJECT_ID('App.usp_SetKpiTags', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_SetKpiTags;
+GO
+IF OBJECT_ID('App.usp_SetTagActive', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_SetTagActive;
+GO
+IF OBJECT_ID('App.usp_UpsertTag', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_UpsertTag;
 GO
 IF OBJECT_ID('App.usp_SetKpiPeriodScheduleActive', 'P') IS NOT NULL
     DROP PROCEDURE App.usp_SetKpiPeriodScheduleActive;
@@ -437,6 +467,18 @@ GO
 IF OBJECT_ID('KPI.AssignmentTemplate', 'U') IS NOT NULL
     DROP TABLE KPI.AssignmentTemplate;
 GO
+IF OBJECT_ID('KPI.KpiPackageTag', 'U') IS NOT NULL
+    DROP TABLE KPI.KpiPackageTag;
+GO
+IF OBJECT_ID('KPI.KpiPackageItem', 'U') IS NOT NULL
+    DROP TABLE KPI.KpiPackageItem;
+GO
+IF OBJECT_ID('KPI.KpiPackage', 'U') IS NOT NULL
+    DROP TABLE KPI.KpiPackage;
+GO
+IF OBJECT_ID('KPI.KpiTag', 'U') IS NOT NULL
+    DROP TABLE KPI.KpiTag;
+GO
 IF OBJECT_ID('Audit.RetentionPolicy', 'U') IS NOT NULL
     DROP TABLE Audit.RetentionPolicy;
 GO
@@ -490,6 +532,9 @@ IF OBJECT_ID('KPI.DropDownOption', 'U') IS NOT NULL
 GO
 IF OBJECT_ID('KPI.Definition', 'U') IS NOT NULL
     DROP TABLE KPI.Definition;
+GO
+IF OBJECT_ID('Dim.Tag', 'U') IS NOT NULL
+    DROP TABLE Dim.Tag;
 GO
 IF OBJECT_ID('Sec.Role', 'U') IS NOT NULL
     DROP TABLE Sec.Role;

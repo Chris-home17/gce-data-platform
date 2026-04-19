@@ -105,6 +105,20 @@ BEGIN
 END;
 GO
 
+-- Ensure TagId exists on KPI.KpiPackage — the table may have been pre-created by
+-- InitialCreate in its post-KpiPackageMultiTag state (without TagId). This column
+-- is needed here and will be removed again by KpiPackageMultiTag.
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE object_id = OBJECT_ID('KPI.KpiPackage')
+      AND name = 'TagId'
+)
+BEGIN
+    ALTER TABLE KPI.KpiPackage
+        ADD TagId INT NULL CONSTRAINT FK_KpiPackage_Tag REFERENCES Dim.Tag (TagId);
+END;
+GO
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 6a. App.vTags
 -- ─────────────────────────────────────────────────────────────────────────────

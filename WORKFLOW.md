@@ -240,6 +240,15 @@ If you want the committed production defaults as a reference, they live in [apps
 
 ### Fresh database setup
 
+dotnet ef database update --connection 
+
+PROD
+"Server=tcp:gce-sql-dev.database.windows.net,1433;Database=GcePlatform;Authentication=Active Directory Default;Encrypt=True;TrustServerCertificate=False;"
+
+DEV
+"Server=tcp:gce-sql-tst.database.windows.net,1433;Database=gce-dev-db;Authentication=Active Directory Default;Encrypt=True;TrustServerCertificate=False;"
+
+
 1. Create the Azure SQL database.
 2. Ensure your Entra identity has database access.
 3. Update [backend/GcePlatform.Api/appsettings.Development.json](/Users/chrisdw/Documents/Developer/Claude Code/gce-data-platform/backend/GcePlatform.Api/appsettings.Development.json:1) if server or database name changed.
