@@ -116,6 +116,9 @@ public static class UserEndpoints
                     r.RoleName,
                     r.Description,
                     r.IsActive,
+                    r.AccountId,
+                    r.AccountCode,
+                    r.AccountName,
                     r.MemberCount,
                     r.AccessGrantCount,
                     r.PackageGrantCount
