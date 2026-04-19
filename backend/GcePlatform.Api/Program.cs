@@ -102,9 +102,11 @@ try
     app.MapPackageEndpoints();
     app.MapBiReportEndpoints();
     app.MapOrgUnitEndpoints();
+    app.MapTagEndpoints();
     app.MapKpiPeriodEndpoints();
     app.MapKpiDefinitionEndpoints();
     app.MapKpiAssignmentEndpoints();
+    app.MapKpiPackageEndpoints();
     app.MapKpiMonitoringEndpoints();
     app.MapKpiSubmissionEndpoints();
     app.MapKpiSubmissionTokenEndpoints();

@@ -29,7 +29,8 @@ public static class KpiDefinitionEndpoints
                     ThresholdDirection,
                     IsActive,
                     AssignmentCount,
-                    DropDownOptionsRaw
+                    DropDownOptionsRaw,
+                    TagsRaw
                 FROM App.vKpiDefinitions
                 ORDER BY KpiCode");
 
@@ -56,7 +57,8 @@ public static class KpiDefinitionEndpoints
                     ThresholdDirection,
                     IsActive,
                     AssignmentCount,
-                    DropDownOptionsRaw
+                    DropDownOptionsRaw,
+                    TagsRaw
                 FROM App.vKpiDefinitions
                 WHERE KpiId = @Id",
                 new { Id = id });
@@ -79,7 +81,7 @@ public static class KpiDefinitionEndpoints
             var current = await conn.QuerySingleOrDefaultAsync<KpiDefinitionDto>(@"
                 SELECT KpiId, ExternalId, KpiCode, KpiName, KpiDescription, Category, Unit,
                        DataType, AllowMultiValue, CollectionType, ThresholdDirection,
-                       IsActive, AssignmentCount, DropDownOptionsRaw
+                       IsActive, AssignmentCount, DropDownOptionsRaw, TagsRaw
                 FROM App.vKpiDefinitions
                 WHERE KpiId = @Id",
                 new { Id = id });
@@ -109,10 +111,19 @@ public static class KpiDefinitionEndpoints
             await conn.ExecuteAsync("App.usp_UpsertKpiDefinition", p,
                 commandType: System.Data.CommandType.StoredProcedure);
 
+            // Save tags if provided
+            if (request.TagIds is not null)
+            {
+                var tagIdsCsv = string.Join(",", request.TagIds);
+                await conn.ExecuteAsync("App.usp_SetKpiTags",
+                    new { KpiId = id, TagIds = tagIdsCsv },
+                    commandType: System.Data.CommandType.StoredProcedure);
+            }
+
             var updated = await conn.QuerySingleAsync<KpiDefinitionDto>(@"
                 SELECT KpiId, ExternalId, KpiCode, KpiName, KpiDescription, Category, Unit,
                        DataType, AllowMultiValue, CollectionType, ThresholdDirection,
-                       IsActive, AssignmentCount, DropDownOptionsRaw
+                       IsActive, AssignmentCount, DropDownOptionsRaw, TagsRaw
                 FROM App.vKpiDefinitions
                 WHERE KpiId = @Id",
                 new { Id = id });
@@ -143,7 +154,8 @@ public static class KpiDefinitionEndpoints
                     ThresholdDirection,
                     IsActive,
                     AssignmentCount,
-                    DropDownOptionsRaw
+                    DropDownOptionsRaw,
+                    TagsRaw
                 FROM App.vKpiDefinitions
                 WHERE KpiId = @Id",
                 new { Id = id });
@@ -191,10 +203,19 @@ public static class KpiDefinitionEndpoints
 
             var newId = p.Get<int>("@KPIID");
 
+            // Save tags if provided
+            if (request.TagIds is not null && request.TagIds.Any())
+            {
+                var tagIdsCsv = string.Join(",", request.TagIds);
+                await conn.ExecuteAsync("App.usp_SetKpiTags",
+                    new { KpiId = newId, TagIds = tagIdsCsv },
+                    commandType: System.Data.CommandType.StoredProcedure);
+            }
+
             var created = await conn.QuerySingleAsync<KpiDefinitionDto>(@"
                 SELECT KpiId, ExternalId, KpiCode, KpiName, KpiDescription, Category, Unit,
                        DataType, AllowMultiValue, CollectionType, ThresholdDirection,
-                       IsActive, AssignmentCount, DropDownOptionsRaw
+                       IsActive, AssignmentCount, DropDownOptionsRaw, TagsRaw
                 FROM App.vKpiDefinitions
                 WHERE KpiId = @Id",
                 new { Id = newId });

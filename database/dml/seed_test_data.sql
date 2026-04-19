@@ -1210,4 +1210,100 @@ BEGIN
     EXEC App.usp_ClosePeriod @PeriodID = @MthPeriod0203;
 END
 
+-- ── Tags & KPI Packages ────────────────────────────────────────────────────
+
+PRINT 'Seeding Tags and KPI Packages...';
+DECLARE @tagId1 INT, @tagId2 INT, @tagId3 INT;
+DECLARE @pkgId1 INT;
+DECLARE @kpiIdSafety1 INT, @kpiIdSafety2 INT, @kpiIdQuality1 INT;
+
+-- Insert sample tags if not already present
+IF NOT EXISTS (SELECT 1 FROM Dim.Tag WHERE TagCode = 'SAFETY')
+BEGIN
+    INSERT INTO Dim.Tag (TagCode, TagName, TagDescription, IsActive)
+    VALUES ('SAFETY', 'Safety', 'KPIs related to health and safety performance', 1);
+END
+SELECT @tagId1 = TagId FROM Dim.Tag WHERE TagCode = 'SAFETY';
+
+IF NOT EXISTS (SELECT 1 FROM Dim.Tag WHERE TagCode = 'QUALITY')
+BEGIN
+    INSERT INTO Dim.Tag (TagCode, TagName, TagDescription, IsActive)
+    VALUES ('QUALITY', 'Quality', 'KPIs tracking quality and accuracy metrics', 1);
+END
+SELECT @tagId2 = TagId FROM Dim.Tag WHERE TagCode = 'QUALITY';
+
+IF NOT EXISTS (SELECT 1 FROM Dim.Tag WHERE TagCode = 'CORE')
+BEGIN
+    INSERT INTO Dim.Tag (TagCode, TagName, TagDescription, IsActive)
+    VALUES ('CORE', 'Core', 'Mandatory core KPIs required at all sites', 1);
+END
+SELECT @tagId3 = TagId FROM Dim.Tag WHERE TagCode = 'CORE';
+
+-- Tag some KPIs (Safety category)
+SELECT @kpiIdSafety1 = KPIID FROM KPI.Definition WHERE KPICode = 'S-001';
+SELECT @kpiIdSafety2 = KPIID FROM KPI.Definition WHERE KPICode = 'S-003';
+SELECT @kpiIdQuality1 = KPIID FROM KPI.Definition WHERE KPICode = 'Q-001';
+
+IF @tagId1 IS NOT NULL AND @kpiIdSafety1 IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM KPI.KpiTag WHERE KpiId = @kpiIdSafety1 AND TagId = @tagId1)
+    INSERT INTO KPI.KpiTag (KpiId, TagId) VALUES (@kpiIdSafety1, @tagId1);
+
+IF @tagId1 IS NOT NULL AND @kpiIdSafety2 IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM KPI.KpiTag WHERE KpiId = @kpiIdSafety2 AND TagId = @tagId1)
+    INSERT INTO KPI.KpiTag (KpiId, TagId) VALUES (@kpiIdSafety2, @tagId1);
+
+IF @tagId3 IS NOT NULL AND @kpiIdSafety1 IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM KPI.KpiTag WHERE KpiId = @kpiIdSafety1 AND TagId = @tagId3)
+    INSERT INTO KPI.KpiTag (KpiId, TagId) VALUES (@kpiIdSafety1, @tagId3);
+
+IF @tagId2 IS NOT NULL AND @kpiIdQuality1 IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM KPI.KpiTag WHERE KpiId = @kpiIdQuality1 AND TagId = @tagId2)
+    INSERT INTO KPI.KpiTag (KpiId, TagId) VALUES (@kpiIdQuality1, @tagId2);
+
+-- Create sample KPI packages (no TagId column — tags via KPI.KpiPackageTag)
+DECLARE @pkgId2 INT;
+
+IF NOT EXISTS (SELECT 1 FROM KPI.KpiPackage WHERE PackageCode = 'SAFETY-CORE')
+BEGIN
+    INSERT INTO KPI.KpiPackage (PackageCode, PackageName, IsActive)
+    VALUES ('SAFETY-CORE', 'Core Safety KPIs', 1);
+END
+SELECT @pkgId1 = KpiPackageId FROM KPI.KpiPackage WHERE PackageCode = 'SAFETY-CORE';
+
+-- Tag SAFETY-CORE with the Safety tag (multi-tag junction)
+IF @pkgId1 IS NOT NULL AND @tagId1 IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM KPI.KpiPackageTag WHERE KpiPackageId = @pkgId1 AND TagId = @tagId1)
+    INSERT INTO KPI.KpiPackageTag (KpiPackageId, TagId) VALUES (@pkgId1, @tagId1);
+
+-- Add KPIs to SAFETY-CORE
+IF @pkgId1 IS NOT NULL AND @kpiIdSafety1 IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM KPI.KpiPackageItem WHERE KpiPackageId = @pkgId1 AND KpiId = @kpiIdSafety1)
+    INSERT INTO KPI.KpiPackageItem (KpiPackageId, KpiId) VALUES (@pkgId1, @kpiIdSafety1);
+
+IF @pkgId1 IS NOT NULL AND @kpiIdSafety2 IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM KPI.KpiPackageItem WHERE KpiPackageId = @pkgId1 AND KpiId = @kpiIdSafety2)
+    INSERT INTO KPI.KpiPackageItem (KpiPackageId, KpiId) VALUES (@pkgId1, @kpiIdSafety2);
+
+-- A second package with two tags (exercises multi-tag feature)
+IF NOT EXISTS (SELECT 1 FROM KPI.KpiPackage WHERE PackageCode = 'QUALITY-CORE')
+BEGIN
+    INSERT INTO KPI.KpiPackage (PackageCode, PackageName, IsActive)
+    VALUES ('QUALITY-CORE', 'Core Quality KPIs', 1);
+END
+SELECT @pkgId2 = KpiPackageId FROM KPI.KpiPackage WHERE PackageCode = 'QUALITY-CORE';
+
+IF @pkgId2 IS NOT NULL AND @tagId2 IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM KPI.KpiPackageTag WHERE KpiPackageId = @pkgId2 AND TagId = @tagId2)
+    INSERT INTO KPI.KpiPackageTag (KpiPackageId, TagId) VALUES (@pkgId2, @tagId2);
+
+IF @pkgId2 IS NOT NULL AND @tagId3 IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM KPI.KpiPackageTag WHERE KpiPackageId = @pkgId2 AND TagId = @tagId3)
+    INSERT INTO KPI.KpiPackageTag (KpiPackageId, TagId) VALUES (@pkgId2, @tagId3);
+
+IF @pkgId2 IS NOT NULL AND @kpiIdQuality1 IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM KPI.KpiPackageItem WHERE KpiPackageId = @pkgId2 AND KpiId = @kpiIdQuality1)
+    INSERT INTO KPI.KpiPackageItem (KpiPackageId, KpiId) VALUES (@pkgId2, @kpiIdQuality1);
+
+PRINT 'Tags and KPI Packages seeded.';
+
 PRINT 'Seed.sql completed';

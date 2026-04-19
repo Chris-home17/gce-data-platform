@@ -4823,6 +4823,97 @@ BEGIN
 END;
 GO
 
+-- ── Tags & KPI Packages ────────────────────────────────────────────────────
+
+IF OBJECT_ID('Dim.Tag', 'U') IS NULL
+BEGIN
+    CREATE TABLE Dim.Tag
+    (
+        TagId          INT            IDENTITY(1,1) NOT NULL CONSTRAINT PK_Tag PRIMARY KEY,
+        TagCode        NVARCHAR(50)   NOT NULL,
+        TagName        NVARCHAR(100)  NOT NULL,
+        TagDescription NVARCHAR(500)  NULL,
+        IsActive       BIT            NOT NULL CONSTRAINT DF_Tag_IsActive DEFAULT 1,
+        CreatedOnUtc   DATETIME2      NOT NULL CONSTRAINT DF_Tag_Created  DEFAULT GETUTCDATE(),
+        ModifiedOnUtc  DATETIME2      NOT NULL CONSTRAINT DF_Tag_Modified DEFAULT GETUTCDATE(),
+        CreatedBy      NVARCHAR(200)  NULL,
+        ModifiedBy     NVARCHAR(200)  NULL,
+        CONSTRAINT UX_Tag_Code UNIQUE (TagCode)
+    );
+    PRINT '  + Dim.Tag created';
+END;
+GO
+
+IF OBJECT_ID('KPI.KpiTag', 'U') IS NULL
+BEGIN
+    CREATE TABLE KPI.KpiTag
+    (
+        KpiTagId  INT NOT NULL IDENTITY(1,1) CONSTRAINT PK_KpiTag PRIMARY KEY,
+        KpiId     INT NOT NULL CONSTRAINT FK_KpiTag_Definition REFERENCES KPI.Definition(KPIID) ON DELETE CASCADE,
+        TagId     INT NOT NULL CONSTRAINT FK_KpiTag_Tag        REFERENCES Dim.Tag(TagId),
+        CONSTRAINT UX_KpiTag_KpiTag UNIQUE (KpiId, TagId)
+    );
+    PRINT '  + KPI.KpiTag created';
+END;
+GO
+
+IF OBJECT_ID('KPI.KpiPackage', 'U') IS NULL
+BEGIN
+    CREATE TABLE KPI.KpiPackage
+    (
+        KpiPackageId  INT            IDENTITY(1,1) NOT NULL CONSTRAINT PK_KpiPackage PRIMARY KEY,
+        PackageCode   NVARCHAR(50)   NOT NULL,
+        PackageName   NVARCHAR(200)  NOT NULL,
+        IsActive      BIT            NOT NULL CONSTRAINT DF_KpiPackage_IsActive DEFAULT 1,
+        CreatedOnUtc  DATETIME2      NOT NULL CONSTRAINT DF_KpiPackage_Created  DEFAULT GETUTCDATE(),
+        ModifiedOnUtc DATETIME2      NOT NULL CONSTRAINT DF_KpiPackage_Modified DEFAULT GETUTCDATE(),
+        CreatedBy     NVARCHAR(200)  NULL,
+        ModifiedBy    NVARCHAR(200)  NULL,
+        CONSTRAINT UX_KpiPackage_Code UNIQUE (PackageCode)
+    );
+    PRINT '  + KPI.KpiPackage created';
+END;
+GO
+
+IF OBJECT_ID('KPI.KpiPackageTag', 'U') IS NULL
+BEGIN
+    CREATE TABLE KPI.KpiPackageTag
+    (
+        KpiPackageTagId INT NOT NULL IDENTITY(1,1) CONSTRAINT PK_KpiPackageTag PRIMARY KEY,
+        KpiPackageId    INT NOT NULL CONSTRAINT FK_KpiPackageTag_Package REFERENCES KPI.KpiPackage(KpiPackageId) ON DELETE CASCADE,
+        TagId           INT NOT NULL CONSTRAINT FK_KpiPackageTag_Tag     REFERENCES Dim.Tag(TagId),
+        CONSTRAINT UX_KpiPackageTag UNIQUE (KpiPackageId, TagId)
+    );
+    CREATE INDEX IX_KpiPackageTag_TagId ON KPI.KpiPackageTag (TagId);
+    PRINT '  + KPI.KpiPackageTag created';
+END;
+GO
+
+IF OBJECT_ID('KPI.KpiPackageItem', 'U') IS NULL
+BEGIN
+    CREATE TABLE KPI.KpiPackageItem
+    (
+        KpiPackageItemId  INT NOT NULL IDENTITY(1,1) CONSTRAINT PK_KpiPackageItem PRIMARY KEY,
+        KpiPackageId      INT NOT NULL CONSTRAINT FK_KpiPkgItem_Package    REFERENCES KPI.KpiPackage(KpiPackageId) ON DELETE CASCADE,
+        KpiId             INT NOT NULL CONSTRAINT FK_KpiPkgItem_Definition REFERENCES KPI.Definition(KPIID),
+        CONSTRAINT UX_KpiPackageItem_PackageKpi UNIQUE (KpiPackageId, KpiId)
+    );
+    PRINT '  + KPI.KpiPackageItem created';
+END;
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE object_id = OBJECT_ID('KPI.AssignmentTemplate')
+      AND name = 'KpiPackageId'
+)
+BEGIN
+    ALTER TABLE KPI.AssignmentTemplate
+        ADD KpiPackageId INT NULL CONSTRAINT FK_AssignTemplate_KpiPackage REFERENCES KPI.KpiPackage(KpiPackageId);
+    PRINT '  + KPI.AssignmentTemplate.KpiPackageId added';
+END;
+GO
+
 IF OBJECT_ID('Workflow.ReminderState', 'U') IS NULL
 BEGIN
     CREATE TABLE Workflow.ReminderState
@@ -4932,6 +5023,54 @@ BEGIN
 END;
 GO
 
+-- Tags and KPI package views -------------------------------------------------
+
+CREATE OR ALTER VIEW App.vTags
+AS
+    SELECT
+        t.TagId, t.TagCode, t.TagName, t.TagDescription, t.IsActive,
+        COUNT(kt.KpiTagId) AS KpiCount
+    FROM Dim.Tag AS t
+    LEFT JOIN KPI.KpiTag AS kt ON kt.TagId = t.TagId
+    GROUP BY t.TagId, t.TagCode, t.TagName, t.TagDescription, t.IsActive;
+GO
+
+CREATE OR ALTER VIEW App.vKpiPackages
+AS
+    SELECT
+        p.KpiPackageId,
+        p.PackageCode,
+        p.PackageName,
+        p.IsActive,
+        ISNULL(items.KpiCount, 0) AS KpiCount,
+        (
+            SELECT STRING_AGG(CAST(t.TagId AS NVARCHAR(10)) + ':' + t.TagName, '|')
+            FROM KPI.KpiPackageTag AS pt
+            JOIN Dim.Tag AS t ON t.TagId = pt.TagId
+            WHERE pt.KpiPackageId = p.KpiPackageId
+        ) AS TagsRaw
+    FROM KPI.KpiPackage AS p
+    OUTER APPLY
+    (
+        SELECT COUNT(*) AS KpiCount
+        FROM KPI.KpiPackageItem AS pi
+        WHERE pi.KpiPackageId = p.KpiPackageId
+    ) AS items;
+GO
+
+CREATE OR ALTER VIEW App.vKpiPackageItems
+AS
+    SELECT
+        pi.KpiPackageItemId, pi.KpiPackageId, pi.KpiId,
+        d.KPICode  AS KpiCode,
+        d.KPIName  AS KpiName,
+        d.Category,
+        d.DataType,
+        d.IsActive AS KpiIsActive
+    FROM KPI.KpiPackageItem AS pi
+    JOIN KPI.Definition     AS d  ON d.KPIID = pi.KpiId;
+GO
+
 -- KPI admin and submission views --------------------------------------------
 CREATE OR ALTER VIEW App.vKpiDefinitions
 AS
@@ -4959,7 +5098,14 @@ AS
             SELECT STRING_AGG(opt.OptionValue, '||') WITHIN GROUP (ORDER BY opt.SortOrder)
             FROM KPI.DropDownOption AS opt
             WHERE opt.KPIID = d.KPIID AND opt.IsActive = 1
-        ) ELSE NULL END AS DropDownOptionsRaw
+        ) ELSE NULL END AS DropDownOptionsRaw,
+        -- Tags as pipe-delimited "TagId:TagName" pairs
+        (
+            SELECT STRING_AGG(CAST(t.TagId AS NVARCHAR(10)) + ':' + t.TagName, '|')
+            FROM KPI.KpiTag  AS kt
+            JOIN Dim.Tag     AS t  ON t.TagId = kt.TagId
+            WHERE kt.KpiId = d.KPIID
+        ) AS TagsRaw
     FROM KPI.Definition AS d
     OUTER APPLY
     (
@@ -5072,12 +5218,15 @@ AS
         COALESCE(t.CustomKpiName,        d.KPIName)        AS EffectiveKpiName,
         COALESCE(t.CustomKpiDescription, d.KPIDescription) AS EffectiveKpiDescription,
         t.IsActive,
-        ISNULL(instances.GeneratedAssignmentCount, 0) AS GeneratedAssignmentCount
+        ISNULL(instances.GeneratedAssignmentCount, 0) AS GeneratedAssignmentCount,
+        t.KpiPackageId,
+        pkg.PackageName AS KpiPackageName
     FROM KPI.AssignmentTemplate AS t
     JOIN KPI.Definition         AS d    ON d.KPIID = t.KPIID
     LEFT JOIN KPI.PeriodSchedule AS sched ON sched.PeriodScheduleID = t.PeriodScheduleID
     JOIN Dim.Account            AS acct ON acct.AccountId = t.AccountId
     LEFT JOIN Dim.OrgUnit       AS ou   ON ou.OrgUnitId = t.OrgUnitId
+    LEFT JOIN KPI.KpiPackage    AS pkg  ON pkg.KpiPackageId = t.KpiPackageId
     OUTER APPLY
     (
         SELECT COUNT(*) AS GeneratedAssignmentCount
@@ -7103,6 +7252,93 @@ BEGIN
         ModifiedOnUtc = SYSUTCDATETIME(),
         ModifiedBy = SESSION_USER
     WHERE PeriodScheduleID = @PeriodScheduleID;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_UpsertKpiPackage
+    @PackageCode  NVARCHAR(50),
+    @PackageName  NVARCHAR(200),
+    @ActorUPN     NVARCHAR(320) = NULL,
+    @KpiPackageId INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SET @KpiPackageId = (SELECT KpiPackageId FROM KPI.KpiPackage WHERE PackageCode = @PackageCode);
+
+    IF @KpiPackageId IS NULL
+    BEGIN
+        INSERT INTO KPI.KpiPackage (PackageCode, PackageName, IsActive, CreatedBy, ModifiedBy)
+        VALUES (@PackageCode, @PackageName, 1,
+                COALESCE(@ActorUPN, SESSION_USER),
+                COALESCE(@ActorUPN, SESSION_USER));
+
+        SET @KpiPackageId = SCOPE_IDENTITY();
+    END
+    ELSE
+    BEGIN
+        UPDATE KPI.KpiPackage
+        SET PackageName   = @PackageName,
+            ModifiedOnUtc = SYSUTCDATETIME(),
+            ModifiedBy    = COALESCE(@ActorUPN, SESSION_USER)
+        WHERE KpiPackageId = @KpiPackageId;
+    END
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_SetKpiPackageTags
+    @KpiPackageId INT,
+    @TagIds       NVARCHAR(MAX),  -- comma-separated tag IDs; empty string = clear all
+    @ActorUPN     NVARCHAR(320) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM KPI.KpiPackage WHERE KpiPackageId = @KpiPackageId)
+        THROW 50320, 'KPI Package not found.', 1;
+
+    DELETE FROM KPI.KpiPackageTag WHERE KpiPackageId = @KpiPackageId;
+
+    IF @TagIds IS NOT NULL AND LEN(LTRIM(RTRIM(@TagIds))) > 0
+    BEGIN
+        INSERT INTO KPI.KpiPackageTag (KpiPackageId, TagId)
+        SELECT DISTINCT @KpiPackageId, CAST(LTRIM(RTRIM(value)) AS INT)
+        FROM STRING_SPLIT(@TagIds, ',')
+        WHERE LEN(LTRIM(RTRIM(value))) > 0
+          AND ISNUMERIC(LTRIM(RTRIM(value))) = 1;
+
+        IF EXISTS (
+            SELECT 1
+            FROM KPI.KpiPackageTag AS pt
+            WHERE pt.KpiPackageId = @KpiPackageId
+              AND NOT EXISTS (SELECT 1 FROM Dim.Tag WHERE TagId = pt.TagId AND IsActive = 1)
+        )
+            THROW 50321, 'One or more TagIds are invalid or inactive.', 1;
+    END
+
+    UPDATE KPI.KpiPackage
+    SET ModifiedOnUtc = SYSUTCDATETIME(),
+        ModifiedBy    = COALESCE(@ActorUPN, SESSION_USER)
+    WHERE KpiPackageId = @KpiPackageId;
+END;
+GO
+
+CREATE OR ALTER PROCEDURE App.usp_SetKpiPackageActive
+    @KpiPackageId INT,
+    @IsActive     BIT,
+    @ActorUPN     NVARCHAR(320) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF NOT EXISTS (SELECT 1 FROM KPI.KpiPackage WHERE KpiPackageId = @KpiPackageId)
+        THROW 50311, 'KPI Package not found.', 1;
+
+    UPDATE KPI.KpiPackage
+    SET IsActive      = @IsActive,
+        ModifiedOnUtc = SYSUTCDATETIME(),
+        ModifiedBy    = COALESCE(@ActorUPN, SESSION_USER)
+    WHERE KpiPackageId = @KpiPackageId;
 END;
 GO
 

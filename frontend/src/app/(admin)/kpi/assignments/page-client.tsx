@@ -14,7 +14,7 @@ import { api } from '@/lib/api'
 import type { KpiAssignment, KpiAssignmentTemplate } from '@/types/api'
 import { AssignmentsTable } from './assignments-table'
 import { AssignmentTemplatesTable } from './assignment-templates-table'
-import { NewAssignmentSheet } from './new-assignment-sheet'
+import { AssignKpisWizard } from './assign-kpis-wizard'
 
 const ALL_FILTER = 'all'
 const ACCOUNT_WIDE_FILTER = '__account_wide__'
@@ -106,7 +106,7 @@ export function KpiAssignmentsPageClient() {
       <PageHeader
         title="Assignments"
         description="Assign KPIs to cadence schedules once, then monitor the generated reporting instances below."
-        actions={<NewAssignmentSheet />}
+        actions={<AssignKpisWizard />}
       />
 
       <section className="space-y-3">

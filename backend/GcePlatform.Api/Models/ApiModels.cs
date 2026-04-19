@@ -174,6 +174,80 @@ public record CreateKpiPeriodRequest(
 );
 
 // ---------------------------------------------------------------------------
+// Tag  (App.vTags — Platform Config > Tags)
+// ---------------------------------------------------------------------------
+
+public record TagDto(
+    int     TagId,
+    string  TagCode,
+    string  TagName,
+    string? TagDescription,
+    bool    IsActive,
+    int     KpiCount
+);
+
+public record CreateTagRequest(
+    string  TagCode,
+    string  TagName,
+    string? TagDescription
+);
+
+public record UpdateTagRequest(
+    string  TagName,
+    string? TagDescription
+);
+
+// ---------------------------------------------------------------------------
+// KPI Package  (App.vKpiPackages — KPI Management > KPI Packages)
+// ---------------------------------------------------------------------------
+
+public record KpiPackageDto(
+    int     KpiPackageId,
+    string  PackageCode,
+    string  PackageName,
+    bool    IsActive,
+    int     KpiCount,
+    // Pipe-delimited "TagId:TagName" pairs (same pattern as KpiDefinition.TagsRaw)
+    string? TagsRaw
+);
+
+public record KpiPackageItemDto(
+    int     KpiPackageItemId,
+    int     KpiPackageId,
+    int     KpiId,
+    string  KpiCode,
+    string  KpiName,
+    string? Category,
+    string? DataType,
+    bool    KpiIsActive
+);
+
+public record CreateKpiPackageRequest(
+    string             PackageCode,
+    string             PackageName,
+    IEnumerable<int>?  TagIds
+);
+
+public record UpdateKpiPackageRequest(
+    string             PackageName,
+    IEnumerable<int>?  TagIds
+);
+
+public record SetKpiPackageItemsRequest(
+    IEnumerable<int> KpiIds
+);
+
+public record CreateTemplatesFromPackageRequest(
+    int      KpiPackageId,
+    int      PeriodScheduleId,
+    string   AccountCode,
+    string?  OrgUnitCode,
+    string   OrgUnitType,
+    bool     IsRequired,
+    bool     MaterializeNow
+);
+
+// ---------------------------------------------------------------------------
 // KPI Definition  (App.vKpiDefinitions — screen K-01)
 // ---------------------------------------------------------------------------
 
@@ -192,7 +266,9 @@ public record KpiDefinitionDto(
     bool    IsActive,
     int     AssignmentCount,
     // Pipe-delimited option list for DropDown KPIs; null for other types
-    string? DropDownOptionsRaw
+    string? DropDownOptionsRaw,
+    // Tags as pipe-delimited "TagId:TagName" pairs; null if untagged
+    string? TagsRaw
 );
 
 public record CreateKpiDefinitionRequest(
@@ -206,7 +282,9 @@ public record CreateKpiDefinitionRequest(
     string   CollectionType,
     string?  ThresholdDirection,
     // DropDown options — null to skip, empty list to clear
-    IEnumerable<string>? DropDownOptions
+    IEnumerable<string>? DropDownOptions,
+    // Tag IDs to assign — null to skip, empty list to clear
+    IEnumerable<int>? TagIds
 );
 
 // KpiCode is immutable after creation (stable identifier used by assignments).
@@ -220,7 +298,9 @@ public record UpdateKpiDefinitionRequest(
     string   CollectionType,
     string?  ThresholdDirection,
     // DropDown options — null to leave unchanged, empty list to clear
-    IEnumerable<string>? DropDownOptions
+    IEnumerable<string>? DropDownOptions,
+    // Tag IDs — null to leave unchanged, empty list to clear
+    IEnumerable<int>? TagIds
 );
 
 // ---------------------------------------------------------------------------
@@ -311,7 +391,10 @@ public record KpiAssignmentTemplateDto(
     decimal?  ThresholdRed,
     string?   EffectiveThresholdDirection,
     bool      IsActive,
-    int       GeneratedAssignmentCount
+    int       GeneratedAssignmentCount,
+    // Package tracking — null for individually assigned templates
+    int?      KpiPackageId,
+    string?   KpiPackageName
 );
 
 public record CreateKpiAssignmentTemplateRequest(
@@ -330,6 +413,39 @@ public record CreateKpiAssignmentTemplateRequest(
     string?  CustomKpiName,
     string?  CustomKpiDescription,
     bool     MaterializeNow
+);
+
+public record BatchKpiAssignmentTemplateItem(
+    string   KpiCode,
+    int?     KpiPackageId,
+    bool     IsRequired,
+    decimal? TargetValue,
+    decimal? ThresholdGreen,
+    decimal? ThresholdAmber,
+    decimal? ThresholdRed,
+    string?  ThresholdDirection,
+    string?  SubmitterGuidance,
+    string?  CustomKpiName,
+    string?  CustomKpiDescription
+);
+
+public record BatchCreateKpiAssignmentTemplatesRequest(
+    int                    PeriodScheduleId,
+    string                 AccountCode,
+    // For single-site: provide OrgUnitCode. For multi-site: provide OrgUnitCodes list.
+    // OrgUnitCodes takes precedence when both are provided.
+    string?                OrgUnitCode,
+    IEnumerable<string>?   OrgUnitCodes,
+    string                 OrgUnitType,
+    bool                   MaterializeNow,
+    IEnumerable<BatchKpiAssignmentTemplateItem> Items
+);
+
+public record BatchCreateKpiAssignmentTemplatesResponse(
+    int                    CreatedCount,
+    int                    SkippedCount,
+    IEnumerable<string>    SkippedKpiCodes,
+    IEnumerable<string>    Errors
 );
 
 public record CreateKpiAssignmentRequest(

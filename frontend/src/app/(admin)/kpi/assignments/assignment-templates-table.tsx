@@ -7,6 +7,7 @@ import { MoreHorizontal, RefreshCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { DataTable } from '@/components/shared/data-table'
 import { StatusBadge } from '@/components/shared/status-badge'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -140,6 +141,22 @@ export function AssignmentTemplatesTable({
       header: 'Generated',
       cell: ({ row }) => <span className="text-sm font-medium">{row.original.generatedAssignmentCount}</span>,
       meta: { className: 'w-24' },
+    },
+    {
+      id: 'source',
+      header: 'Source',
+      cell: ({ row }) => {
+        const { kpiPackageId, kpiPackageName } = row.original
+        if (kpiPackageId && kpiPackageName) {
+          return (
+            <Badge variant="secondary" className="text-xs max-w-[120px] truncate" title={kpiPackageName}>
+              {kpiPackageName}
+            </Badge>
+          )
+        }
+        return <span className="text-xs text-muted-foreground">Individual</span>
+      },
+      meta: { className: 'w-36' },
     },
     {
       accessorKey: 'isActive',

@@ -22,6 +22,7 @@ import {
   Package,
   Shield,
   ShieldCheck,
+  Tag,
   Users,
   X,
 } from 'lucide-react'
@@ -86,6 +87,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: 'KPI Library', href: '/kpi/definitions', icon: ListChecks, permission: PERMISSIONS.KPI_MANAGE },
       { label: 'KPI Periods', href: '/kpi/periods', icon: Calendar, permission: PERMISSIONS.KPI_MANAGE },
+      { label: 'KPI Packages', href: '/kpi/packages', icon: Package, permission: PERMISSIONS.KPI_MANAGE },
       { label: 'KPI Assignments', href: '/kpi/assignments', icon: ClipboardList },
     ],
   },
@@ -93,6 +95,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'Platform Config',
     items: [
       { label: 'Platform Roles', href: '/platform-roles', icon: ShieldCheck, permission: PERMISSIONS.SUPER_ADMIN },
+      { label: 'Tags', href: '/tags', icon: Tag, permission: PERMISSIONS.SUPER_ADMIN },
       { label: 'BI Reports', href: '/reports', icon: BarChart2, permission: PERMISSIONS.SUPER_ADMIN },
       { label: 'Coverage', href: '/coverage', icon: Map, permission: PERMISSIONS.SUPER_ADMIN },
       { label: 'Source Mapping', href: '/source-mapping', icon: GitBranch, permission: PERMISSIONS.SUPER_ADMIN },

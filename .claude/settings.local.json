@@ -8,7 +8,10 @@
       "Bash(xargs ls:*)",
       "Bash(npm install:*)",
       "Bash(npx next:*)",
-      "Bash(dotnet build:*)"
+      "Bash(dotnet build:*)",
+      "Bash(grep -n \"KPI.SubmissionToken\\\\|END -- KPI\\\\|GO$\" \"/Users/chrisdw/Documents/Developer/Claude Code/gce-data-platform/database/ddl/tables/baseline_create.sql\")",
+      "Bash(grep -v \"^$\")",
+      "Bash(npm run *)"
     ]
   }
 }

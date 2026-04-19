@@ -2,201 +2,277 @@
 
 ## Repository Structure
 
-```
+```text
 gce-data-platform/
-├── frontend/          # Next.js 14 SSR app (Azure Static Web Apps)
-├── backend/           # ASP.NET Core 8 API (Azure App Service)
-├── database/          # SQL DDL, DML seed scripts, migration scripts
+├── frontend/          # Next.js 14 admin app
+├── backend/           # ASP.NET Core 8 API
+├── database/          # Baseline DDL, seed data, and SQL source files
 └── .github/workflows/ # CI/CD pipelines
 ```
-
----
 
 ## Environments
 
 | Environment | Frontend | Backend | Database |
-|-------------|----------|---------|----------|
-| **Local dev** | `http://localhost:3000` | `http://localhost:5062` | Your Azure SQL DEV db (via `az login`) |
-| **Production** | `https://ambitious-stone-0a9d07003.7.azurestaticapps.net` | `https://app-gcplatform-web-weu-001-c2fyeebzh6hyhhf0.westeurope-01.azurewebsites.net` | `gce-db-dev` on `gce-sql-dev` |
-
----
+|---|---|---|---|
+| Local dev | `http://localhost:3000` | `http://localhost:5050` | Azure SQL, accessed with your Entra identity via `azd auth login` |
+| Production | `https://ambitious-stone-0a9d07003.7.azurestaticapps.net` | `https://app-gcplatform-web-weu-001-c2fyeebzh6hyhhf0.westeurope-01.azurewebsites.net` | `gce-db-dev` on `gce-sql-dev` |
 
 ## Local Development Setup
 
 ### Prerequisites
+
 - Node.js 18+
 - .NET 8 SDK
-- Azure CLI (`az`) — for Managed Identity database auth locally
-- Log in once: `az login`
+- Azure Developer CLI (`azd`)
+- SQL client for manual scripts when needed: Azure Data Studio, SSMS, or equivalent
 
-### 1 — Backend
+### Authentication for local Azure SQL access
+
+This repo uses Entra authentication for Azure SQL in development.
+
+Because `az login` is blocked by IT restrictions, use:
+
+```bash
+azd auth login
+```
+
+Optional verification:
+
+```bash
+azd auth token --scope https://database.windows.net//.default
+```
+
+If token acquisition fails here, the backend will also fail to open Azure SQL connections.
+
+### Backend
+
+Run from the API project:
 
 ```bash
 cd backend/GcePlatform.Api
 dotnet run
-# Runs on http://localhost:5062
 ```
 
-The backend reads `appsettings.Development.json` automatically (ASPNETCORE_ENVIRONMENT defaults to Development locally).
+Local launch profile runs on:
 
-**Connection string** lives in `appsettings.Development.json`:
+```text
+http://localhost:5050
+```
+
+Development config is in [backend/GcePlatform.Api/appsettings.Development.json](/Users/chrisdw/Documents/Developer/Claude Code/gce-data-platform/backend/GcePlatform.Api/appsettings.Development.json:1).
+
+Current development connection style:
+
 ```json
 "ConnectionStrings": {
-  "AzureSql": "Server=tcp:YOUR-SERVER.database.windows.net,1433;Database=YOUR-DB;Authentication=Active Directory Default;Encrypt=True;TrustServerCertificate=False;"
+  "AzureSql": "Server=tcp:gce-sql-dev.database.windows.net,1433;Database=gce-db-dev;Authentication=Active Directory Default;Encrypt=True;TrustServerCertificate=False;"
 }
 ```
 
-Update this value when you create a new DEV database. No password needed — `Authentication=Active Directory Default` uses your `az login` identity. This file is committed to git (no secrets, Managed Identity only).
+Notes:
 
-### 2 — Frontend
+- `Authentication=Active Directory Default` means local SQL auth depends on a usable developer credential source.
+- In this setup, the expected local credential source is `azd auth login`.
+- No database password is stored in the repo.
 
-Create `frontend/.env.local` (never committed — already in `.gitignore`):
+### Frontend
+
+Create `frontend/.env.local` if needed. Typical local dev setup:
+
 ```env
 NEXT_PUBLIC_DEV_BYPASS=true
-NEXT_PUBLIC_API_BASE_URL=http://localhost:5062
+NEXT_PUBLIC_API_BASE_URL=http://localhost:5050
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=replace-me
+AZURE_AD_CLIENT_ID=
+AZURE_AD_CLIENT_SECRET=
+AZURE_AD_TENANT_ID=
 ```
 
-Then:
+Then start the frontend:
+
 ```bash
 cd frontend
 npm install
 npm run dev
-# Runs on http://localhost:3000
 ```
 
-`NEXT_PUBLIC_DEV_BYPASS=true` skips Azure AD login entirely — one-click sign-in as a local dev user with all permissions granted. No Azure app registration needed locally.
+Behavior:
 
----
+- `NEXT_PUBLIC_DEV_BYPASS=true`: skips Entra login in the frontend and uses the backend dev bypass user.
+- `NEXT_PUBLIC_DEV_BYPASS=false`: enables the real Entra sign-in flow in the frontend.
+- Frontend dev should point to `http://localhost:5050` unless you intentionally run the API elsewhere.
 
-## Git Workflow
+### Recommended local modes
 
-### Branch strategy
+#### Fast UI/API development
 
-```
-main  ──────────────────────────────────────► production (auto-deploy)
-         ▲           ▲
-feature/xxx     feature/yyy
-```
+Use:
 
-- `main` is always deployable and triggers production deploys automatically on push.
-- Never commit directly to `main` for feature work — use feature branches.
-
-### Starting a new feature
-
-```bash
-# Make sure you start from the latest main
-git checkout main
-git pull
-
-# Create your feature branch
-git checkout -b feature/my-feature-name
+```env
+NEXT_PUBLIC_DEV_BYPASS=true
 ```
 
-### During development
+This is the most reliable local mode when you do not need to test real Entra sign-in behavior in the browser.
 
-```bash
-# Stage and commit as you go
-git add <files>
-git commit -m "describe what this commit does"
+#### Real auth testing
 
-# Push your branch to GitHub (first time)
-git push -u origin feature/my-feature-name
+Use:
 
-# Subsequent pushes
-git push
+```env
+NEXT_PUBLIC_DEV_BYPASS=false
 ```
 
-### Merging to production
+Requirements:
 
-When the feature is stable and tested locally:
+- frontend Entra config populated in `.env.local`
+- backend able to acquire Azure SQL token via `azd auth login`
+- your Entra user allowed to access the Azure SQL database
 
-```bash
-# Merge main into your branch first to resolve any conflicts
-git checkout feature/my-feature-name
-git pull origin main
+If the backend cannot get a SQL token, authenticated frontend flows will still fail even if browser sign-in succeeds.
 
-# Fix any conflicts, then push
-git push
+## Database Migrations
 
-# Switch to main and merge
-git checkout main
-git pull
-git merge feature/my-feature-name
-git push
-```
-
-Or open a Pull Request on GitHub for code review before merging.
-
----
-
-## CI/CD — What Deploys When
-
-### Frontend (Azure Static Web Apps)
-- **Trigger**: any push to `main`
-- **Pipeline**: `.github/workflows/azure-static-web-apps-ambitious-stone-0a9d07003.yml`
-- **Duration**: ~3–5 minutes
-- **Monitor**: GitHub → Actions tab
-
-### Backend (Azure App Service)
-- **Trigger**: push to `main` that changes files under `backend/`
-- **Pipeline**: `.github/workflows/deploy-backend.yml`
-- **Duration**: ~2–3 minutes
-- **Monitor**: GitHub → Actions tab
-
-> You can also trigger the backend deploy manually at any time:
-> GitHub → Actions → "Deploy Backend" → Run workflow → main
-
----
-
-## Database Migrations (EF Core)
-
-The project uses EF Core exclusively for **migration management**. All runtime queries use Dapper. The EF context (`PlatformDbContext`) has no DbSets — it is a thin wrapper that gives `dotnet ef` a target.
+EF Core is used only for migration orchestration. Runtime data access uses Dapper and SQL objects.
 
 ### Migration inventory
 
 | Migration ID | Description |
 |---|---|
-| `20260414000001_InitialCreate` | Full baseline DDL — use for empty-database restores |
-| `20260414000002_AccountBranding` | Adds branding columns, updates `App.vAccounts`, adds `App.UpdateAccountBranding` |
+| `20260414000001_InitialCreate` | Full baseline DDL for a fresh database |
+| `20260414000002_AccountBranding` | Account branding columns and related SQL changes |
+| `20260418000001_TagsAndKpiPackages` | Tags, KPI tags, KPI packages, package assignment support |
+
+### Where migration SQL lives
+
+- Baseline database shape: `database/ddl/tables/baseline_create.sql`
+- Incremental SQL migrations: `backend/GcePlatform.Api/Migrations/Scripts/*.sql`
+- EF migration wrappers: `backend/GcePlatform.Api/Migrations/*.cs`
+
+### Important rule for new migrations
+
+For a migration to be discoverable by EF and included in `dotnet ef database update`, all of the following must exist:
+
+- the migration `.cs` file
+- the matching `.Designer.cs` file
+- embedded SQL script references in [backend/GcePlatform.Api/GcePlatform.Api.csproj](/Users/chrisdw/Documents/Developer/Claude Code/gce-data-platform/backend/GcePlatform.Api/GcePlatform.Api.csproj:1) if the migration executes external `.sql` files
+
+If a migration exists only as a hand-written `.cs` file without the generated metadata, `dotnet ef migrations list` may not show it.
 
 ### Common commands
 
-Run from `backend/GcePlatform.Api/`:
+Run from `backend/GcePlatform.Api/` unless noted otherwise.
 
 ```bash
-# List migrations and their applied status
 dotnet ef migrations list
-
-# Apply all pending migrations (creates __EFMigrationsHistory if absent)
 dotnet ef database update
-
-# Roll back to a specific migration
 dotnet ef database update 20260414000001_InitialCreate
-
-# Add a new migration (generates the .cs files; write your SQL in the Up/Down methods)
 dotnet ef migrations add MyNewChange
 ```
 
-### Fresh database setup (empty DB)
+Equivalent from repo root:
 
 ```bash
-# 1. Create the Azure SQL database
-# 2. Grant your identity access (see below)
-# 3. Update appsettings.Development.json with server/db name
-# 4. Apply all migrations in one command:
-dotnet ef database update
-# 5. Optionally seed test data:
-#    Run database/dml/seed_test_data.sql in SSMS / Azure Data Studio
+dotnet ef migrations list --project backend/GcePlatform.Api --startup-project backend/GcePlatform.Api
+dotnet ef database update --project backend/GcePlatform.Api --startup-project backend/GcePlatform.Api
+dotnet ef migrations add MyNewChange --project backend/GcePlatform.Api --startup-project backend/GcePlatform.Api
 ```
 
-### Production database (already populated, pre-branding)
+Do not run repo-root relative paths from inside `backend/`, or you will end up with duplicated paths like `backend/backend/GcePlatform.Api`.
 
-The production DB was created before migrations were introduced. To adopt EF migrations without re-creating the database:
+### Which appsettings file EF uses
 
-**Step 1** — Let EF create the `__EFMigrationsHistory` tracking table:
+When you run EF commands without `--connection`, the API startup and design-time config determine which connection string is used.
+
+In practice for this repo:
+
+- local development uses [backend/GcePlatform.Api/appsettings.Development.json](/Users/chrisdw/Documents/Developer/Claude Code/gce-data-platform/backend/GcePlatform.Api/appsettings.Development.json:1)
+- base defaults live in [backend/GcePlatform.Api/appsettings.json](/Users/chrisdw/Documents/Developer/Claude Code/gce-data-platform/backend/GcePlatform.Api/appsettings.json:1)
+- committed production defaults live in [backend/GcePlatform.Api/appsettings.Production.json](/Users/chrisdw/Documents/Developer/Claude Code/gce-data-platform/backend/GcePlatform.Api/appsettings.Production.json:1)
+
+Rules to follow:
+
+- for local dev DB updates, run EF locally and let it use the development settings
+- for production or any non-local target DB, prefer passing an explicit `--connection` string
+- do not rely on your local shell environment accidentally selecting the correct production settings
+
+### Updating the development database
+
+Development updates should target the connection string in [appsettings.Development.json](/Users/chrisdw/Documents/Developer/Claude Code/gce-data-platform/backend/GcePlatform.Api/appsettings.Development.json:1).
+
+Current flow:
+
+1. Ensure the development connection string points to the correct Azure SQL dev database.
+2. Authenticate locally:
+
+```bash
+azd auth login
+```
+
+3. Run the update:
+
+```bash
+cd backend/GcePlatform.Api
+dotnet ef database update
+```
+
+This uses the local development configuration and applies all pending migrations to the dev database configured there.
+
+### Updating the production database
+
+Production updates should not depend on your local `appsettings.Development.json`.
+
+Use an explicit connection string when applying migrations to production:
+
+```bash
+azd auth login
+cd backend/GcePlatform.Api
+dotnet ef database update --connection "Server=tcp:YOUR-PROD-SERVER.database.windows.net,1433;Database=YOUR-PROD-DB;Authentication=Active Directory Default;Encrypt=True;TrustServerCertificate=False;"
+```
+
+Why this is preferred:
+
+- it avoids accidentally targeting the dev database
+- it makes the target database explicit
+- it does not depend on local environment selection behavior
+
+If you want the committed production defaults as a reference, they live in [appsettings.Production.json](/Users/chrisdw/Documents/Developer/Claude Code/gce-data-platform/backend/GcePlatform.Api/appsettings.Production.json:1), but for manual migration execution the safer approach is still to pass `--connection` explicitly.
+
+### Fresh database setup
+
+1. Create the Azure SQL database.
+2. Ensure your Entra identity has database access.
+3. Update [backend/GcePlatform.Api/appsettings.Development.json](/Users/chrisdw/Documents/Developer/Claude Code/gce-data-platform/backend/GcePlatform.Api/appsettings.Development.json:1) if server or database name changed.
+4. Authenticate locally:
+
+```bash
+azd auth login
+```
+
+5. Apply schema:
+
+```bash
+cd backend/GcePlatform.Api
+dotnet ef database update
+```
+
+6. Optionally seed data:
+
+```text
+database/dml/seed_test_data.sql
+```
+
+### Adopting migrations on an existing database
+
+If the database already exists and was created before EF migration tracking was introduced:
+
+1. Ensure `__EFMigrationsHistory` exists.
+2. Insert the migration IDs that represent schema already present in that database.
+3. Run `dotnet ef database update` to apply only later migrations.
+
+Example bootstrap:
 
 ```sql
--- Run this in SSMS / Azure Data Studio against the production database
 IF OBJECT_ID('__EFMigrationsHistory') IS NULL
 CREATE TABLE [__EFMigrationsHistory] (
     [MigrationId]    NVARCHAR(150) NOT NULL,
@@ -205,65 +281,58 @@ CREATE TABLE [__EFMigrationsHistory] (
 );
 ```
 
-**Step 2** — Mark the InitialCreate migration as already applied (the DB already has that schema):
+If the existing database already matches the baseline but not later deltas, insert only the already-present migration IDs before running EF updates.
 
-```sql
-INSERT INTO [__EFMigrationsHistory] ([MigrationId], [ProductVersion])
-VALUES ('20260414000001_InitialCreate', '8.0.11');
-```
+### Applying migrations against production or another explicit database
 
-**Step 3** — Apply only the pending migration(s):
+Authenticate first:
 
 ```bash
-# Authenticate with your Azure identity (device code flow works from any terminal)
-az login --use-device-code
-
-# Run from the API project directory, passing the production connection string
-cd backend/GcePlatform.Api
-dotnet ef database update --connection "Server=tcp:YOUR-PROD-SERVER.database.windows.net,1433;Database=YOUR-PROD-DB;Authentication=Active Directory Default;Encrypt=True;TrustServerCertificate=False;"
-# Applies: 20260414000002_AccountBranding
+azd auth login
 ```
 
-Your `az login` identity must have `db_datareader`, `db_datawriter`, and `EXECUTE` permissions on the production database, plus `ALTER` rights to create tables and modify schema.
-
-### Applying future migrations to production
-
-Same two steps every time:
+Then run:
 
 ```bash
-az login --use-device-code
-
 cd backend/GcePlatform.Api
-dotnet ef database update --connection "Server=tcp:YOUR-PROD-SERVER.database.windows.net,1433;Database=YOUR-PROD-DB;Authentication=Active Directory Default;Encrypt=True;TrustServerCertificate=False;"
+dotnet ef database update --connection "Server=tcp:YOUR-SERVER.database.windows.net,1433;Database=YOUR-DB;Authentication=Active Directory Default;Encrypt=True;TrustServerCertificate=False;"
 ```
 
-EF checks `__EFMigrationsHistory` and only runs migrations that haven't been applied yet.
+### Creating future migrations
 
-### Adding future migrations
+Recommended workflow:
 
-1. Make your SQL changes in `baseline_create.sql` (keep the baseline current)
-2. Run `dotnet ef migrations add YourMigrationName` — this creates empty migration files
-3. In the generated `Up()` method, call `migrationBuilder.Sql("...", suppressTransaction: true)` with your DDL
-4. Provide a matching `Down()` reversal
-5. Test locally with `dotnet ef database update`
-6. For production: `dotnet ef database update` (only the new migration runs — prior ones are already in `__EFMigrationsHistory`)
+1. Update `database/ddl/tables/baseline_create.sql` so the baseline stays current.
+2. Add a new EF migration:
 
----
+```bash
+cd backend/GcePlatform.Api
+dotnet ef migrations add YourMigrationName
+```
 
-## Adding a New DEV Database
+3. If using external SQL scripts:
+- add `Migrations/Scripts/YourMigrationName.Up.sql`
+- add `Migrations/Scripts/YourMigrationName.Down.sql`
+- reference them in `GcePlatform.Api.csproj` as embedded resources
+- call them from the generated migration class
 
-1. Create the Azure SQL database (Serverless recommended for dev cost)
-2. Grant your identity access (see below)
-3. Update `backend/GcePlatform.Api/appsettings.Development.json` with the new server/database name
-4. Commit the updated `appsettings.Development.json`
-5. Run migrations to create the schema:
-   ```bash
-   cd backend/GcePlatform.Api
-   dotnet ef database update
-   ```
-6. Optionally seed test data by running `database/dml/seed_test_data.sql`
+4. Confirm the migration is discoverable:
 
-Grant your identity access (run in SSMS / Azure Data Studio):
+```bash
+dotnet ef migrations list
+```
+
+5. Apply locally:
+
+```bash
+dotnet ef database update
+```
+
+### Permissions needed on the database
+
+Your Entra identity must exist in the database and have enough rights for app usage and migrations.
+
+Typical minimum for app usage:
 
 ```sql
 CREATE USER [your-name@company.com] FROM EXTERNAL PROVIDER;
@@ -272,40 +341,111 @@ ALTER ROLE db_datawriter ADD MEMBER [your-name@company.com];
 GRANT EXECUTE TO [your-name@company.com];
 ```
 
----
+Schema migrations also require rights to create and alter database objects.
 
-## Updating Production Config
+## Git Workflow
 
-Production config lives in two places — prefer the file over the portal:
+### Branch strategy
+
+```text
+main  ─────────────────────────────► production
+  ▲
+  ├── feature/xxx
+  └── feature/yyy
+```
+
+- `main` should stay deployable.
+- Use feature branches for active work.
+
+### Starting a feature
+
+```bash
+git checkout main
+git pull
+git checkout -b feature/my-feature-name
+```
+
+### During development
+
+```bash
+git add <files>
+git commit -m "describe the change"
+git push -u origin feature/my-feature-name
+```
+
+Subsequent pushes:
+
+```bash
+git push
+```
+
+### Merging
+
+Either open a PR or merge manually after syncing with `main`:
+
+```bash
+git checkout main
+git pull
+git checkout feature/my-feature-name
+git merge main
+git push
+```
+
+Then merge to `main` and push.
+
+## CI/CD
+
+### Frontend
+
+- Trigger: push to `main`
+- Workflow: `.github/workflows/azure-static-web-apps-ambitious-stone-0a9d07003.yml`
+
+### Backend
+
+- Trigger: push to `main` with backend changes
+- Workflow: `.github/workflows/deploy-backend.yml`
+
+Monitor both in GitHub Actions.
+
+## Production Config
 
 | Setting | Location |
-|---------|----------|
-| Connection string | `backend/GcePlatform.Api/appsettings.Production.json` (committed) |
-| Allowed CORS origins | `backend/GcePlatform.Api/appsettings.Production.json` (committed) |
-| Azure AD client/tenant IDs | Azure Portal → App Service → Environment variables |
-| NextAuth secrets | Azure Portal → Static Web Apps → Configuration |
-| Bootstrap super-admin UPN | Azure Portal → App Service → Environment variables (`PlatformSuperAdminUpn`) |
+|---|---|
+| Production API connection string | `backend/GcePlatform.Api/appsettings.Production.json` |
+| Production CORS origins | `backend/GcePlatform.Api/appsettings.Production.json` |
+| Backend Entra app settings | Azure App Service environment variables |
+| NextAuth secrets | Azure Static Web Apps configuration |
+| Bootstrap super-admin UPN | App Service environment variable `PlatformSuperAdminUpn` |
 
-To update the connection string or CORS origins, edit `appsettings.Production.json`, commit, and push to `main`. The backend pipeline deploys automatically.
-
----
+Prefer committed config for stable app settings and portal config for secrets.
 
 ## Quick Reference
 
+### Start local dev
+
 ```bash
-# Start local dev (both terminals)
+azd auth login
 cd backend/GcePlatform.Api && dotnet run
 cd frontend && npm run dev
+```
 
-# New feature
-git checkout main && git pull
-git checkout -b feature/my-feature
+### Frontend local env
 
-# Deploy to production
-git checkout main
-git merge feature/my-feature
-git push    # triggers CI/CD automatically
+```env
+NEXT_PUBLIC_DEV_BYPASS=true
+NEXT_PUBLIC_API_BASE_URL=http://localhost:5050
+```
 
-# Check production health
+### Check migrations
+
+```bash
+cd backend/GcePlatform.Api
+dotnet ef migrations list
+dotnet ef database update
+```
+
+### Check production health
+
+```bash
 curl https://app-gcplatform-web-weu-001-c2fyeebzh6hyhhf0.westeurope-01.azurewebsites.net/health
 ```

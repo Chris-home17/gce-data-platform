@@ -12,10 +12,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Badge } from '@/components/ui/badge'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { EditDefinitionSheet } from './edit-definition-sheet'
 import { api } from '@/lib/api'
 import type { KpiDefinition } from '@/types/api'
+
+function parseTagsRaw(raw: string | null): Array<{ id: number; name: string }> {
+  if (!raw) return []
+  return raw.split('|').map((part) => {
+    const [id, ...rest] = part.split(':')
+    return { id: parseInt(id), name: rest.join(':') }
+  })
+}
 
 function DefinitionActions({ kpi }: { kpi: KpiDefinition }) {
   const [editOpen, setEditOpen] = useState(false)
@@ -140,6 +149,27 @@ export const definitionColumns: ColumnDef<KpiDefinition, unknown>[] = [
       <span className="text-sm text-muted-foreground">{row.original.collectionType}</span>
     ),
     meta: { className: 'w-28' },
+  },
+  {
+    id: 'tags',
+    header: 'Tags',
+    cell: ({ row }) => {
+      const tags = parseTagsRaw(row.original.tagsRaw)
+      if (tags.length === 0) return <span className="text-muted-foreground text-sm">—</span>
+      const visible = tags.slice(0, 2)
+      const overflow = tags.length - visible.length
+      return (
+        <div className="flex flex-wrap gap-1">
+          {visible.map((t) => (
+            <Badge key={t.id} variant="secondary" className="text-xs">{t.name}</Badge>
+          ))}
+          {overflow > 0 && (
+            <Badge variant="outline" className="text-xs">+{overflow}</Badge>
+          )}
+        </div>
+      )
+    },
+    meta: { className: 'w-48' },
   },
   {
     accessorKey: 'assignmentCount',

@@ -15,6 +15,8 @@ import type {
   AccountBranding,
   ApiList,
   AssignReportToPackageInput,
+  BatchCreateKpiAssignmentTemplatesInput,
+  BatchCreateKpiAssignmentTemplatesResponse,
   BiReport,
   CoverageSummary,
   CreateAccountInput,
@@ -57,6 +59,12 @@ import type {
   KpiDefinition,
   KpiPeriod,
   KpiPeriodSchedule,
+  KpiPackage,
+  KpiPackageDetail,
+  CreateKpiPackageInput,
+  UpdateKpiPackageInput,
+  SetKpiPackageItemsInput,
+  CreateTemplatesFromPackageInput,
   OrgUnit,
   Package,
   PackageGrant,
@@ -72,6 +80,9 @@ import type {
   SubmissionToken,
   SubmissionTokenContext,
   SubmitKpiInput,
+  Tag,
+  CreateTagInput,
+  UpdateTagInput,
   User,
 } from '@/types/api'
 
@@ -459,6 +470,9 @@ export const api = {
         create(data: CreateKpiAssignmentTemplateInput): Promise<KpiAssignmentTemplate> {
           return apiFetch('/kpi/assignment-templates', { method: 'POST', body: JSON.stringify(data) })
         },
+        batchCreate(data: BatchCreateKpiAssignmentTemplatesInput): Promise<BatchCreateKpiAssignmentTemplatesResponse> {
+          return apiFetch('/kpi/assignment-templates/batch', { method: 'POST', body: JSON.stringify(data) })
+        },
         materialize(id: number): Promise<void> {
           return apiFetch(`/kpi/assignment-templates/${id}/materialize`, { method: 'POST' })
         },
@@ -506,6 +520,29 @@ export const api = {
         return apiFetch(`/kpi/submissions/${assignmentExternalId}/unlock`, { method: 'PATCH' })
       },
     },
+    packages: {
+      list(): Promise<ApiList<KpiPackage>> {
+        return apiFetch('/kpi/packages')
+      },
+      get(id: number): Promise<KpiPackageDetail> {
+        return apiFetch(`/kpi/packages/${id}`)
+      },
+      create(data: CreateKpiPackageInput): Promise<KpiPackage> {
+        return apiFetch('/kpi/packages', { method: 'POST', body: JSON.stringify(data) })
+      },
+      update(id: number, data: UpdateKpiPackageInput): Promise<KpiPackage> {
+        return apiFetch(`/kpi/packages/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
+      },
+      setActive(id: number, isActive: boolean): Promise<void> {
+        return apiFetch(`/kpi/packages/${id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) })
+      },
+      setItems(id: number, data: SetKpiPackageItemsInput): Promise<void> {
+        return apiFetch(`/kpi/packages/${id}/items`, { method: 'PUT', body: JSON.stringify(data) })
+      },
+      assignTemplates(id: number, data: CreateTemplatesFromPackageInput): Promise<void> {
+        return apiFetch(`/kpi/packages/${id}/assign-templates`, { method: 'POST', body: JSON.stringify(data) })
+      },
+    },
     submissionTokens: {
       list(params?: { siteOrgUnitId?: number; periodId?: number }): Promise<ApiList<SubmissionToken>> {
         const qs = new URLSearchParams()
@@ -525,6 +562,24 @@ export const api = {
       },
     },
   },
+  tags: {
+    list(): Promise<ApiList<Tag>> {
+      return apiFetch('/tags')
+    },
+    get(id: number): Promise<Tag> {
+      return apiFetch(`/tags/${id}`)
+    },
+    create(data: CreateTagInput): Promise<Tag> {
+      return apiFetch('/tags', { method: 'POST', body: JSON.stringify(data) })
+    },
+    update(id: number, data: UpdateTagInput): Promise<Tag> {
+      return apiFetch(`/tags/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
+    },
+    setActive(id: number, isActive: boolean): Promise<void> {
+      return apiFetch(`/tags/${id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) })
+    },
+  },
+
   platformRoles: {
     list(): Promise<ApiList<PlatformRole>> {
       return apiFetch('/platform-roles')

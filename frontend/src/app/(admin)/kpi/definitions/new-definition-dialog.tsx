@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Loader2, Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
 
 const schema = z.object({
@@ -70,7 +71,18 @@ export function NewDefinitionDialog() {
   const [open, setOpen] = useState(false)
   const [dropDownOptions, setDropDownOptions] = useState<string[]>([])
   const [newOption, setNewOption] = useState('')
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set())
   const queryClient = useQueryClient()
+
+  const tagsQuery = useQuery({
+    queryKey: ['tags'],
+    queryFn: () => api.tags.list(),
+    enabled: open,
+  })
+  const activeTags = useMemo(
+    () => (tagsQuery.data?.items ?? []).filter((t) => t.isActive),
+    [tagsQuery.data]
+  )
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -100,6 +112,7 @@ export function NewDefinitionDialog() {
         category: values.category || undefined,
         unit: values.unit || undefined,
         dropDownOptions: isDropDown ? dropDownOptions : undefined,
+        tagIds: selectedTagIds.size > 0 ? Array.from(selectedTagIds) : undefined,
       }),
     onSuccess: (def) => {
       queryClient.invalidateQueries({ queryKey: ['kpi', 'definitions'] })
@@ -108,6 +121,7 @@ export function NewDefinitionDialog() {
       form.reset()
       setDropDownOptions([])
       setNewOption('')
+      setSelectedTagIds(new Set())
     },
     onError: (err: Error) => toast.error(err.message ?? 'Failed to create KPI definition.'),
   })
@@ -118,6 +132,7 @@ export function NewDefinitionDialog() {
       mutation.reset()
       setDropDownOptions([])
       setNewOption('')
+      setSelectedTagIds(new Set())
     }
     setOpen(value)
   }
@@ -366,6 +381,39 @@ export function NewDefinitionDialog() {
                 )}
               />
             </div>
+
+            {/* ── Tags ─────────────────────────────────── */}
+            {activeTags.length > 0 && (
+              <>
+                <SectionHeading>Tags</SectionHeading>
+                <div className="flex flex-wrap gap-1.5">
+                  {activeTags.map((tag) => {
+                    const selected = selectedTagIds.has(tag.tagId)
+                    return (
+                      <button
+                        key={tag.tagId}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTagIds((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(tag.tagId)) next.delete(tag.tagId)
+                            else next.add(tag.tagId)
+                            return next
+                          })
+                        }}
+                      >
+                        <Badge
+                          variant={selected ? 'default' : 'outline'}
+                          className="cursor-pointer transition-colors"
+                        >
+                          {tag.tagName}
+                        </Badge>
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            )}
 
             <SheetFooter className="pt-2">
               <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={mutation.isPending}>

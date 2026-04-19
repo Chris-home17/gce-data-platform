@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Loader2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -34,8 +34,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
 import type { KpiDefinition } from '@/types/api'
+
+function parseTagsRaw(raw: string | null): Array<{ id: number; name: string }> {
+  if (!raw) return []
+  return raw.split('|').map((part) => {
+    const [id, ...rest] = part.split(':')
+    return { id: parseInt(id), name: rest.join(':') }
+  })
+}
 
 const schema = z.object({
   kpiName: z.string().min(2).max(200),
@@ -72,6 +81,17 @@ export function EditDefinitionSheet({ kpi, open, onClose }: EditDefinitionSheetP
 
   const [dropDownOptions, setDropDownOptions] = useState<string[]>([])
   const [newOption, setNewOption] = useState('')
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set())
+
+  const tagsQuery = useQuery({
+    queryKey: ['tags'],
+    queryFn: () => api.tags.list(),
+    enabled: open,
+  })
+  const activeTags = useMemo(
+    () => (tagsQuery.data?.items ?? []).filter((t) => t.isActive),
+    [tagsQuery.data]
+  )
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -104,6 +124,7 @@ export function EditDefinitionSheet({ kpi, open, onClose }: EditDefinitionSheetP
         kpi.dropDownOptionsRaw ? kpi.dropDownOptionsRaw.split('||').filter(Boolean) : []
       )
       setNewOption('')
+      setSelectedTagIds(new Set(parseTagsRaw(kpi.tagsRaw).map((t) => t.id)))
     }
   }, [open, kpi.kpiId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -119,6 +140,7 @@ export function EditDefinitionSheet({ kpi, open, onClose }: EditDefinitionSheetP
         category: values.category || undefined,
         unit: values.unit || undefined,
         dropDownOptions: isDropDown ? dropDownOptions : null,
+        tagIds: Array.from(selectedTagIds),
       }),
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['kpi', 'definitions'] })
@@ -366,6 +388,39 @@ export function EditDefinitionSheet({ kpi, open, onClose }: EditDefinitionSheetP
                 )}
               />
             </div>
+
+            {/* ── Tags ─────────────────────────────────── */}
+            {activeTags.length > 0 && (
+              <>
+                <SectionHeading>Tags</SectionHeading>
+                <div className="flex flex-wrap gap-1.5">
+                  {activeTags.map((tag) => {
+                    const selected = selectedTagIds.has(tag.tagId)
+                    return (
+                      <button
+                        key={tag.tagId}
+                        type="button"
+                        onClick={() => {
+                          setSelectedTagIds((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(tag.tagId)) next.delete(tag.tagId)
+                            else next.add(tag.tagId)
+                            return next
+                          })
+                        }}
+                      >
+                        <Badge
+                          variant={selected ? 'default' : 'outline'}
+                          className="cursor-pointer transition-colors"
+                        >
+                          {tag.tagName}
+                        </Badge>
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            )}
 
             <SheetFooter className="pt-2">
               <Button type="button" variant="outline" onClick={onClose} disabled={mutation.isPending}>

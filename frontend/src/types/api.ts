@@ -249,6 +249,133 @@ export interface DelegationScopeOptions {
 }
 
 // ---------------------------------------------------------------------------
+// Tag domain types
+// ---------------------------------------------------------------------------
+
+/** From App.vTags (Platform Config > Tags) */
+export interface Tag {
+  tagId: number
+  tagCode: string
+  tagName: string
+  tagDescription: string | null
+  isActive: boolean
+  kpiCount: number
+}
+
+export interface CreateTagInput {
+  tagCode: string
+  tagName: string
+  tagDescription?: string
+}
+
+export interface UpdateTagInput {
+  tagName: string
+  tagDescription?: string
+}
+
+// ---------------------------------------------------------------------------
+// KPI Package domain types
+// ---------------------------------------------------------------------------
+
+/** Parsed tag entry from a pipe-delimited "TagId:TagName" raw string */
+export interface KpiPackageTag {
+  tagId: number
+  tagName: string
+}
+
+/** Parse the pipe-delimited TagsRaw field into structured tag objects */
+export function parsePackageTags(tagsRaw: string | null | undefined): KpiPackageTag[] {
+  if (!tagsRaw) return []
+  return tagsRaw.split('|').map((pair) => {
+    const idx = pair.indexOf(':')
+    return { tagId: parseInt(pair.slice(0, idx), 10), tagName: pair.slice(idx + 1) }
+  })
+}
+
+/** From App.vKpiPackages (KPI Management > KPI Packages) */
+export interface KpiPackage {
+  kpiPackageId: number
+  packageCode: string
+  packageName: string
+  isActive: boolean
+  kpiCount: number
+  /** Pipe-delimited "TagId:TagName" pairs; null if no tags */
+  tagsRaw: string | null
+}
+
+export interface KpiPackageItem {
+  kpiPackageItemId: number
+  kpiPackageId: number
+  kpiId: number
+  kpiCode: string
+  kpiName: string
+  category: string | null
+  dataType: string | null
+  kpiIsActive: boolean
+}
+
+export interface KpiPackageDetail {
+  package: KpiPackage
+  items: KpiPackageItem[]
+}
+
+export interface CreateKpiPackageInput {
+  packageCode: string
+  packageName: string
+  tagIds?: number[]
+}
+
+export interface UpdateKpiPackageInput {
+  packageName: string
+  tagIds?: number[]
+}
+
+export interface SetKpiPackageItemsInput {
+  kpiIds: number[]
+}
+
+export interface CreateTemplatesFromPackageInput {
+  kpiPackageId: number
+  periodScheduleId: number
+  accountCode: string
+  orgUnitCode?: string | null
+  orgUnitType: string
+  isRequired: boolean
+  materializeNow: boolean
+}
+
+export interface BatchKpiAssignmentTemplateItem {
+  kpiCode: string
+  kpiPackageId?: number | null
+  isRequired: boolean
+  targetValue?: number | null
+  thresholdGreen?: number | null
+  thresholdAmber?: number | null
+  thresholdRed?: number | null
+  thresholdDirection?: 'Higher' | 'Lower' | null
+  submitterGuidance?: string | null
+  customKpiName?: string | null
+  customKpiDescription?: string | null
+}
+
+export interface BatchCreateKpiAssignmentTemplatesInput {
+  periodScheduleId: number
+  accountCode: string
+  orgUnitCode?: string | null
+  orgUnitCodes?: string[]
+  orgUnitType: string
+  materializeNow: boolean
+  items: BatchKpiAssignmentTemplateItem[]
+}
+
+export interface BatchCreateKpiAssignmentTemplatesResponse {
+  createdCount: number
+  skippedCount: number
+  skippedKpiCodes: string[]
+  errors: string[]
+}
+
+// ---------------------------------------------------------------------------
 // Catalogue domain types
 // ---------------------------------------------------------------------------
 
@@ -429,6 +556,8 @@ export interface KpiDefinition {
   assignmentCount: number
   /** Pipe-delimited option list for DropDown KPIs; null for other types */
   dropDownOptionsRaw: string | null
+  /** Pipe-delimited "TagId:TagName" pairs; null if untagged */
+  tagsRaw: string | null
 }
 
 /** From KPI.Period via App.vKpiPeriods (screen K-02) */
@@ -501,6 +630,9 @@ export interface KpiAssignmentTemplate {
   effectiveThresholdDirection: string | null
   isActive: boolean
   generatedAssignmentCount: number
+  /** null for individually assigned templates */
+  kpiPackageId: number | null
+  kpiPackageName: string | null
 }
 
 /** From App.vSiteCompletionSummary (screen K-04) */
@@ -600,6 +732,7 @@ export interface CreateKpiDefinitionInput {
   collectionType: 'Manual' | 'Automated' | 'BulkUpload'
   thresholdDirection?: 'Higher' | 'Lower' | null
   dropDownOptions?: string[]
+  tagIds?: number[]
 }
 
 export interface UpdateKpiDefinitionInput {
@@ -612,6 +745,7 @@ export interface UpdateKpiDefinitionInput {
   collectionType: 'Manual' | 'Automated' | 'BulkUpload'
   thresholdDirection?: 'Higher' | 'Lower' | null
   dropDownOptions?: string[] | null
+  tagIds?: number[] | null
 }
 
 export type GrantType = 'GLOBAL_ALL' | 'GLOBAL_PACKAGE' | 'FULL_ACCOUNT' | 'PATH_PREFIX' | 'COUNTRY_ALL'

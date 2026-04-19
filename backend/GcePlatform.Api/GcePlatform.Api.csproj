@@ -39,6 +39,12 @@
     <!-- AccountBranding: branding delta scripts -->
     <EmbeddedResource Include="Migrations\Scripts\AccountBranding.Up.sql" />
     <EmbeddedResource Include="Migrations\Scripts\AccountBranding.Down.sql" />
+    <!-- TagsAndKpiPackages: tags, KPI-to-tag, KPI packages -->
+    <EmbeddedResource Include="Migrations\Scripts\TagsAndKpiPackages.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\TagsAndKpiPackages.Down.sql" />
+    <!-- KpiPackageMultiTag: multi-tag support for KPI packages -->
+    <EmbeddedResource Include="Migrations\Scripts\KpiPackageMultiTag.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\KpiPackageMultiTag.Down.sql" />
   </ItemGroup>
 
 </Project>

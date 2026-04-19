@@ -41,7 +41,9 @@ public static class KpiAssignmentEndpoints
                     ThresholdRed,
                     EffectiveThresholdDirection,
                     IsActive,
-                    GeneratedAssignmentCount
+                    GeneratedAssignmentCount,
+                    KpiPackageId,
+                    KpiPackageName
                 FROM App.vKpiAssignmentTemplates
                 WHERE (@AccountId IS NULL OR AccountId = @AccountId)
                 ORDER BY ScheduleName, AccountCode, KpiCode",
@@ -116,12 +118,106 @@ public static class KpiAssignmentEndpoints
                     ThresholdRed,
                     EffectiveThresholdDirection,
                     IsActive,
-                    GeneratedAssignmentCount
+                    GeneratedAssignmentCount,
+                    KpiPackageId,
+                    KpiPackageName
                 FROM App.vKpiAssignmentTemplates
                 WHERE AssignmentTemplateId = @Id",
                 new { Id = newId });
 
             return Results.Created($"/kpi/assignment-templates/{newId}", created);
+        }).RequireAuthorization();
+
+        app.MapPost("/kpi/assignment-templates/batch",
+            async (ClaimsPrincipal user, BatchCreateKpiAssignmentTemplatesRequest request, DbConnectionFactory db, PlatformAuthService platformAuth) =>
+        {
+            using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+                return Results.Forbid();
+
+            var items = request.Items?.ToList();
+            if (items is null || items.Count == 0)
+                return Results.BadRequest(new ApiError("BATCH_EMPTY", "No KPI items provided."));
+
+            // De-dupe within the request itself (first occurrence wins)
+            var distinctItems = items
+                .GroupBy(i => i.KpiCode, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .ToList();
+
+            // Resolve the list of org unit codes to iterate over
+            var orgUnitCodes = (request.OrgUnitCodes?.ToList() is { Count: > 0 } multi)
+                ? multi
+                : request.OrgUnitCode is not null
+                    ? new List<string> { request.OrgUnitCode }
+                    : new List<string> { (string?)null! };  // null = account-wide
+
+            var createdIds = new List<int>();
+            var skippedKpiCodes = new List<string>();
+            var errors = new List<string>();
+
+            foreach (var orgUnitCode in orgUnitCodes)
+            {
+                foreach (var item in distinctItems)
+                {
+                    try
+                    {
+                        var p = new DynamicParameters();
+                        p.Add("@KpiCode",              item.KpiCode);
+                        p.Add("@PeriodScheduleID",     request.PeriodScheduleId);
+                        p.Add("@AccountCode",          request.AccountCode);
+                        p.Add("@OrgUnitCode",          orgUnitCode);
+                        p.Add("@OrgUnitType",          request.OrgUnitType);
+                        p.Add("@IsRequired",           item.IsRequired);
+                        p.Add("@TargetValue",          item.TargetValue);
+                        p.Add("@ThresholdGreen",       item.ThresholdGreen);
+                        p.Add("@ThresholdAmber",       item.ThresholdAmber);
+                        p.Add("@ThresholdRed",         item.ThresholdRed);
+                        p.Add("@ThresholdDirection",   item.ThresholdDirection);
+                        p.Add("@SubmitterGuidance",    item.SubmitterGuidance);
+                        p.Add("@CustomKpiName",        item.CustomKpiName);
+                        p.Add("@CustomKpiDescription", item.CustomKpiDescription);
+                        p.Add("@KpiPackageId",         item.KpiPackageId);
+                        p.Add("@AssignmentTemplateID", dbType: System.Data.DbType.Int32,
+                              direction: System.Data.ParameterDirection.Output);
+
+                        await conn.ExecuteAsync("App.usp_UpsertKpiAssignmentTemplate", p,
+                            commandType: System.Data.CommandType.StoredProcedure);
+
+                        createdIds.Add(p.Get<int>("@AssignmentTemplateID"));
+                    }
+                    catch (Microsoft.Data.SqlClient.SqlException ex) when (ex.Number is 2627 or 2601)
+                    {
+                        var key = orgUnitCode is not null ? $"{item.KpiCode}@{orgUnitCode}" : item.KpiCode;
+                        if (!skippedKpiCodes.Contains(key))
+                            skippedKpiCodes.Add(key);
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add($"{item.KpiCode}: {ex.Message}");
+                    }
+                }
+            }
+
+            if (request.MaterializeNow && createdIds.Count > 0)
+            {
+                foreach (var id in createdIds)
+                {
+                    await conn.ExecuteAsync("App.usp_MaterializeKpiAssignmentTemplates",
+                        new { AssignmentTemplateID = id },
+                        commandType: System.Data.CommandType.StoredProcedure);
+                }
+            }
+
+            if (errors.Count > 0 && createdIds.Count == 0 && skippedKpiCodes.Count == 0)
+                return Results.BadRequest(new ApiError("BATCH_FAILED", string.Join("; ", errors)));
+
+            return Results.Ok(new BatchCreateKpiAssignmentTemplatesResponse(
+                CreatedCount:    createdIds.Count,
+                SkippedCount:    skippedKpiCodes.Count,
+                SkippedKpiCodes: skippedKpiCodes,
+                Errors:          errors));
         }).RequireAuthorization();
 
         app.MapPost("/kpi/assignment-templates/{id:int}/materialize", async (ClaimsPrincipal user, int id, DbConnectionFactory db, PlatformAuthService platformAuth) =>
@@ -182,7 +278,9 @@ public static class KpiAssignmentEndpoints
                     ThresholdRed,
                     EffectiveThresholdDirection,
                     IsActive,
-                    GeneratedAssignmentCount
+                    GeneratedAssignmentCount,
+                    KpiPackageId,
+                    KpiPackageName
                 FROM App.vKpiAssignmentTemplates
                 WHERE AssignmentTemplateId = @Id",
                 new { Id = id });
