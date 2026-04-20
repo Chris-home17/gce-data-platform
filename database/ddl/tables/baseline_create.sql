@@ -4532,6 +4532,8 @@ BEGIN
         -- Source template (NULL for manually created assignments).
         -- Used by views to inherit CustomKpiName / CustomKpiDescription.
         AssignmentTemplateID INT                NULL,
+        -- Optional group name (e.g. "Technology", "Operational"). NULL = ungrouped.
+        AssignmentGroupName NVARCHAR(100)       NULL,
         -- Admin
         AssignedByPrincipalId INT               NULL,
         IsActive            BIT                 NOT NULL CONSTRAINT DF_KpiAsgn_IsActive   DEFAULT (1),
@@ -4552,16 +4554,24 @@ BEGIN
     );
 
     CREATE UNIQUE INDEX UX_KpiAsgn_ExternalId      ON KPI.Assignment (ExternalId);
-    CREATE UNIQUE INDEX UX_KpiAsgn_SiteLevel
+    -- NULL-safe group uniqueness: two filtered indexes per scope
+    CREATE UNIQUE INDEX UX_KpiAsgn_SiteLevelNoGroup
         ON KPI.Assignment (KPIID, OrgUnitId, PeriodID)
-        WHERE OrgUnitId IS NOT NULL;
-    CREATE UNIQUE INDEX UX_KpiAsgn_AccountLevel
+        WHERE OrgUnitId IS NOT NULL AND AssignmentGroupName IS NULL;
+    CREATE UNIQUE INDEX UX_KpiAsgn_SiteLevelWithGroup
+        ON KPI.Assignment (KPIID, OrgUnitId, PeriodID, AssignmentGroupName)
+        WHERE OrgUnitId IS NOT NULL AND AssignmentGroupName IS NOT NULL;
+    CREATE UNIQUE INDEX UX_KpiAsgn_AccountLevelNoGroup
         ON KPI.Assignment (KPIID, AccountId, PeriodID)
-        WHERE OrgUnitId IS NULL;
+        WHERE OrgUnitId IS NULL AND AssignmentGroupName IS NULL;
+    CREATE UNIQUE INDEX UX_KpiAsgn_AccountLevelWithGroup
+        ON KPI.Assignment (KPIID, AccountId, PeriodID, AssignmentGroupName)
+        WHERE OrgUnitId IS NULL AND AssignmentGroupName IS NOT NULL;
     CREATE INDEX        IX_KpiAsgn_AccountPeriod    ON KPI.Assignment (AccountId, PeriodID);
     CREATE INDEX        IX_KpiAsgn_KPIPeriod        ON KPI.Assignment (KPIID, PeriodID);
     CREATE INDEX        IX_KpiAsgn_OrgUnitPeriod    ON KPI.Assignment (OrgUnitId, PeriodID) WHERE OrgUnitId IS NOT NULL;
     CREATE INDEX        IX_KpiAsgn_IsActive         ON KPI.Assignment (IsActive);
+    CREATE INDEX        IX_KpiAsgn_GroupName        ON KPI.Assignment (AssignmentGroupName) WHERE AssignmentGroupName IS NOT NULL;
 
     PRINT '  + KPI.Assignment created';
 END;
@@ -4596,6 +4606,8 @@ BEGIN
         -- is the custom value; otherwise the KPI.Definition defaults are used.
         CustomKpiName        NVARCHAR(200) NULL,
         CustomKpiDescription NVARCHAR(1000) NULL,
+        -- Optional group name (e.g. "Technology", "Operational"). NULL = ungrouped.
+        AssignmentGroupName  NVARCHAR(100) NULL,
         IsActive             BIT NOT NULL
             CONSTRAINT DF_KpiAssignmentTemplate_IsActive DEFAULT (1),
         CreatedOnUtc         DATETIME2(3) NOT NULL
@@ -4626,12 +4638,19 @@ BEGIN
 
     CREATE UNIQUE INDEX UX_KpiAssignmentTemplate_ExternalId
         ON KPI.AssignmentTemplate (ExternalId);
-    CREATE UNIQUE INDEX UX_KpiAssignmentTemplate_Scope
-        ON KPI.AssignmentTemplate (KPIID, PeriodScheduleID, AccountId, OrgUnitId);
+    -- NULL-safe group uniqueness: two filtered indexes
+    CREATE UNIQUE INDEX UX_KpiAssignmentTemplate_ScopeNoGroup
+        ON KPI.AssignmentTemplate (KPIID, PeriodScheduleID, AccountId, OrgUnitId)
+        WHERE AssignmentGroupName IS NULL;
+    CREATE UNIQUE INDEX UX_KpiAssignmentTemplate_ScopeWithGroup
+        ON KPI.AssignmentTemplate (KPIID, PeriodScheduleID, AccountId, OrgUnitId, AssignmentGroupName)
+        WHERE AssignmentGroupName IS NOT NULL;
     CREATE INDEX IX_KpiAssignmentTemplate_IsActive
         ON KPI.AssignmentTemplate (IsActive);
     CREATE INDEX IX_KpiAssignmentTemplate_Range
         ON KPI.AssignmentTemplate (StartPeriodYear, StartPeriodMonth, EndPeriodYear, EndPeriodMonth);
+    CREATE INDEX IX_KpiAssignmentTemplate_GroupName
+        ON KPI.AssignmentTemplate (AssignmentGroupName) WHERE AssignmentGroupName IS NOT NULL;
 
     PRINT '  + KPI.AssignmentTemplate created';
 END;
@@ -4814,12 +4833,14 @@ BEGIN
         CreatedAtUtc    DATETIME2           NOT NULL
             CONSTRAINT DF_KpiSubToken_CreatedAt  DEFAULT SYSUTCDATETIME(),
         RevokedAtUtc    DATETIME2           NULL,
+        -- Optional group scope; NULL = ungrouped assignments
+        AssignmentGroupName NVARCHAR(100)   NULL,
         CONSTRAINT FK_KpiSubToken_Site   FOREIGN KEY (SiteOrgUnitId) REFERENCES Dim.OrgUnit  (OrgUnitId),
         CONSTRAINT FK_KpiSubToken_Acct   FOREIGN KEY (AccountId)     REFERENCES Dim.Account  (AccountId),
         CONSTRAINT FK_KpiSubToken_Period FOREIGN KEY (PeriodId)      REFERENCES KPI.Period   (PeriodID)
     );
 
-    CREATE INDEX IX_KpiSubToken_SitePeriod ON KPI.SubmissionToken (SiteOrgUnitId, PeriodId);
+    CREATE INDEX IX_KpiSubToken_SitePeriodGroup ON KPI.SubmissionToken (SiteOrgUnitId, PeriodId, AssignmentGroupName);
 
     PRINT '  + KPI.SubmissionToken created';
 END;
@@ -5222,7 +5243,8 @@ AS
         t.IsActive,
         ISNULL(instances.GeneratedAssignmentCount, 0) AS GeneratedAssignmentCount,
         t.KpiPackageId,
-        pkg.PackageName AS KpiPackageName
+        pkg.PackageName AS KpiPackageName,
+        t.AssignmentGroupName
     FROM KPI.AssignmentTemplate AS t
     JOIN KPI.Definition         AS d    ON d.KPIID = t.KPIID
     LEFT JOIN KPI.PeriodSchedule AS sched ON sched.PeriodScheduleID = t.PeriodScheduleID
@@ -5239,6 +5261,10 @@ AS
           AND (
                 (t.OrgUnitId IS NULL AND a.OrgUnitId IS NULL)
                 OR a.OrgUnitId = t.OrgUnitId
+              )
+          AND (
+                (t.AssignmentGroupName IS NULL AND a.AssignmentGroupName IS NULL)
+                OR a.AssignmentGroupName = t.AssignmentGroupName
               )
           AND (p.PeriodYear * 100 + p.PeriodMonth) >= (
                 COALESCE(t.StartPeriodYear, YEAR(sched.StartDate)) * 100
@@ -5315,7 +5341,8 @@ AS
         a.CreatedOnUtc,
         a.ModifiedOnUtc,
         -- Escalation contact count for this site+period
-        ISNULL(esc.ContactCount, 0) AS EscalationContactCount
+        ISNULL(esc.ContactCount, 0) AS EscalationContactCount,
+        a.AssignmentGroupName
     FROM KPI.Assignment AS a
     JOIN KPI.Definition             AS d     ON d.KPIID       = a.KPIID
     JOIN Dim.Account                AS acct  ON acct.AccountId = a.AccountId
@@ -5331,6 +5358,19 @@ AS
           AND ec.PeriodID  = a.PeriodID
           AND ec.IsActive  = 1
     ) AS esc;
+GO
+
+CREATE OR ALTER VIEW App.vAssignmentGroups
+AS
+    SELECT DISTINCT
+        t.AccountId,
+        acct.AccountCode,
+        acct.AccountName,
+        t.AssignmentGroupName AS GroupName
+    FROM KPI.AssignmentTemplate AS t
+    JOIN Dim.Account AS acct ON acct.AccountId = t.AccountId
+    WHERE t.AssignmentGroupName IS NOT NULL
+      AND t.IsActive = 1;
 GO
 
 CREATE OR ALTER VIEW App.vEffectiveKpiAssignments
@@ -5462,7 +5502,8 @@ AS
             a.AssignmentID,
             a.PeriodID,
             a.AccountId,
-            a.OrgUnitId     AS SiteOrgUnitId
+            a.OrgUnitId     AS SiteOrgUnitId,
+            a.AssignmentGroupName
         FROM KPI.Assignment AS a
         JOIN Dim.OrgUnit    AS ou
             ON  ou.OrgUnitId   = a.OrgUnitId
@@ -5473,12 +5514,13 @@ AS
         UNION ALL
 
         -- 2. Account-wide: expand to every active Site under the same account.
-        -- Suppressed where a site-specific assignment exists for the same KPI + period.
+        -- Suppressed where a site-specific assignment exists for the same KPI + period + group.
         SELECT
             a.AssignmentID,
             a.PeriodID,
             a.AccountId,
-            site.OrgUnitId  AS SiteOrgUnitId
+            site.OrgUnitId  AS SiteOrgUnitId,
+            a.AssignmentGroupName
         FROM KPI.Assignment AS a
         JOIN Dim.OrgUnit    AS site
             ON  site.AccountId   = a.AccountId
@@ -5492,6 +5534,10 @@ AS
                   AND  sa.OrgUnitId = site.OrgUnitId
                   AND  sa.PeriodID  = a.PeriodID
                   AND  sa.IsActive  = 1
+                  AND  (
+                         (a.AssignmentGroupName IS NULL AND sa.AssignmentGroupName IS NULL)
+                         OR sa.AssignmentGroupName = a.AssignmentGroupName
+                       )
           )
     )
     SELECT
@@ -5505,9 +5551,9 @@ AS
         p.PeriodID,
         p.PeriodLabel,
         p.Status                AS PeriodStatus,
-        -- Total required assignments for this site+period (site-specific + account-wide)
+        -- Total required assignments for this site+period+group
         COUNT(sa.AssignmentID)                                   AS TotalRequired,
-        -- Submitted (account-wide submission counts for all sites in the account)
+        -- Submitted
         SUM(CASE WHEN sub.SubmissionID IS NOT NULL
                   AND sub.LockState <> 'LockedByPeriodClose'
                  THEN 1 ELSE 0 END)                             AS TotalSubmitted,
@@ -5527,7 +5573,6 @@ AS
                  AS DECIMAL(5,1))
         END                                                     AS CompletionPct,
         -- Exception flags for the Account Director view
-        -- IsLateRisk: period is still Open, ≤3 days remain, and more than half the work is missing
         CAST(CASE
             WHEN p.Status = 'Open'
              AND DATEDIFF(DAY, CAST(SYSUTCDATETIME() AS DATE), p.SubmissionCloseDate) <= 3
@@ -5535,7 +5580,6 @@ AS
                  / NULLIF(COUNT(sa.AssignmentID), 0) > 50
             THEN 1 ELSE 0
         END AS BIT)                                             AS IsLateRisk,
-        -- IsOverdue: period has Closed with submissions still missing
         CAST(CASE
             WHEN p.Status = 'Closed'
              AND SUM(CASE WHEN sub.SubmissionID IS NULL THEN 1 ELSE 0 END) > 0
@@ -5548,7 +5592,9 @@ AS
         rs.CurrentLevel         AS ReminderLevel,
         rs.LastReminderSentAt,
         rs.NextReminderDueAt,
-        rs.IsResolved           AS ReminderResolved
+        rs.IsResolved           AS ReminderResolved,
+        -- Group dimension (NULL = ungrouped)
+        sa.AssignmentGroupName  AS GroupName
     FROM AllSiteAssignments      AS sa
     JOIN KPI.Period              AS p     ON p.PeriodID    = sa.PeriodID
     JOIN KPI.PeriodSchedule     AS sched ON sched.PeriodScheduleID = p.PeriodScheduleID
@@ -5563,7 +5609,8 @@ AS
         site.OrgUnitId, site.OrgUnitCode, site.OrgUnitName, site.CountryCode,
         p.PeriodID, p.PeriodLabel, p.Status, p.SubmissionCloseDate, p.PeriodScheduleID,
         sched.ScheduleName,
-        rs.CurrentLevel, rs.LastReminderSentAt, rs.NextReminderDueAt, rs.IsResolved;
+        rs.CurrentLevel, rs.LastReminderSentAt, rs.NextReminderDueAt, rs.IsResolved,
+        sa.AssignmentGroupName;
 GO
 
 CREATE OR ALTER VIEW App.vKpiSubmissions
@@ -5850,6 +5897,7 @@ CREATE OR ALTER PROCEDURE App.usp_AssignKpi
     @ThresholdRed         DECIMAL(18,4)   = NULL,
     @ThresholdDirection   NVARCHAR(10)    = NULL,
     @SubmitterGuidance    NVARCHAR(1000)  = NULL,
+    @AssignmentGroupName  NVARCHAR(100)   = NULL,
     @ActorUPN             NVARCHAR(320)   = NULL,
     @AssignmentID         INT OUTPUT
 AS
@@ -5896,20 +5944,32 @@ BEGIN
     IF @ActorUPN IS NOT NULL
         SELECT @ActorPrincipalId = UserId FROM Sec.[User] WHERE UPN = @ActorUPN;
 
-    -- Enforce account-level uniqueness (UNIQUE constraint only covers site-level)
+    -- Look up existing assignment including group name (NULL-safe)
     IF @OrgUnitId IS NULL
     BEGIN
         SET @AssignmentID = (
             SELECT AssignmentID FROM KPI.Assignment
-            WHERE KPIID = @KPIID AND AccountId = @AccountId AND OrgUnitId IS NULL AND PeriodID = @PeriodID
+            WHERE KPIID = @KPIID
+              AND AccountId = @AccountId
+              AND OrgUnitId IS NULL
+              AND PeriodID = @PeriodID
+              AND (
+                    (@AssignmentGroupName IS NULL AND AssignmentGroupName IS NULL)
+                    OR AssignmentGroupName = @AssignmentGroupName
+                  )
         );
     END
     ELSE
     BEGIN
-        -- Site-level: covered by UQ_KpiAsgn_SiteLevel constraint
         SET @AssignmentID = (
             SELECT AssignmentID FROM KPI.Assignment
-            WHERE KPIID = @KPIID AND OrgUnitId = @OrgUnitId AND PeriodID = @PeriodID
+            WHERE KPIID = @KPIID
+              AND OrgUnitId = @OrgUnitId
+              AND PeriodID = @PeriodID
+              AND (
+                    (@AssignmentGroupName IS NULL AND AssignmentGroupName IS NULL)
+                    OR AssignmentGroupName = @AssignmentGroupName
+                  )
         );
     END
 
@@ -5918,11 +5978,11 @@ BEGIN
         INSERT INTO KPI.Assignment
             (KPIID, AccountId, OrgUnitId, PeriodID, AssignmentTemplateID, IsRequired,
              TargetValue, ThresholdGreen, ThresholdAmber, ThresholdRed,
-             ThresholdDirection, SubmitterGuidance, AssignedByPrincipalId)
+             ThresholdDirection, SubmitterGuidance, AssignedByPrincipalId, AssignmentGroupName)
         VALUES
             (@KPIID, @AccountId, @OrgUnitId, @PeriodID, @AssignmentTemplateID, @IsRequired,
              @TargetValue, @ThresholdGreen, @ThresholdAmber, @ThresholdRed,
-             @ThresholdDirection, @SubmitterGuidance, @ActorPrincipalId);
+             @ThresholdDirection, @SubmitterGuidance, @ActorPrincipalId, @AssignmentGroupName);
 
         SET @AssignmentID = SCOPE_IDENTITY();
     END
@@ -6118,6 +6178,8 @@ CREATE OR ALTER PROCEDURE App.usp_UpsertKpiAssignmentTemplate
     @SubmitterGuidance    NVARCHAR(1000)  = NULL,
     @CustomKpiName        NVARCHAR(200)   = NULL,
     @CustomKpiDescription NVARCHAR(1000)  = NULL,
+    @KpiPackageId         INT             = NULL,
+    @AssignmentGroupName  NVARCHAR(100)   = NULL,
     @ActorUPN             NVARCHAR(320)   = NULL,
     @AssignmentTemplateID INT OUTPUT
 AS
@@ -6190,6 +6252,7 @@ BEGIN
             THROW 50136, 'OrgUnit not found or inactive for provided AccountCode + OrgUnitCode.', 1;
     END
 
+    -- Look up existing template including group name (NULL-safe)
     SET @AssignmentTemplateID = (
         SELECT AssignmentTemplateID
         FROM KPI.AssignmentTemplate
@@ -6200,6 +6263,10 @@ BEGIN
                 (@OrgUnitId IS NULL AND OrgUnitId IS NULL)
                 OR OrgUnitId = @OrgUnitId
               )
+          AND (
+                (@AssignmentGroupName IS NULL AND AssignmentGroupName IS NULL)
+                OR AssignmentGroupName = @AssignmentGroupName
+              )
     );
 
     IF @AssignmentTemplateID IS NULL
@@ -6207,11 +6274,11 @@ BEGIN
         INSERT INTO KPI.AssignmentTemplate
             (KPIID, PeriodScheduleID, AccountId, OrgUnitId, StartPeriodYear, StartPeriodMonth, EndPeriodYear, EndPeriodMonth,
              IsRequired, TargetValue, ThresholdGreen, ThresholdAmber, ThresholdRed, ThresholdDirection, SubmitterGuidance,
-             CustomKpiName, CustomKpiDescription)
+             CustomKpiName, CustomKpiDescription, KpiPackageId, AssignmentGroupName)
         VALUES
             (@KPIID, @PeriodScheduleID, @AccountId, @OrgUnitId, @StartPeriodYear, @StartPeriodMonth, @EndPeriodYear, @EndPeriodMonth,
              @IsRequired, @TargetValue, @ThresholdGreen, @ThresholdAmber, @ThresholdRed, @ThresholdDirection, @SubmitterGuidance,
-             @CustomKpiName, @CustomKpiDescription);
+             @CustomKpiName, @CustomKpiDescription, @KpiPackageId, @AssignmentGroupName);
 
         SET @AssignmentTemplateID = SCOPE_IDENTITY();
     END
@@ -6232,6 +6299,7 @@ BEGIN
             SubmitterGuidance     = @SubmitterGuidance,
             CustomKpiName         = @CustomKpiName,
             CustomKpiDescription  = @CustomKpiDescription,
+            KpiPackageId          = @KpiPackageId,
             IsActive              = 1,
             ModifiedOnUtc         = SYSUTCDATETIME(),
             ModifiedBy            = COALESCE(@ActorUPN, SESSION_USER)
@@ -6268,6 +6336,7 @@ BEGIN
         @TemplateThresholdRed DECIMAL(18,4),
         @TemplateThresholdDirection NVARCHAR(10),
         @TemplateSubmitterGuidance NVARCHAR(1000),
+        @TemplateGroupName NVARCHAR(100),
         -- Used when expanding account-wide templates to per-site assignments
         @SiteOrgUnitCode NVARCHAR(50);
 
@@ -6291,7 +6360,8 @@ BEGIN
             t.ThresholdAmber,
             t.ThresholdRed,
             t.ThresholdDirection,
-            t.SubmitterGuidance
+            t.SubmitterGuidance,
+            t.AssignmentGroupName
         FROM KPI.AssignmentTemplate AS t
         JOIN KPI.Definition         AS d     ON d.KPIID              = t.KPIID
         JOIN KPI.PeriodSchedule     AS sched ON sched.PeriodScheduleID = t.PeriodScheduleID
@@ -6309,7 +6379,7 @@ BEGIN
         @TemplateAccountCode, @TemplateOrgUnitCode, @TemplateOrgUnitType,
         @TemplateStartYear, @TemplateStartMonth, @TemplateEndYear, @TemplateEndMonth, @TemplateIsRequired,
         @TemplateTargetValue, @TemplateThresholdGreen, @TemplateThresholdAmber, @TemplateThresholdRed,
-        @TemplateThresholdDirection, @TemplateSubmitterGuidance;
+        @TemplateThresholdDirection, @TemplateSubmitterGuidance, @TemplateGroupName;
 
     WHILE @@FETCH_STATUS = 0
     BEGIN
@@ -6371,6 +6441,7 @@ BEGIN
                         @ThresholdRed         = @TemplateThresholdRed,
                         @ThresholdDirection   = @TemplateThresholdDirection,
                         @SubmitterGuidance    = @TemplateSubmitterGuidance,
+                        @AssignmentGroupName  = @TemplateGroupName,
                         @ActorUPN             = @ActorUPN,
                         @AssignmentID         = @GeneratedAssignmentId OUTPUT;
 
@@ -6400,6 +6471,7 @@ BEGIN
                     @ThresholdRed         = @TemplateThresholdRed,
                     @ThresholdDirection   = @TemplateThresholdDirection,
                     @SubmitterGuidance    = @TemplateSubmitterGuidance,
+                    @AssignmentGroupName  = @TemplateGroupName,
                     @ActorUPN             = @ActorUPN,
                     @AssignmentID         = @GeneratedAssignmentId OUTPUT;
             END
@@ -6415,7 +6487,7 @@ BEGIN
             @TemplateAccountCode, @TemplateOrgUnitCode, @TemplateOrgUnitType,
             @TemplateStartYear, @TemplateStartMonth, @TemplateEndYear, @TemplateEndMonth, @TemplateIsRequired,
             @TemplateTargetValue, @TemplateThresholdGreen, @TemplateThresholdAmber, @TemplateThresholdRed,
-            @TemplateThresholdDirection, @TemplateSubmitterGuidance;
+            @TemplateThresholdDirection, @TemplateSubmitterGuidance, @TemplateGroupName;
     END
 
     CLOSE template_cursor;
@@ -7054,7 +7126,8 @@ AS
         st.ExpiresAtUtc,
         st.CreatedBy,
         st.CreatedAtUtc,
-        st.RevokedAtUtc
+        st.RevokedAtUtc,
+        st.AssignmentGroupName
     FROM KPI.SubmissionToken AS st
     JOIN App.vOrgUnits AS site
         ON site.OrgUnitId = st.SiteOrgUnitId
@@ -7136,9 +7209,18 @@ AS
                       AND sa.OrgUnitId = st.SiteOrgUnitId
                       AND sa.PeriodID = st.PeriodId
                       AND sa.IsActive = 1
+                      AND (
+                            (asgn.AssignmentGroupName IS NULL AND sa.AssignmentGroupName IS NULL)
+                            OR sa.AssignmentGroupName = asgn.AssignmentGroupName
+                          )
                 )
             )
        )
+       -- Filter assignments to match the token's group (NULL-safe)
+       AND (
+             (st.AssignmentGroupName IS NULL AND asgn.AssignmentGroupName IS NULL)
+             OR asgn.AssignmentGroupName = st.AssignmentGroupName
+           )
     JOIN KPI.Definition AS d
         ON d.KPIID = asgn.KPIID
     LEFT JOIN KPI.AssignmentTemplate AS t
@@ -7191,7 +7273,8 @@ AS
                 ELSE 'Red'
             END
             ELSE NULL
-        END                                                      AS RagStatus
+        END                                                      AS RagStatus,
+        asgn.AssignmentGroupName
     FROM KPI.Assignment AS asgn
     JOIN KPI.Definition AS d
         ON d.KPIID = asgn.KPIID
@@ -7439,10 +7522,11 @@ END;
 GO
 
 CREATE OR ALTER PROCEDURE App.usp_CreateSubmissionToken
-    @SiteOrgUnitId INT,
-    @PeriodId      INT,
-    @CreatedBy     NVARCHAR(128),
-    @TokenId       UNIQUEIDENTIFIER OUTPUT
+    @SiteOrgUnitId       INT,
+    @PeriodId            INT,
+    @CreatedBy           NVARCHAR(128),
+    @AssignmentGroupName NVARCHAR(100)    = NULL,
+    @TokenId             UNIQUEIDENTIFIER OUTPUT
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -7471,9 +7555,9 @@ BEGIN
     SET @TokenId = NEWID();
 
     INSERT INTO KPI.SubmissionToken
-        (TokenId, SiteOrgUnitId, AccountId, PeriodId, ExpiresAtUtc, CreatedBy)
+        (TokenId, SiteOrgUnitId, AccountId, PeriodId, ExpiresAtUtc, CreatedBy, AssignmentGroupName)
     VALUES
-        (@TokenId, @SiteOrgUnitId, @AccountId, @PeriodId, @ExpiresAtUtc, @CreatedBy);
+        (@TokenId, @SiteOrgUnitId, @AccountId, @PeriodId, @ExpiresAtUtc, @CreatedBy, @AssignmentGroupName);
 END;
 GO
 

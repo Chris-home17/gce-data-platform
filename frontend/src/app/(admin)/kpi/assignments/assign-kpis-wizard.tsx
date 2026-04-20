@@ -53,6 +53,7 @@ interface WizardContext {
   isAccountWide: boolean
   orgUnitCodes: string[]   // empty = nothing selected yet
   periodScheduleId: number | null
+  groupName: string | null
 }
 
 interface CartPackageEntry {
@@ -309,6 +310,15 @@ function StepContext({ context, onChange, open }: StepContextProps) {
     queryFn: () => api.orgUnits.list({ accountId: selectedAccount!.accountId }),
     enabled: open && !context.isAccountWide && !!selectedAccount,
   })
+  const groupsQuery = useQuery({
+    queryKey: ['kpi', 'assignment-groups', selectedAccount?.accountId],
+    queryFn: () => api.kpi.assignments.groups({ accountId: selectedAccount!.accountId }),
+    enabled: open && !!selectedAccount,
+  })
+  const existingGroups = useMemo(
+    () => (groupsQuery.data?.items ?? []).map((g) => g.groupName),
+    [groupsQuery.data],
+  )
 
   const activeAccounts = useMemo(
     () => (accountsQuery.data?.items ?? []).filter((a) => a.isActive),
@@ -405,6 +415,34 @@ function StepContext({ context, onChange, open }: StepContextProps) {
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">Controls when assignment instances are generated.</p>
+      </div>
+
+      <SectionHeading>Group <span className="font-normal text-muted-foreground">(optional)</span></SectionHeading>
+
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium">Group name</label>
+        <div className="flex gap-2">
+          <Input
+            placeholder="e.g. Technology, Operational…"
+            value={context.groupName ?? ''}
+            onChange={(e) => onChange({ groupName: e.target.value || null })}
+            list="group-suggestions"
+            className="flex-1"
+          />
+          {context.groupName && (
+            <Button variant="ghost" size="icon" onClick={() => onChange({ groupName: null })} title="Remove group">
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        <datalist id="group-suggestions">
+          {existingGroups.map((g) => (
+            <option key={g} value={g} />
+          ))}
+        </datalist>
+        <p className="text-xs text-muted-foreground">
+          Assign this set of KPIs to a named group. Create a separate assignment with a different group name for other teams on the same account.
+        </p>
       </div>
     </div>
   )
@@ -1025,6 +1063,7 @@ export function AssignKpisWizard() {
     isAccountWide: true,
     orgUnitCodes: [],
     periodScheduleId: null,
+    groupName: null,
   })
   const [cart, setCart] = useState<CartEntry[]>([])
   const [tailoring, setTailoring] = useState<Map<string, KpiTailoringValues>>(new Map())
@@ -1041,30 +1080,39 @@ export function AssignKpisWizard() {
     staleTime: 30_000,
   })
 
-  // Phase A: existing template KPI codes for this account/scope
-  // A KPI is "existing" only if it's already assigned for ALL selected sites
-  // (so partial coverage still lets you assign to the missing sites)
+  // Phase A: existing template KPI codes for this account/scope+group
+  // A KPI is "existing" if already covered in the same group by:
+  //   - account-wide scope (effective on every site), OR
+  //   - site-specific scope for ALL selected sites
   const existingKpiCodes = useMemo(() => {
     if (!context.accountCode) return new Set<string>()
+    // Filter to same account, active, AND same group (NULL-safe)
     const templates = (templatesQuery.data?.items ?? []).filter(
-      (t) => t.accountCode === context.accountCode && t.isActive,
+      (t) =>
+        t.accountCode === context.accountCode &&
+        t.isActive &&
+        (context.groupName === null
+          ? t.assignmentGroupName === null
+          : t.assignmentGroupName === context.groupName),
     )
     if (context.isAccountWide) {
       return new Set(templates.filter((t) => t.isAccountWide).map((t) => t.kpiCode))
     }
     if (context.orgUnitCodes.length === 0) return new Set<string>()
-    // Only block KPIs that are already assigned to every selected site
+    // Account-wide templates (same group) are effective on every site — always block those KPIs
+    const accountWideCodes = new Set(templates.filter((t) => t.isAccountWide).map((t) => t.kpiCode))
+    // Site-specific: only block if already assigned to every selected site
     const siteSets = context.orgUnitCodes.map(
       (code) => new Set(templates.filter((t) => t.siteCode === code).map((t) => t.kpiCode)),
     )
-    // Intersection: kpi must be in all site sets
-    const intersection = new Set<string>()
+    const siteIntersection = new Set<string>()
     if (siteSets.length > 0) {
       for (const code of Array.from(siteSets[0])) {
-        if (siteSets.every((s) => s.has(code))) intersection.add(code)
+        if (siteSets.every((s) => s.has(code))) siteIntersection.add(code)
       }
     }
-    return intersection
+    // Union: blocked if covered account-wide OR already at all selected sites
+    return new Set([...Array.from(accountWideCodes), ...Array.from(siteIntersection)])
   }, [templatesQuery.data, context])
 
   // Phase B: cart KPI codes
@@ -1270,6 +1318,7 @@ export function AssignKpisWizard() {
         orgUnitType: context.isAccountWide ? 'Account' : 'Site',
         materializeNow,
         items,
+        assignmentGroupName: context.groupName ?? null,
       })
     },
     onSuccess: (result) => {
@@ -1288,7 +1337,7 @@ export function AssignKpisWizard() {
   function handleClose() {
     setOpen(false)
     setStep(0)
-    setContext({ accountCode: '', isAccountWide: true, orgUnitCodes: [], periodScheduleId: null })
+    setContext({ accountCode: '', isAccountWide: true, orgUnitCodes: [], periodScheduleId: null, groupName: null })
     setCart([])
     setTailoring(new Map())
     setMaterializeNow(true)

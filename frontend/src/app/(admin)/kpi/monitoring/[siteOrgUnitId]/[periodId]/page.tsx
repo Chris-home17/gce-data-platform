@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import type { Metadata } from 'next'
 import { SitePeriodDetail } from './site-period-detail'
 
@@ -9,9 +10,11 @@ export const metadata: Metadata = { title: 'KPI Submission Detail' }
 
 export default function SitePeriodDetailPage({ params }: PageProps) {
   return (
-    <SitePeriodDetail
-      siteOrgUnitId={parseInt(params.siteOrgUnitId, 10)}
-      periodId={parseInt(params.periodId, 10)}
-    />
+    <Suspense>
+      <SitePeriodDetail
+        siteOrgUnitId={parseInt(params.siteOrgUnitId, 10)}
+        periodId={parseInt(params.periodId, 10)}
+      />
+    </Suspense>
   )
 }

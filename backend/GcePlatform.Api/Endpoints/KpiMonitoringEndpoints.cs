@@ -8,8 +8,8 @@ public static class KpiMonitoringEndpoints
 {
     public static WebApplication MapKpiMonitoringEndpoints(this WebApplication app)
     {
-        // GET /kpi/monitoring?periodId=&accountId=&siteOrgUnitId=
-        app.MapGet("/kpi/monitoring", async (int? periodId, int? accountId, int? siteOrgUnitId, DbConnectionFactory db) =>
+        // GET /kpi/monitoring?periodId=&accountId=&siteOrgUnitId=&groupName=
+        app.MapGet("/kpi/monitoring", async (int? periodId, int? accountId, int? siteOrgUnitId, string? groupName, DbConnectionFactory db) =>
         {
             using var conn = db.CreateConnection();
             var items = await conn.QueryAsync<SiteCompletionDto>(@"
@@ -27,13 +27,15 @@ public static class KpiMonitoringEndpoints
                     TotalMissing,
                     CompletionPct,
                     ReminderLevel,
-                    ReminderResolved
+                    ReminderResolved,
+                    GroupName
                 FROM App.vSiteCompletionSummary
                 WHERE (@PeriodId       IS NULL OR PeriodId       = @PeriodId)
                   AND (@AccountId      IS NULL OR AccountId      = @AccountId)
                   AND (@SiteOrgUnitId  IS NULL OR SiteOrgUnitId  = @SiteOrgUnitId)
-                ORDER BY AccountCode, SiteCode",
-                new { PeriodId = periodId, AccountId = accountId, SiteOrgUnitId = siteOrgUnitId });
+                  AND (@GroupName      IS NULL OR GroupName       = @GroupName)
+                ORDER BY AccountCode, SiteCode, GroupName",
+                new { PeriodId = periodId, AccountId = accountId, SiteOrgUnitId = siteOrgUnitId, GroupName = groupName });
 
             var list = items.ToList();
             return Results.Ok(new ApiList<SiteCompletionDto>(list, list.Count));

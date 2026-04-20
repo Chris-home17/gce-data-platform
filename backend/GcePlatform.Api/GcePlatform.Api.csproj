@@ -48,6 +48,9 @@
     <!-- KpiDefinitionSnapshot: freeze KPI library metadata at submission time -->
     <EmbeddedResource Include="Migrations\Scripts\KpiDefinitionSnapshot.Up.sql" />
     <EmbeddedResource Include="Migrations\Scripts\KpiDefinitionSnapshot.Down.sql" />
+    <!-- KpiAssignmentGroups: optional named groups for KPI assignments -->
+    <EmbeddedResource Include="Migrations\Scripts\KpiAssignmentGroups.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\KpiAssignmentGroups.Down.sql" />
   </ItemGroup>
 
 </Project>

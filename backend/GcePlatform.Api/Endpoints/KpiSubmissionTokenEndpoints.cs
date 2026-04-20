@@ -25,6 +25,7 @@ public static class KpiSubmissionTokenEndpoints
             p.Add("@SiteOrgUnitId", request.SiteOrgUnitId);
             p.Add("@PeriodId", request.PeriodId);
             p.Add("@CreatedBy", callerUpn);
+            p.Add("@AssignmentGroupName", request.AssignmentGroupName);
             p.Add("@TokenId", dbType: System.Data.DbType.Guid,
                 direction: System.Data.ParameterDirection.Output);
 
@@ -79,7 +80,8 @@ public static class KpiSubmissionTokenEndpoints
                     AccountName,
                     PeriodLabel,
                     PeriodStatus,
-                    PeriodCloseDate
+                    PeriodCloseDate,
+                    AssignmentGroupName
                 FROM App.vSubmissionTokens
                 WHERE TokenId = @TokenId
                   AND RevokedAtUtc IS NULL
@@ -138,17 +140,18 @@ public static class KpiSubmissionTokenEndpoints
                 new { header.AccountCode });
 
             var ctx = new SubmissionTokenContextDto(
-                TokenId:        header.TokenId,
-                SiteCode:       header.SiteCode,
-                SiteName:       header.SiteName,
-                AccountCode:    header.AccountCode,
-                AccountName:    header.AccountName,
-                PeriodLabel:    header.PeriodLabel,
-                PeriodStatus:   header.PeriodStatus,
-                PeriodCloseDate: header.PeriodCloseDate,
-                ExpiresAtUtc:   header.ExpiresAtUtc,
-                Assignments:    assignments,
-                Branding:       BrandingHelper.Resolve(brandingRaw)
+                TokenId:             header.TokenId,
+                SiteCode:            header.SiteCode,
+                SiteName:            header.SiteName,
+                AccountCode:         header.AccountCode,
+                AccountName:         header.AccountName,
+                PeriodLabel:         header.PeriodLabel,
+                PeriodStatus:        header.PeriodStatus,
+                PeriodCloseDate:     header.PeriodCloseDate,
+                ExpiresAtUtc:        header.ExpiresAtUtc,
+                AssignmentGroupName: header.AssignmentGroupName,
+                Assignments:         assignments,
+                Branding:            BrandingHelper.Resolve(brandingRaw)
             );
 
             return Results.Ok(ctx);
@@ -205,14 +208,15 @@ public static class KpiSubmissionTokenEndpoints
     }
     private sealed class TokenContextHeader
     {
-        public Guid     TokenId       { get; init; }
-        public string   SiteCode      { get; init; } = "";
-        public string   SiteName      { get; init; } = "";
-        public string   AccountCode   { get; init; } = "";
-        public string   AccountName   { get; init; } = "";
-        public string   PeriodLabel   { get; init; } = "";
-        public string   PeriodStatus  { get; init; } = "";
-        public DateTime PeriodCloseDate { get; init; }
-        public DateTime ExpiresAtUtc  { get; init; }
+        public Guid     TokenId             { get; init; }
+        public string   SiteCode            { get; init; } = "";
+        public string   SiteName            { get; init; } = "";
+        public string   AccountCode         { get; init; } = "";
+        public string   AccountName         { get; init; } = "";
+        public string   PeriodLabel         { get; init; } = "";
+        public string   PeriodStatus        { get; init; } = "";
+        public DateTime PeriodCloseDate     { get; init; }
+        public DateTime ExpiresAtUtc        { get; init; }
+        public string?  AssignmentGroupName { get; init; }
     }
 }

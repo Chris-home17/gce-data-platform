@@ -159,6 +159,17 @@ export function AssignmentTemplatesTable({
       meta: { className: 'w-36' },
     },
     {
+      accessorKey: 'assignmentGroupName',
+      header: 'Group',
+      cell: ({ row }) => {
+        const g = row.original.assignmentGroupName
+        return g
+          ? <Badge variant="outline" className="text-xs font-normal">{g}</Badge>
+          : <span className="text-xs text-muted-foreground">—</span>
+      },
+      meta: { className: 'w-28' },
+    },
+    {
       accessorKey: 'isActive',
       header: 'Status',
       cell: ({ row }) => <StatusBadge status={row.original.isActive ? 'Active' : 'Inactive'} />,

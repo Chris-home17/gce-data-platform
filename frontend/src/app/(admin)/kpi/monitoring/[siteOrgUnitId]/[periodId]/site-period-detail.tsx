@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import {
   ArrowLeft,
@@ -186,9 +186,9 @@ function SubmissionRow({ row, periodStatus, onUnlocked }: SubmissionRowProps) {
 // Copy link button
 // ---------------------------------------------------------------------------
 
-function CopyLinkButton({ siteOrgUnitId, periodId, disabled }: { siteOrgUnitId: number; periodId: number; disabled?: boolean }) {
+function CopyLinkButton({ siteOrgUnitId, periodId, assignmentGroupName, disabled }: { siteOrgUnitId: number; periodId: number; assignmentGroupName?: string | null; disabled?: boolean }) {
   const mutation = useMutation({
-    mutationFn: () => api.kpi.submissionTokens.create({ siteOrgUnitId, periodId }),
+    mutationFn: () => api.kpi.submissionTokens.create({ siteOrgUnitId, periodId, assignmentGroupName: assignmentGroupName ?? null }),
     onSuccess: (token) => {
       const url = `${window.location.origin}/kpi/complete?token=${token.tokenId}`
       navigator.clipboard.writeText(url).then(
@@ -272,7 +272,13 @@ interface SitePeriodDetailProps {
 
 export function SitePeriodDetail({ siteOrgUnitId, periodId }: SitePeriodDetailProps) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const queryClient = useQueryClient()
+
+  // ?group=Technology → filter to that group; ?group=__nogroup__ → null group; absent → show all
+  const groupParam = searchParams.get('group')
+  const groupFilterActive = groupParam !== null
+  const groupFilterValue = groupParam === '__nogroup__' ? null : groupParam
 
   // Fetch the monitoring summary row (site + period + completion stats)
   const { data: monitoringData, isLoading: summaryLoading, refetch: refetchMonitoring } = useQuery({
@@ -321,13 +327,32 @@ export function SitePeriodDetail({ siteOrgUnitId, periodId }: SitePeriodDetailPr
     queryClient.invalidateQueries({ queryKey: ['kpi', 'monitoring'] })
   }
 
-  const summary = monitoringData?.items[0] ?? null
+  // When group filter active, pick the matching summary row; otherwise aggregate
+  const summary = useMemo(() => {
+    const all = monitoringData?.items ?? []
+    if (!groupFilterActive) return all[0] ?? null
+    return all.find((s) =>
+      groupFilterValue === null ? s.groupName === null : s.groupName === groupFilterValue
+    ) ?? all[0] ?? null
+  }, [monitoringData, groupFilterActive, groupFilterValue])
+
   const periodStatus = period?.status ?? ''
 
   const isLoading = summaryLoading || detailLoading
 
+  // Filter submission details by group when param is set
+  const filteredItems = useMemo(() => {
+    const all = data?.items ?? []
+    if (!groupFilterActive) return all
+    return all.filter((i) =>
+      groupFilterValue === null
+        ? i.assignmentGroupName === null
+        : i.assignmentGroupName === groupFilterValue
+    )
+  }, [data, groupFilterActive, groupFilterValue])
+
   // Group by category
-  const grouped = (data?.items ?? []).reduce<Record<string, SiteSubmissionDetail[]>>((acc, item) => {
+  const grouped = filteredItems.reduce<Record<string, SiteSubmissionDetail[]>>((acc, item) => {
     const cat = item.category ?? 'General'
     if (!acc[cat]) acc[cat] = []
     acc[cat].push(item)
@@ -387,6 +412,11 @@ export function SitePeriodDetail({ siteOrgUnitId, periodId }: SitePeriodDetailPr
                 <Calendar className="h-3.5 w-3.5" />
                 {summary.periodLabel}
               </span>
+              {groupFilterActive && (
+                <Badge variant="outline" className="text-xs gap-1.5 border-blue-300 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400">
+                  {groupFilterValue ?? '(No group)'}
+                </Badge>
+              )}
               {period?.daysRemaining !== null && period?.status === 'Open' && (
                 <span className={cn(
                   'flex items-center gap-1.5',
@@ -398,7 +428,11 @@ export function SitePeriodDetail({ siteOrgUnitId, periodId }: SitePeriodDetailPr
               )}
             </div>
           </div>
-          <CopyLinkButton siteOrgUnitId={siteOrgUnitId} periodId={periodId} />
+          <CopyLinkButton
+            siteOrgUnitId={siteOrgUnitId}
+            periodId={periodId}
+            assignmentGroupName={groupFilterActive ? groupFilterValue : undefined}
+          />
         </div>
       ) : null}
 
@@ -494,7 +528,7 @@ export function SitePeriodDetail({ siteOrgUnitId, periodId }: SitePeriodDetailPr
       </div>
 
       {/* Unlock hint for Open periods */}
-      {periodStatus === 'Open' && !detailLoading && (data?.items ?? []).some((i) => i.lockState === 'Locked') && (
+      {periodStatus === 'Open' && !detailLoading && filteredItems.some((i) => i.lockState === 'Locked') && (
         <p className="text-xs text-muted-foreground text-center">
           <LockOpen className="inline h-3 w-3 mr-1" />
           Click Unlock on any manually-locked response to allow the submitter to update it.

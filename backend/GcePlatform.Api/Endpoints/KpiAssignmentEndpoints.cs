@@ -10,6 +10,20 @@ public static class KpiAssignmentEndpoints
 {
     public static WebApplication MapKpiAssignmentEndpoints(this WebApplication app)
     {
+        app.MapGet("/kpi/assignment-groups", async (int? accountId, DbConnectionFactory db) =>
+        {
+            using var conn = db.CreateConnection();
+            var items = await conn.QueryAsync<KpiAssignmentGroupDto>(@"
+                SELECT AccountId, AccountCode, AccountName, GroupName
+                FROM App.vAssignmentGroups
+                WHERE (@AccountId IS NULL OR AccountId = @AccountId)
+                ORDER BY AccountCode, GroupName",
+                new { AccountId = accountId });
+
+            var list = items.ToList();
+            return Results.Ok(new ApiList<KpiAssignmentGroupDto>(list, list.Count));
+        }).RequireAuthorization();
+
         app.MapGet("/kpi/assignment-templates", async (int? accountId, DbConnectionFactory db) =>
         {
             using var conn = db.CreateConnection();
@@ -43,7 +57,8 @@ public static class KpiAssignmentEndpoints
                     IsActive,
                     GeneratedAssignmentCount,
                     KpiPackageId,
-                    KpiPackageName
+                    KpiPackageName,
+                    AssignmentGroupName
                 FROM App.vKpiAssignmentTemplates
                 WHERE (@AccountId IS NULL OR AccountId = @AccountId)
                 ORDER BY ScheduleName, AccountCode, KpiCode",
@@ -75,6 +90,7 @@ public static class KpiAssignmentEndpoints
             p.Add("@SubmitterGuidance", request.SubmitterGuidance);
             p.Add("@CustomKpiName", request.CustomKpiName);
             p.Add("@CustomKpiDescription", request.CustomKpiDescription);
+            p.Add("@AssignmentGroupName", request.AssignmentGroupName);
             p.Add("@AssignmentTemplateID", dbType: System.Data.DbType.Int32,
                   direction: System.Data.ParameterDirection.Output);
 
@@ -120,7 +136,8 @@ public static class KpiAssignmentEndpoints
                     IsActive,
                     GeneratedAssignmentCount,
                     KpiPackageId,
-                    KpiPackageName
+                    KpiPackageName,
+                    AssignmentGroupName
                 FROM App.vKpiAssignmentTemplates
                 WHERE AssignmentTemplateId = @Id",
                 new { Id = newId });
@@ -179,6 +196,7 @@ public static class KpiAssignmentEndpoints
                         p.Add("@CustomKpiName",        item.CustomKpiName);
                         p.Add("@CustomKpiDescription", item.CustomKpiDescription);
                         p.Add("@KpiPackageId",         item.KpiPackageId);
+                        p.Add("@AssignmentGroupName",  request.AssignmentGroupName);
                         p.Add("@AssignmentTemplateID", dbType: System.Data.DbType.Int32,
                               direction: System.Data.ParameterDirection.Output);
 
@@ -280,7 +298,8 @@ public static class KpiAssignmentEndpoints
                     IsActive,
                     GeneratedAssignmentCount,
                     KpiPackageId,
-                    KpiPackageName
+                    KpiPackageName,
+                    AssignmentGroupName
                 FROM App.vKpiAssignmentTemplates
                 WHERE AssignmentTemplateId = @Id",
                 new { Id = id });
@@ -374,7 +393,8 @@ public static class KpiAssignmentEndpoints
                     ThresholdAmber,
                     ThresholdRed,
                     EffectiveThresholdDirection,
-                    IsActive
+                    IsActive,
+                    AssignmentGroupName
                 FROM App.vKpiAssignments
                 WHERE (@PeriodId IS NULL OR PeriodId = @PeriodId)
                   AND (@AccountId IS NULL OR AccountId = @AccountId)
@@ -413,7 +433,8 @@ public static class KpiAssignmentEndpoints
                     ThresholdAmber,
                     ThresholdRed,
                     EffectiveThresholdDirection,
-                    IsActive
+                    IsActive,
+                    AssignmentGroupName
                 FROM App.vKpiAssignments
                 WHERE AssignmentId = @Id",
                 new { Id = id });
@@ -454,7 +475,8 @@ public static class KpiAssignmentEndpoints
                     ThresholdAmber,
                     ThresholdRed,
                     EffectiveThresholdDirection,
-                    IsActive
+                    IsActive,
+                    AssignmentGroupName
                 FROM App.vKpiAssignments
                 WHERE AssignmentId = @Id",
                 new { Id = id });
@@ -498,6 +520,7 @@ public static class KpiAssignmentEndpoints
             p.Add("@ThresholdRed", request.ThresholdRed);
             p.Add("@ThresholdDirection", request.ThresholdDirection);
             p.Add("@SubmitterGuidance", request.SubmitterGuidance);
+            p.Add("@AssignmentGroupName", request.AssignmentGroupName);
             p.Add("@AssignmentId", dbType: System.Data.DbType.Int32,
                   direction: System.Data.ParameterDirection.Output);
 
@@ -510,7 +533,7 @@ public static class KpiAssignmentEndpoints
                 SELECT AssignmentId, ExternalId, KpiCode, KpiName, Category, AccountCode, AccountName,
                        SiteCode, SiteName, CAST(IsAccountWide AS bit) AS IsAccountWide, DataType, PeriodLabel, IsRequired,
                        TargetValue, ThresholdGreen, ThresholdAmber, ThresholdRed,
-                       EffectiveThresholdDirection, IsActive
+                       EffectiveThresholdDirection, IsActive, AssignmentGroupName
                 FROM App.vKpiAssignments
                 WHERE AssignmentId = @Id",
                 new { Id = newId });

@@ -1066,6 +1066,35 @@ EXEC App.usp_UpsertKpiAssignmentTemplate
     @SubmitterGuidance = N'Percentage of required certifications that remain current and valid.',
     @AssignmentTemplateID = @KpiAssignmentTemplateId OUTPUT;
 
+-- Group-scoped templates: DHL site MX-01 has both "Technology" and "Operational" KPI owners.
+-- Two templates for the same KPI+site+schedule are allowed because they differ by AssignmentGroupName.
+-- Technology group owns on-time delivery and quality metrics.
+EXEC App.usp_UpsertKpiAssignmentTemplate
+    @KPICode = 'Q-001',
+    @PeriodScheduleID = @MonthlyScheduleId,
+    @AccountCode = 'DHL',
+    @OrgUnitCode = 'MX-01',
+    @OrgUnitType = 'Site',
+    @IsRequired = 1,
+    @TargetValue = 99.0,
+    @ThresholdGreen = 98.0,
+    @ThresholdAmber = 95.0,
+    @ThresholdDirection = 'Higher',
+    @AssignmentGroupName = N'Technology',
+    @AssignmentTemplateID = @KpiAssignmentTemplateId OUTPUT;
+
+-- Operational group owns safety metrics for the same site.
+EXEC App.usp_UpsertKpiAssignmentTemplate
+    @KPICode = 'S-002',
+    @PeriodScheduleID = @MonthlyScheduleId,
+    @AccountCode = 'DHL',
+    @OrgUnitCode = 'MX-01',
+    @OrgUnitType = 'Site',
+    @IsRequired = 1,
+    @ThresholdDirection = 'Higher',
+    @AssignmentGroupName = N'Operational',
+    @AssignmentTemplateID = @KpiAssignmentTemplateId OUTPUT;
+
 -- Note: usp_MaterializeKpiAssignmentTemplates is called automatically inside
 -- usp_OpenPeriod for each schedule. No standalone call needed.
 

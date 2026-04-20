@@ -149,7 +149,8 @@ public static class KpiSubmissionEndpoints
                     SubmittedByUpn,
                     SubmittedAt,
                     IsSubmitted,
-                    RagStatus
+                    RagStatus,
+                    AssignmentGroupName
                 FROM App.vSiteSubmissionDetails
                 WHERE SiteOrgUnitId = @SiteOrgUnitId
                   AND PeriodId = @PeriodId

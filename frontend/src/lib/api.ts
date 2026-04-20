@@ -57,6 +57,7 @@ import type {
   Grant,
   GrantAccessInput,
   KpiAssignment,
+  KpiAssignmentGroup,
   KpiAssignmentTemplate,
   KpiDefinition,
   KpiPeriod,
@@ -468,6 +469,12 @@ export const api = {
       },
     },
     assignments: {
+      groups(params?: { accountId?: number }): Promise<ApiList<KpiAssignmentGroup>> {
+        const qs = new URLSearchParams()
+        if (params?.accountId) qs.set('accountId', String(params.accountId))
+        const query = qs.toString()
+        return apiFetch(`/kpi/assignment-groups${query ? `?${query}` : ''}`)
+      },
       templates: {
         list(params?: { accountId?: number }): Promise<ApiList<KpiAssignmentTemplate>> {
           const qs = new URLSearchParams()
@@ -504,11 +511,12 @@ export const api = {
       },
     },
     monitoring: {
-      list(params?: { periodId?: number; accountId?: number; siteOrgUnitId?: number }): Promise<ApiList<SiteCompletion>> {
+      list(params?: { periodId?: number; accountId?: number; siteOrgUnitId?: number; groupName?: string | null }): Promise<ApiList<SiteCompletion>> {
         const qs = new URLSearchParams()
         if (params?.periodId) qs.set('periodId', String(params.periodId))
         if (params?.accountId) qs.set('accountId', String(params.accountId))
         if (params?.siteOrgUnitId) qs.set('siteOrgUnitId', String(params.siteOrgUnitId))
+        if (params?.groupName != null) qs.set('groupName', params.groupName)
         const query = qs.toString()
         return apiFetch(`/kpi/monitoring${query ? `?${query}` : ''}`)
       },

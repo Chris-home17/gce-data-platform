@@ -393,6 +393,7 @@ export interface BatchCreateKpiAssignmentTemplatesInput {
   orgUnitType: string
   materializeNow: boolean
   items: BatchKpiAssignmentTemplateItem[]
+  assignmentGroupName?: string | null
 }
 
 export interface BatchCreateKpiAssignmentTemplatesResponse {
@@ -627,6 +628,7 @@ export interface KpiAssignment {
   thresholdRed: number | null
   effectiveThresholdDirection: string
   isActive: boolean
+  assignmentGroupName: string | null
 }
 
 export interface KpiAssignmentTemplate {
@@ -660,6 +662,7 @@ export interface KpiAssignmentTemplate {
   /** null for individually assigned templates */
   kpiPackageId: number | null
   kpiPackageName: string | null
+  assignmentGroupName: string | null
 }
 
 /** From App.vSiteCompletionSummary (screen K-04) */
@@ -678,6 +681,15 @@ export interface SiteCompletion {
   completionPct: number
   reminderLevel: number | null
   reminderResolved: boolean
+  /** null = ungrouped assignments */
+  groupName: string | null
+}
+
+export interface KpiAssignmentGroup {
+  accountId: number
+  accountCode: string
+  accountName: string
+  groupName: string
 }
 
 /** Admin drill-down: assignment + submission state for a site+period */
@@ -705,6 +717,7 @@ export interface SiteSubmissionDetail {
   submittedAt: string | null
   isSubmitted: boolean
   ragStatus: 'Green' | 'Amber' | 'Red' | null
+  assignmentGroupName: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -887,6 +900,7 @@ export interface CreateKpiAssignmentInput {
   thresholdRed?: number | null
   thresholdDirection?: 'Higher' | 'Lower' | null
   submitterGuidance?: string
+  assignmentGroupName?: string | null
 }
 
 export interface CreateKpiAssignmentTemplateInput {
@@ -905,6 +919,7 @@ export interface CreateKpiAssignmentTemplateInput {
   customKpiName?: string | null
   customKpiDescription?: string | null
   materializeNow: boolean
+  assignmentGroupName?: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -982,6 +997,7 @@ export interface SubmissionToken {
 export interface CreateSubmissionTokenInput {
   siteOrgUnitId: number
   periodId: number
+  assignmentGroupName?: string | null
 }
 
 // ---------------------------------------------------------------------------

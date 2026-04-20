@@ -334,7 +334,8 @@ public record KpiAssignmentDto(
     decimal? ThresholdAmber,
     decimal? ThresholdRed,
     string   EffectiveThresholdDirection,
-    bool     IsActive
+    bool     IsActive,
+    string?  AssignmentGroupName
 );
 
 // KPI Effective Assignment  (App.vEffectiveKpiAssignments — submission-facing)
@@ -399,7 +400,8 @@ public record KpiAssignmentTemplateDto(
     int       GeneratedAssignmentCount,
     // Package tracking — null for individually assigned templates
     int?      KpiPackageId,
-    string?   KpiPackageName
+    string?   KpiPackageName,
+    string?   AssignmentGroupName
 );
 
 public record CreateKpiAssignmentTemplateRequest(
@@ -417,7 +419,8 @@ public record CreateKpiAssignmentTemplateRequest(
     string?  SubmitterGuidance,
     string?  CustomKpiName,
     string?  CustomKpiDescription,
-    bool     MaterializeNow
+    bool     MaterializeNow,
+    string?  AssignmentGroupName
 );
 
 public record BatchKpiAssignmentTemplateItem(
@@ -443,7 +446,8 @@ public record BatchCreateKpiAssignmentTemplatesRequest(
     IEnumerable<string>?   OrgUnitCodes,
     string                 OrgUnitType,
     bool                   MaterializeNow,
-    IEnumerable<BatchKpiAssignmentTemplateItem> Items
+    IEnumerable<BatchKpiAssignmentTemplateItem> Items,
+    string?                AssignmentGroupName
 );
 
 public record BatchCreateKpiAssignmentTemplatesResponse(
@@ -466,7 +470,8 @@ public record CreateKpiAssignmentRequest(
     decimal? ThresholdAmber,
     decimal? ThresholdRed,
     string?  ThresholdDirection,
-    string?  SubmitterGuidance
+    string?  SubmitterGuidance,
+    string?  AssignmentGroupName
 );
 
 // ---------------------------------------------------------------------------
@@ -487,7 +492,8 @@ public record SiteCompletionDto(
     int      TotalMissing,
     decimal  CompletionPct,
     byte?    ReminderLevel,
-    bool     ReminderResolved
+    bool     ReminderResolved,
+    string?  GroupName
 );
 
 // ---------------------------------------------------------------------------
@@ -783,7 +789,8 @@ public record SiteSubmissionDetailDto(
     string?   SubmittedByUpn,
     DateTime? SubmittedAt,
     bool      IsSubmitted,
-    string?   RagStatus
+    string?   RagStatus,
+    string?   AssignmentGroupName
 );
 
 // ---------------------------------------------------------------------------
@@ -791,8 +798,16 @@ public record SiteSubmissionDetailDto(
 // ---------------------------------------------------------------------------
 
 public record CreateSubmissionTokenRequest(
-    int  SiteOrgUnitId,
-    int  PeriodId
+    int     SiteOrgUnitId,
+    int     PeriodId,
+    string? AssignmentGroupName
+);
+
+public record KpiAssignmentGroupDto(
+    int    AccountId,
+    string AccountCode,
+    string AccountName,
+    string GroupName
 );
 
 public record SubmissionTokenDto(
@@ -849,6 +864,7 @@ public record SubmissionTokenContextDto(
     string                   PeriodStatus,
     DateTime                 PeriodCloseDate,
     DateTime                 ExpiresAtUtc,
+    string?                  AssignmentGroupName,
     IEnumerable<AssignmentWithSubmissionDto> Assignments,
     AccountBrandingDto?      Branding
 );

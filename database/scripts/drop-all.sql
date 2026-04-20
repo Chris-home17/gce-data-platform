@@ -66,6 +66,9 @@ GO
 IF OBJECT_ID('App.vSiteSubmissionDetails', 'V') IS NOT NULL
     DROP VIEW App.vSiteSubmissionDetails;
 GO
+IF OBJECT_ID('App.vAssignmentGroups', 'V') IS NOT NULL
+    DROP VIEW App.vAssignmentGroups;
+GO
 IF OBJECT_ID('App.vSubmissionTokenAssignments', 'V') IS NOT NULL
     DROP VIEW App.vSubmissionTokenAssignments;
 GO

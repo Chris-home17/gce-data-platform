@@ -18,26 +18,32 @@ import { AssignKpisWizard } from './assign-kpis-wizard'
 
 const ALL_FILTER = 'all'
 const ACCOUNT_WIDE_FILTER = '__account_wide__'
+const NO_GROUP_FILTER = '__nogroup__'
 
-type FilterableAssignmentScope = Pick<KpiAssignment, 'accountCode' | 'siteCode' | 'siteName' | 'isAccountWide'>
-type FilterableTemplateScope = Pick<KpiAssignmentTemplate, 'accountCode' | 'siteCode' | 'siteName' | 'isAccountWide'>
+type FilterableAssignmentScope = Pick<KpiAssignment, 'accountCode' | 'siteCode' | 'siteName' | 'isAccountWide' | 'assignmentGroupName'>
+type FilterableTemplateScope = Pick<KpiAssignmentTemplate, 'accountCode' | 'siteCode' | 'siteName' | 'isAccountWide' | 'assignmentGroupName'>
 
 function matchesSharedFilters<T extends FilterableAssignmentScope | FilterableTemplateScope>(
   item: T,
   accountFilter: string,
   scopeFilter: string,
+  groupFilter: string,
 ) {
   const matchesAccount = accountFilter === ALL_FILTER || item.accountCode === accountFilter
   const matchesScope = scopeFilter === ALL_FILTER
     || (scopeFilter === ACCOUNT_WIDE_FILTER && item.isAccountWide)
     || item.siteCode === scopeFilter
+  const matchesGroup = groupFilter === ALL_FILTER
+    || (groupFilter === NO_GROUP_FILTER && item.assignmentGroupName === null)
+    || item.assignmentGroupName === groupFilter
 
-  return matchesAccount && matchesScope
+  return matchesAccount && matchesScope && matchesGroup
 }
 
 export function KpiAssignmentsPageClient() {
   const [accountFilter, setAccountFilter] = useState<string>(ALL_FILTER)
   const [scopeFilter, setScopeFilter] = useState<string>(ALL_FILTER)
+  const [groupFilter, setGroupFilter] = useState<string>(ALL_FILTER)
 
   const accountsQuery = useQuery({
     queryKey: ['accounts'],
@@ -58,6 +64,24 @@ export function KpiAssignmentsPageClient() {
     queryKey: ['kpi', 'assignments'],
     queryFn: () => api.kpi.assignments.list(),
   })
+
+  // Distinct group names across templates + assignments for the current account filter
+  const availableGroups = useMemo(() => {
+    const items = [
+      ...(templatesQuery.data?.items ?? []),
+      ...(assignmentsQuery.data?.items ?? []),
+    ].filter((item) => accountFilter === ALL_FILTER || item.accountCode === accountFilter)
+
+    const names = new Set<string | null>()
+    items.forEach((item) => names.add(item.assignmentGroupName))
+    // Only show the dropdown when there's at least one named group
+    if (!Array.from(names).some((n) => n !== null)) return []
+    return Array.from(names).sort((a, b) => {
+      if (a === null) return 1
+      if (b === null) return -1
+      return a.localeCompare(b)
+    })
+  }, [accountFilter, templatesQuery.data?.items, assignmentsQuery.data?.items])
 
   const availableScopes = useMemo(() => {
     const items = [
@@ -92,13 +116,13 @@ export function KpiAssignmentsPageClient() {
   }, [availableScopes, scopeFilter])
 
   const filteredTemplates = useMemo(
-    () => (templatesQuery.data?.items ?? []).filter((item) => matchesSharedFilters(item, accountFilter, scopeFilter)),
-    [accountFilter, scopeFilter, templatesQuery.data?.items],
+    () => (templatesQuery.data?.items ?? []).filter((item) => matchesSharedFilters(item, accountFilter, scopeFilter, groupFilter)),
+    [accountFilter, scopeFilter, groupFilter, templatesQuery.data?.items],
   )
 
   const filteredAssignments = useMemo(
-    () => (assignmentsQuery.data?.items ?? []).filter((item) => matchesSharedFilters(item, accountFilter, scopeFilter)),
-    [accountFilter, assignmentsQuery.data?.items, scopeFilter],
+    () => (assignmentsQuery.data?.items ?? []).filter((item) => matchesSharedFilters(item, accountFilter, scopeFilter, groupFilter)),
+    [accountFilter, assignmentsQuery.data?.items, scopeFilter, groupFilter],
   )
 
   return (
@@ -118,6 +142,7 @@ export function KpiAssignmentsPageClient() {
               onValueChange={(value) => {
                 setAccountFilter(value)
                 setScopeFilter(ALL_FILTER)
+                setGroupFilter(ALL_FILTER)
               }}
             >
               <SelectTrigger className="h-8 w-44 text-sm">
@@ -153,6 +178,33 @@ export function KpiAssignmentsPageClient() {
               </SelectContent>
             </Select>
           </div>
+
+          {availableGroups.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Group:</span>
+              <Select value={groupFilter} onValueChange={setGroupFilter}>
+                <SelectTrigger className="h-8 w-44 text-sm">
+                  <SelectValue>
+                    {groupFilter === ALL_FILTER
+                      ? 'All groups'
+                      : groupFilter === NO_GROUP_FILTER
+                        ? '(No group)'
+                        : groupFilter}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_FILTER}>All groups</SelectItem>
+                  {availableGroups.map((g) =>
+                    g === null ? (
+                      <SelectItem key={NO_GROUP_FILTER} value={NO_GROUP_FILTER}>(No group)</SelectItem>
+                    ) : (
+                      <SelectItem key={g} value={g}>{g}</SelectItem>
+                    )
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
       </section>
 

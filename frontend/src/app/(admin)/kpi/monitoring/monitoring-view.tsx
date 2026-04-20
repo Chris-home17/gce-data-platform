@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -132,13 +133,17 @@ function SiteActions({ row }: { row: SiteCompletion }) {
   const mutation = useMutation({
     mutationFn: () =>
       api.kpi.submissionTokens.create({
-        siteOrgUnitId: row.siteOrgUnitId,
-        periodId:      row.periodId,
+        siteOrgUnitId:       row.siteOrgUnitId,
+        periodId:            row.periodId,
+        assignmentGroupName: row.groupName ?? null,
       }),
     onSuccess: (token) => {
       const url = `${window.location.origin}/kpi/complete?token=${token.tokenId}`
+      const desc = row.groupName
+        ? `${row.siteName} · ${row.periodLabel} · ${row.groupName}`
+        : `${row.siteName} · ${row.periodLabel}`
       navigator.clipboard.writeText(url).then(
-        () => toast.success('Link copied to clipboard', { description: `${row.siteName} · ${row.periodLabel}` }),
+        () => toast.success('Link copied to clipboard', { description: desc }),
         () => toast.error('Could not copy', { description: url }),
       )
     },
@@ -196,6 +201,17 @@ const monitoringColumns: ColumnDef<SiteCompletion, unknown>[] = [
         <p className="text-xs text-muted-foreground">{row.original.siteName}</p>
       </div>
     ),
+  },
+  {
+    accessorKey: 'groupName',
+    header: 'Group',
+    cell: ({ row }) => {
+      const g = row.original.groupName
+      return g
+        ? <Badge variant="outline" className="text-xs font-normal">{g}</Badge>
+        : <span className="text-xs text-muted-foreground">(No group)</span>
+    },
+    meta: { className: 'w-32' },
   },
   {
     accessorKey: 'totalRequired',
@@ -263,6 +279,7 @@ export function MonitoringView() {
   const [selectedPeriodLabel, setSelectedPeriodLabel] = useState<string>('')
   const [selectedScheduleId, setSelectedScheduleId] = useState<string>('all')
   const [selectedAccountCode, setSelectedAccountCode] = useState<string>('all')
+  const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('all')
 
   const { data: periodsData } = useQuery({
     queryKey: ['kpi', 'periods'],
@@ -384,16 +401,35 @@ export function MonitoringView() {
     }
   }, [selectedPeriod, refetch])
 
-  // Aggregate stats across all sites in the selected period
+  // Distinct group names found in the monitoring data (used for filter dropdown)
+  const groupOptions = useMemo(() => {
+    const all = data?.items ?? []
+    const names = new Set<string | null>()
+    all.forEach((i) => names.add(i.groupName))
+    return Array.from(names).sort((a, b) => {
+      if (a === null) return 1   // "(No group)" last
+      if (b === null) return -1
+      return a.localeCompare(b)
+    })
+  }, [data])
+
+  const filteredItems = useMemo(() => {
+    const all = data?.items ?? []
+    if (selectedGroupFilter === 'all') return all
+    if (selectedGroupFilter === '__nogroup__') return all.filter((i) => i.groupName === null)
+    return all.filter((i) => i.groupName === selectedGroupFilter)
+  }, [data, selectedGroupFilter])
+
+  // Aggregate stats across filtered items
   const stats = useMemo(() => {
-    const items = data?.items ?? []
+    const items = filteredItems
     const totalRequired = items.reduce((s, i) => s + i.totalRequired, 0)
     const totalSubmitted = items.reduce((s, i) => s + i.totalSubmitted, 0)
     const totalLocked = items.reduce((s, i) => s + i.totalLocked, 0)
     const totalMissing = items.reduce((s, i) => s + i.totalMissing, 0)
     const overallPct = totalRequired > 0 ? (totalSubmitted / totalRequired) * 100 : 0
     return { totalRequired, totalSubmitted, totalLocked, totalMissing, overallPct, siteCount: items.length }
-  }, [data])
+  }, [filteredItems])
 
   if (isError) {
     return (
@@ -467,6 +503,33 @@ export function MonitoringView() {
           </Select>
         </div>
 
+        {groupOptions.length > 1 && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Group:</span>
+            <Select value={selectedGroupFilter} onValueChange={setSelectedGroupFilter}>
+              <SelectTrigger className="h-8 w-40 text-sm">
+                <SelectValue placeholder="All groups">
+                  {selectedGroupFilter === 'all'
+                    ? 'All groups'
+                    : selectedGroupFilter === '__nogroup__'
+                      ? '(No group)'
+                      : selectedGroupFilter}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All groups</SelectItem>
+                {groupOptions.map((g) =>
+                  g === null ? (
+                    <SelectItem key="__nogroup__" value="__nogroup__">(No group)</SelectItem>
+                  ) : (
+                    <SelectItem key={g} value={g}>{g}</SelectItem>
+                  )
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
         {selectedPeriod?.status === 'Open' && selectedPeriod.daysRemaining !== null && (
           <div className="ml-auto rounded-md border bg-muted/40 px-3 py-1.5 text-sm">
             <span className="text-muted-foreground">Window</span>{' '}
@@ -516,11 +579,16 @@ export function MonitoringView() {
       {/* Site table */}
       <DataTable
         columns={monitoringColumns}
-        data={data?.items ?? []}
+        data={filteredItems}
         isLoading={isLoading || !selectedPeriod}
         pageSize={25}
         skeletonRowCount={10}
-        onRowClick={(row) => router.push(`/kpi/monitoring/${row.siteOrgUnitId}/${row.periodId}`)}
+        onRowClick={(row) => {
+          const groupParam = row.groupName
+            ? `?group=${encodeURIComponent(row.groupName)}`
+            : '?group=__nogroup__'
+          router.push(`/kpi/monitoring/${row.siteOrgUnitId}/${row.periodId}${groupParam}`)
+        }}
       />
     </div>
   )

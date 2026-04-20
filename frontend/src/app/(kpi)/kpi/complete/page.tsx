@@ -11,6 +11,7 @@ import {
   Clock,
   Building2,
   Calendar,
+  Layers,
   Send,
   TrendingUp,
   TrendingDown,
@@ -741,6 +742,16 @@ function KpiCompleteContent() {
                 <span className="inline-flex items-center gap-1 text-xs" style={branded ? metaStyle : { color: '#9CA3AF' }}>
                   <Clock className="w-3 h-3" /> Until {formatDate(ctx.periodCloseDate)}
                 </span>
+                {ctx.assignmentGroupName && (
+                  <span
+                    className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full"
+                    style={branded
+                      ? { background: `${computedTextOnPrimary}22`, color: computedTextOnPrimary }
+                      : { background: '#EFF6FF', color: '#1D4ED8' }}
+                  >
+                    <Layers className="w-3 h-3" /> {ctx.assignmentGroupName}
+                  </span>
+                )}
               </div>
             </div>
 
