@@ -976,6 +976,7 @@ export interface SubmissionTokenContext {
   periodCloseDate: string
   expiresAtUtc: string
   assignments: AssignmentWithSubmission[]
+  assignmentGroupName?: string | null
   branding?: AccountBranding | null
 }
 
