@@ -8,7 +8,10 @@ description: >
   adding status badges, buttons, cards, dialogs, sheets (drawers), tables, empty states,
   loading states, filter selects, or any Tailwind class changes under `frontend/src/`.
   Provides the canonical token set, component specs, and a structured review checklist
-  grounded in this project's shadcn/ui + Next.js App Router stack.
+  grounded in this project's shadcn/ui + Next.js App Router stack. Covers the shared
+  `StatCard`, `ErrorState`, `OrgUnitTypeBadge`, `PageHeader`, `DataTable`, `StatusBadge`,
+  `RowActions`, `ConfirmDialog`, and `PermissionGate` primitives — reach for them before
+  hand-rolling anything.
 ---
 
 # Design System Guardian — GCE Data Platform
@@ -66,6 +69,62 @@ inline the palette at the callsite.
 For non-status badges (counts, categories, tag pills), use the shadcn `<Badge>` with its
 `variant` prop (`default` / `secondary` / `destructive` / `outline`). Never inline
 `rounded-full border px-2.5 py-0.5 text-xs font-semibold` markup.
+
+### Org-unit type chips (LOCKED — use `<OrgUnitTypeBadge>`)
+
+Any chip that labels an org-unit or shared-geo type (`Region`, `SubRegion`, `Cluster`,
+`Country`, `Area`, `Branch`, `Site`) goes through
+`@/components/shared/org-unit-type-badge`. The component carries dark-mode-safe Tailwind
+palette classes; hand-rolling `bg-blue-100 text-blue-700` inline will not invert in dark
+mode and was the cause of a triplicated `TYPE_COLOURS` map that we deleted in Apr 2026.
+If you need a new type, extend `TYPE_CLASSES` inside the shared component.
+
+## Stat cards (LOCKED — use `<StatCard>`)
+
+`@/components/shared/stat-card` is the ONLY way to render a stat-strip card. Signature:
+
+```tsx
+<StatCard
+  title="Users"
+  value={count}
+  subtitle={`${total} total`}   // optional
+  icon={Users}                   // lucide icon
+  iconColor="bg-info-muted text-info-muted-foreground"  // semantic chip tokens
+  loading={isLoading}            // optional; renders a skeleton
+  onClick={() => router.push(...)} // optional; makes the card clickable
+/>
+```
+
+Rules:
+- `iconColor` is always a `bg-*-muted text-*-muted-foreground` pair from the semantic
+  token set — never a raw `text-success` / `text-danger` string (those don't colour the
+  icon chip; they were the old API).
+- Status-driven colour on a stat card uses a ternary on `iconColor` (see
+  `kpi/monitoring/monitoring-view.tsx` "Overall Completion"), not a separate value-color
+  prop.
+- `<Card>` / `<CardContent>` / `<CardHeader>` / `<CardTitle>` from `@/components/ui/card`
+  must NOT be used to hand-roll a stat card. If the page already imports the `Card`
+  family solely for stat layout, the import itself is a remnant to drop.
+
+## Error states (LOCKED — use `<ErrorState>`)
+
+`@/components/shared/error-state` is the canonical error block for `isError` from
+TanStack Query:
+
+```tsx
+if (isError) {
+  return <ErrorState title="Failed to load users" error={error} />
+}
+```
+
+- `title` is required (descriptive, e.g. "Failed to load roles"), `error` is optional
+  (Error instance); the component prints the message or an "An unexpected error
+  occurred." fallback.
+- Never inline `<div className="rounded-md border border-destructive/40
+  bg-destructive/5 p-6 text-center">` again — that was the old pattern, consolidated in
+  Apr 2026.
+- Exception: the `AdminShell` `AccessDenied` card uses `border-destructive/30` (a
+  slightly different variant); don't refactor that into `<ErrorState>`.
 
 ## Button Spec
 
@@ -134,6 +193,14 @@ composites in page files — extend `<RowActions>` if more actions are needed.
 
 Use `<DataTable onRowClick>` and `useRouter().push(...)` (see `users-table.tsx`). Do not add a
 separate "View" button column — the whole row is the affordance.
+
+Rows with an `onRowClick` are automatically keyboard-accessible: `<DataTable>` applies
+`role="button"`, `tabIndex={0}`, an Enter/Space `onKeyDown` handler, and a
+`focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset` focus state.
+**Do NOT** set `onClick` on a `<TableRow>` yourself — wire `onRowClick` on the
+`DataTable` so the keyboard behaviour comes along for free. When a cell contains a
+clickable element (buttons, dropdown triggers), that element MUST call
+`e.stopPropagation()` on click to avoid double-firing the row navigation.
 
 ### 3. Destructive confirmation (delete, reset, revoke)
 
@@ -240,8 +307,9 @@ applies `mx-auto max-w-7xl space-y-6 p-6`. This means:
   heading.
 - Cards use `<Card>` (`rounded-xl border bg-card shadow`) with `<CardHeader>`, `<CardContent>`,
   `<CardFooter>` sub-components
-- Stat cards (dashboard / monitoring) use `rounded-lg border bg-card p-4 shadow-sm` — see
-  `kpi/monitoring/monitoring-view.tsx` `StatCard`
+- Stat cards use `<StatCard>` from `@/components/shared/stat-card` (see the "Stat cards"
+  section above) — never re-create the Card + CardHeader + CardContent + icon chip
+  composite inline
 - Tables use `<DataTable>` from `src/components/shared/data-table.tsx` — it owns skeleton
   loading, pagination, and empty state. Pass `ColumnDef[]` with `meta.className` /
   `meta.headerClassName` for custom cell alignment
@@ -328,9 +396,12 @@ replace a `slate-*` / `white` / `black` class with the semantic token.
 
 ### Data fetching & state (related to UI)
 - [ ] Loading uses `<Skeleton>` / `<DataTable isLoading>` — no spinner-in-a-box placeholders on tables
-- [ ] Error states match the `rounded-md border border-destructive/40 bg-destructive/5 p-6 text-center` pattern in `users-table.tsx` / `definitions-table.tsx`
+- [ ] Error states use `<ErrorState title="..." error={error} />` — no inline `rounded-md border border-destructive/40 bg-destructive/5 p-6 text-center` div
+- [ ] Stat strips use `<StatCard>` — no inline `<Card><CardHeader><CardTitle>...` composites for stat layouts
+- [ ] Org-unit / shared-geo type chips use `<OrgUnitTypeBadge>` — no inline `bg-blue-100` palette literals
 - [ ] Empty tables show "No results found." via `<DataTable>` default — don't re-implement
 - [ ] Success / failure feedback uses `toast` from `sonner` (see `monitoring-view.tsx`), not `alert()`
+- [ ] Tables with an `onRowClick` use the `DataTable` prop (not a manual `onClick` on `<TableRow>`); interactive child cells call `e.stopPropagation()`
 
 ## Key File Locations
 
@@ -350,5 +421,10 @@ replace a `slate-*` / `white` / `black` class with the semantic token.
 | `<DataTable>` | `frontend/src/components/shared/data-table.tsx` |
 | `<RowActions>` | `frontend/src/components/shared/row-actions.tsx` |
 | `<ConfirmDialog>` | `frontend/src/components/shared/confirm-dialog.tsx` |
+| `<StatCard>` | `frontend/src/components/shared/stat-card.tsx` |
+| `<ErrorState>` | `frontend/src/components/shared/error-state.tsx` |
+| `<OrgUnitTypeBadge>` | `frontend/src/components/shared/org-unit-type-badge.tsx` |
+| `<PermissionGate>` | `frontend/src/components/shared/permission-gate.tsx` |
 | Canonical page example | `frontend/src/app/(admin)/users/page.tsx` · `users-table.tsx` |
 | Canonical filter toolbar example | `frontend/src/app/(admin)/kpi/definitions/definitions-table.tsx` |
+| Canonical stat-strip example | `frontend/src/app/(admin)/dashboard/dashboard-content.tsx` · `kpi/monitoring/monitoring-view.tsx` |

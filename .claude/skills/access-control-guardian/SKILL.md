@@ -1,43 +1,36 @@
 ---
 name: access-control-guardian
 description: >
-  Access control and data-scoping reviewer for the GCE Data Platform admin app.
-  Trigger this skill whenever the user asks to audit, review, or check access control,
-  RBAC, permission gating, or data scoping in the frontend; when adding or modifying any
+  Access control and data-scoping reviewer for the GCE Data Platform admin app (frontend
+  AND backend). Trigger this skill whenever the user asks to audit, review, or check
+  access control, RBAC, permission gating, or data scoping; when adding or modifying any
   page/table/query that fetches entity lists; when wiring action buttons that mutate data;
-  or when the user asks "is this view scoped to the current account?", "is this action
-  gated?", or "why is the user seeing data from other accounts?". Also trigger on PR
-  reviews that touch `useQuery` / `api.*` calls, `useAccount()`, `usePermissions()`, or
-  navigation/sidebar visibility. Produces a structured scoping + gating checklist.
+  when adding a new backend endpoint or changing an existing one's authorization; or when
+  the user asks "is this view scoped to the current account?", "is this action gated?",
+  "why is the user seeing data from other accounts?", or "should this endpoint require
+  kpi.admin or kpi.assign?". Also trigger on PR reviews that touch `useQuery` / `api.*`
+  calls, `useAccount()`, `usePermissions()`, `PERMISSIONS.*`, navigation/sidebar visibility,
+  `HasPermissionAsync` / `HasAnyPermissionAsync`, `AccessScope`, or any `Endpoints/*.cs`
+  file. Produces a structured scoping + gating checklist covering both layers.
 ---
 
 # Access Control Guardian — GCE Data Platform
 
-Use this skill to review new and modified frontend code for correct account scoping and
-permission gating. This is a **data / authorization** review, distinct from the visual
-design review handled by `design-system-guardian`.
+This skill reviews new and modified code for correct account scoping and permission
+gating across **both** the Next.js frontend and the ASP.NET Core backend. Visual design
+review lives in `design-system-guardian`; this one is strictly about authorization and
+data boundaries.
 
-The recurring bug class this skill exists to prevent: **views that use an unscoped
-`api.*.list()` call and display every account's data to a tenant-level user, when they
-should only see the account they manage.** Every account-scoped query needs to pass
-through `useAccount().selectedAccount.accountId`, and any super-admin-only aggregation
-needs `usePermissions().isSuperAdmin` as an explicit precondition.
+Two recurring bug classes this skill exists to prevent:
 
-## Authorization primitives — know these cold
+1. **Unscoped frontend `api.*.list()` calls** that hand a tenant-level user every
+   account's data instead of their own.
+2. **Unscoped backend endpoints** that return or mutate rows without checking whether
+   the caller can see the target account / user / site.
 
-### `usePermissions()` — `src/hooks/usePermissions.ts`
+## Permission registry (keep both sides in sync)
 
-```tsx
-const { can, isSuperAdmin, permissions, userId } = usePermissions()
-
-can(PERMISSIONS.USERS_MANAGE)    // true if user has the permission OR is SUPER_ADMIN
-isSuperAdmin                      // true only if user has 'platform.super_admin'
-```
-
-- `can(...)` auto-grants to Super Admins — **never compare `permissions.includes(...)` directly**, always use `can(...)`
-- `isSuperAdmin` is the right gate for platform-wide aggregation views (All accounts, All users, cross-tenant reports)
-
-### `PERMISSIONS` enum — `src/types/api.ts`
+### Frontend — `src/types/api.ts`
 
 ```ts
 PERMISSIONS = {
@@ -45,26 +38,74 @@ PERMISSIONS = {
   ACCOUNTS_MANAGE:       'accounts.manage',
   USERS_MANAGE:          'users.manage',
   GRANTS_MANAGE:         'grants.manage',
-  KPI_MANAGE:            'kpi.manage',
+  KPI_ADMIN:             'kpi.admin',    // library / periods / packages (strict superset)
+  KPI_ASSIGN:            'kpi.assign',   // assignments / submission unlock (account-scoped)
   POLICIES_MANAGE:       'policies.manage',
   PLATFORM_ROLES_MANAGE: 'platform_roles.manage',
 }
 ```
 
-- **Always import and reference via `PERMISSIONS.X`** — never hardcode the string `'users.manage'` etc.
-- New permission keys MUST be added to this object (and kept in sync with the backend `Permissions` class) before being referenced in UI
+### Backend — `Services/PlatformAuthService.cs` (`Permissions` static class)
+
+```csharp
+public const string SuperAdmin          = "platform.super_admin";
+public const string AccountsManage      = "accounts.manage";
+public const string UsersManage         = "users.manage";
+public const string GrantsManage        = "grants.manage";
+public const string KpiAdmin            = "kpi.admin";
+public const string KpiAssign           = "kpi.assign";
+public const string PoliciesManage      = "policies.manage";
+public const string PlatformRolesManage = "platform_roles.manage";
+```
+
+Rules:
+- Reference via the constant (`PERMISSIONS.X` / `Permissions.X`), never hardcode the
+  string literal.
+- Adding a new code? Update BOTH sides, plus the `App.PlatformPermission` seed in
+  `database/ddl/tables/baseline_create.sql` AND the EF migration that inserts it
+  (see `database-migration-author`).
+- `kpi.admin` is a **strict superset** of `kpi.assign`. Every `kpi.assign` check must
+  also accept `kpi.admin` — use the array / `HasAnyPermissionAsync` patterns below.
+
+## Frontend primitives — know these cold
+
+### `usePermissions()` — `src/hooks/usePermissions.ts`
+
+```tsx
+const { can, isSuperAdmin, permissions, userId } = usePermissions()
+
+can(PERMISSIONS.USERS_MANAGE)    // true if user has the code OR is SUPER_ADMIN
+isSuperAdmin                      // true only if user has 'platform.super_admin'
+```
+
+- **Never** compare `permissions.includes(...)` directly — always use `can(...)` so
+  super-admins auto-pass.
+- `isSuperAdmin` gates platform-wide aggregation views (All Accounts, All Users, BI
+  Reports, Coverage, Shared Geography, Source Mapping).
 
 ### `useAccount()` — `src/contexts/account-context.tsx`
 
 ```tsx
 const { accounts, selectedAccount, isLoading, selectAccount } = useAccount()
-
-selectedAccount?.accountId   // the ID to pass into every account-scoped query
+selectedAccount?.accountId
 ```
 
-- `selectedAccount` is `undefined` while loading — queries MUST be gated with `enabled: !!selectedAccount?.accountId`
-- The switcher is in the dark sidebar (`layout/sidebar.tsx`) and persists to `localStorage` under `gce:selectedAccountId`
-- **On sign-out, clear this key** (see `topbar.tsx:108-110` for the pattern) — stale selections after user swap are a real bug
+- `selectedAccount` is `undefined` while loading — account-scoped queries MUST set
+  `enabled: !!selectedAccount?.accountId`.
+- Persists to `localStorage` under `gce:selectedAccountId`. Sign-out MUST clear this
+  key (`topbar.tsx` `handleSignOut`) AND call `queryClient.clear()`.
+
+### `useAccessibleSites()` — `src/hooks/useAccessibleSites.ts`
+
+```tsx
+const accessible = useAccessibleSites()
+// accessible.mode === 'all'     -> super-admin; no filter
+// accessible.mode === 'scoped'  -> filter rows by accessible.siteCodes: Set<string>
+```
+
+Use this when the backend returns account-level data but the UI must hide sites the
+caller can't reach (see `kpi/assignments/page-client.tsx` for the canonical pattern:
+scope dropdown options AND row filters pass through `isSiteAccessible`).
 
 ### `<PermissionGate>` — `src/components/shared/permission-gate.tsx`
 
@@ -72,29 +113,98 @@ selectedAccount?.accountId   // the ID to pass into every account-scoped query
 <PermissionGate permission={PERMISSIONS.ACCOUNTS_MANAGE}>
   <Button onClick={onCreate}>Create Account</Button>
 </PermissionGate>
-
-// With fallback (e.g. a disabled state or a "request access" link)
-<PermissionGate permission={PERMISSIONS.USERS_MANAGE} fallback={<span>Contact admin</span>}>
-  <EditUserButton userId={id} />
-</PermissionGate>
 ```
 
-- The canonical way to gate **write-oriented UI** (buttons, dialogs, dropdown items)
-- Read-oriented gating (whole pages, tabs) goes in the route/page component using `can(...)` directly — see `users/page.tsx:14,22`
+Canonical way to gate **write-oriented UI** (buttons, dropdown items, dialog triggers).
+Read-oriented gating (whole pages, tabs) uses `can(...)` directly at the top of the
+page component.
 
-## The three levels of data scoping
+### Route permissions — `src/lib/route-permissions.ts`
 
-Every list/data query in the admin app falls into exactly one of these buckets. Ambiguity
-here is the root cause of the "All accounts gives all the data" bug.
+Single source for "what permission does URL X need". Supports single code or array
+("any of") for the KPI split pattern:
+
+```ts
+export type RequiredPermission = Permission | readonly Permission[]
+
+{ prefix: '/kpi/definitions', permission: PERMISSIONS.KPI_ADMIN },
+{ prefix: '/kpi/assignments', permission: [PERMISSIONS.KPI_ASSIGN, PERMISSIONS.KPI_ADMIN] },
+
+// Consumers use the predicate, NOT can() directly:
+hasRequiredPermission(required, can)
+```
+
+- `admin-shell.tsx` uses `hasRequiredPermission` for the route guard.
+- `sidebar.tsx` uses the same predicate for visibility, and `NavItem.permission` accepts
+  `RequiredPermission`.
+- **If you add a route that needs "A or B" gating, use the array form** — don't
+  duplicate the check with two separate prefixes.
+
+## Backend primitives — know these cold
+
+### `PlatformAuthService` — `Services/PlatformAuthService.cs`
+
+```csharp
+// Single-permission check (super-admin bypass built in).
+await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiAdmin);
+
+// "Any of" check — use for kpi.assign endpoints so kpi.admin also satisfies them.
+await platformAuth.HasAnyPermissionAsync(user, conn,
+    Permissions.KpiAssign, Permissions.KpiAdmin);
+```
+
+Rules:
+- Dev-bypass (`ClaimsPrincipal.Identity.AuthenticationType == "DevBypass"`) returns all
+  permissions without a DB call. Gated behind `app.Environment.IsDevelopment()` in
+  `Program.cs`.
+- `HasAnyPermissionAsync` is the **only** correct check for endpoints that should
+  accept any of multiple codes.
+
+### `AccessScope` — `Helpers/AccessScope.cs`
+
+Two primitives for tenant scoping of non-super-admin list/detail endpoints:
+
+```csharp
+// Resolves the caller's Sec.[User].UserId from their UPN claim.
+var callerId = await AccessScope.GetCurrentUserIdAsync(user, conn);
+
+// Reusable CTE that defines AccessibleAccounts(AccountId) for @UserId.
+var sql = AccessScope.AccessibleAccountsCte + @"
+    SELECT ... FROM App.vKpiAssignments
+    WHERE AccountId IN (SELECT AccountId FROM AccessibleAccounts)";
+
+// Helper for /users/{id}/* sub-resources.
+await AccessScope.CanAccessUserAsync(conn, callerId.Value, targetUserId);
+```
+
+Pattern for every list endpoint that returns tenant-scoped data:
+
+```csharp
+if (await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
+{
+    // unfiltered query
+}
+else
+{
+    var callerId = await AccessScope.GetCurrentUserIdAsync(user, conn);
+    if (callerId is null) return Results.Ok(new ApiList<T>(..., 0));
+    var sql = AccessScope.AccessibleAccountsCte + @"
+        SELECT ... WHERE AccountId IN (SELECT AccountId FROM AccessibleAccounts)";
+    // ... with new { UserId = callerId.Value }
+}
+```
+
+For `/{id}/*` detail endpoints that take a user ID, wrap with
+`AccessScope.CanAccessUserAsync` and 404 on a miss so you don't leak existence.
+`UserEndpoints.cs` `RequireUserAccessAsync` is the canonical helper — reuse it; don't
+re-implement.
+
+## The three levels of data scoping (frontend)
 
 ### Level 1 — Account-scoped (the default)
 
-The user is managing a single tenant. The query MUST be keyed by `selectedAccount.accountId`
-and MUST NOT run until the account is loaded.
-
 ```tsx
 const { selectedAccount } = useAccount()
-
 const { data, isLoading } = useQuery({
   queryKey: ['accounts', selectedAccount?.accountId, 'users'],
   queryFn: () => api.accounts.users(selectedAccount!.accountId),
@@ -102,44 +212,31 @@ const { data, isLoading } = useQuery({
 })
 ```
 
-Rules:
-- `queryKey` includes `selectedAccount?.accountId` so React Query **re-fetches on account switch**
-- `enabled: !!selectedAccount?.accountId` — no fetch before the account is known
-- Use the scoped endpoint (`api.accounts.users(id)`), **not** the unscoped one (`api.users.list()`)
-- Mutations invalidate the full scoped key: `invalidateKeys={[['accounts', accountId, 'users']]}` — not the unscoped `[['users']]`
+- `queryKey` includes `selectedAccount?.accountId` so it re-fetches on account switch.
+- Use the scoped endpoint (`api.accounts.users(id)`), not `api.users.list()`.
+- Mutations invalidate the scoped key, not just the global one.
 
 ### Level 2 — Platform-wide (Super Admin only)
 
-Aggregated views across tenants (All Accounts, All Users, platform roles, source mapping,
-coverage, shared geography). These use the unscoped endpoints.
-
 ```tsx
 const { isSuperAdmin } = usePermissions()
-
-const { data, isLoading } = useQuery({
-  queryKey: ['users'],                         // no accountId in the key — this is global
+const { data } = useQuery({
+  queryKey: ['users'],
   queryFn: () => api.users.list(),
-  enabled: isSuperAdmin,                       // do not fetch for non-super-admins
+  enabled: isSuperAdmin,
 })
-
-if (!isSuperAdmin) return <NotFound />         // or redirect, or render a "no access" card
+if (!isSuperAdmin) return <NotFound />
 ```
 
-Rules:
-- Page-level guard with `isSuperAdmin` (or the appropriate `can(PERMISSIONS.X)` for a
-  platform permission like `PLATFORM_ROLES_MANAGE`) MUST come before any unscoped `api.*.list()` call
-- Sidebar entry MUST be gated (`permission: PERMISSIONS.X` on the `NAV_SECTIONS` item in `layout/sidebar.tsx`)
-- If a super-admin wants to see one account's slice of a platform view, the filter must use
-  the account dropdown, never the `useAccount()` selectedAccount — the sidebar switcher is
-  for tenant-context work, not platform-context work
+- Page-level guard BEFORE any unscoped `api.*.list()` call.
+- Sidebar entry MUST have the matching `permission` prop.
+- Account filtering on a platform view uses its own dropdown (see
+  `kpi/assignments/page-client.tsx`), NOT `useAccount().selectedAccount`.
 
-### Level 3 — User-self (the current signed-in user's own data)
-
-My profile, my KPI submissions, my effective access. Keyed by `usePermissions().userId`.
+### Level 3 — User-self (the signed-in user's own data)
 
 ```tsx
 const { userId } = usePermissions()
-
 const { data } = useQuery({
   queryKey: ['users', userId, 'effective-access'],
   queryFn: () => api.users.effectiveAccess(userId!),
@@ -147,16 +244,23 @@ const { data } = useQuery({
 })
 ```
 
-Rules:
-- Never accept a `userId` from the URL or props when the page is meant to show "my" data —
-  read it from the session via `usePermissions().userId` so the user can't impersonate
-- URL-driven detail pages (`/users/[id]`) are Level 1 or Level 2 depending on the caller's permission
+- Never accept a user ID from URL/props when the page means "my" data — read
+  `usePermissions().userId` so the user can't impersonate.
 
-## Endpoint surface — which API to call
+## KPI permission split — the canonical example
 
-The `api` surface in `src/lib/api.ts` already encodes scoping at the URL level. The rule is:
-**use the scoped endpoint whenever the user is tenant-context; use the unscoped endpoint
-only when the user has the platform permission for that view.**
+| Surface | Permission |
+|---|---|
+| `/kpi/definitions`, `/kpi/periods`, `/kpi/packages` (authoring) | `kpi.admin` only |
+| `/kpi/assignments` (route guard + sidebar) | `[kpi.assign, kpi.admin]` |
+| Backend: Definitions / Period Schedules / Periods / Packages mutations | `HasPermissionAsync(..., KpiAdmin)` |
+| Backend: Assignment templates / materialize / direct create / submission unlock / package→assign-templates | `HasAnyPermissionAsync(..., KpiAssign, KpiAdmin)` |
+
+Rule: **if an endpoint or route is `kpi.assign`-gated, it must ALSO accept `kpi.admin`**
+— the admin permission is a strict superset. This is encoded via `HasAnyPermissionAsync`
+on the backend and via the `RequiredPermission` array on the frontend.
+
+## Endpoint surface — which API to call (frontend)
 
 | Scoped endpoint (Level 1) | Unscoped endpoint (Level 2) |
 |---|---|
@@ -164,125 +268,121 @@ only when the user has the platform permission for that view.**
 | `api.roles.list({ accountId })` | `api.roles.list()` |
 | `api.kpi.assignments.list({ accountId })` | `api.kpi.assignments.list()` |
 | `api.kpi.monitoring.list({ accountId, periodId })` | — |
-| `api.sites.list({ accountId })` | — |
 
-**If you find yourself reaching for the unscoped variant in a page that a non-super-admin
-can reach, that's the bug.** Either:
-1. Switch to the scoped variant with `selectedAccount.accountId`, OR
-2. Add a page-level `isSuperAdmin` gate (Level 2) and update the sidebar permission
+**If you reach for the unscoped variant on a page a non-super-admin can reach, that's
+the bug.** Switch to the scoped variant with `selectedAccount.accountId` OR add a
+page-level `isSuperAdmin` gate AND update the sidebar permission.
 
-## Sidebar visibility
+## Sign-out cache hygiene
 
-`NAV_SECTIONS` in `src/components/layout/sidebar.tsx` is the source of truth for who can
-see what. Every nav item that links to a platform-wide page MUST have a `permission` entry.
+`topbar.tsx` `handleSignOut` must:
 
 ```tsx
-{ label: 'Platform Roles', href: '/platform-roles', icon: ShieldCheck,
-  permission: PERMISSIONS.SUPER_ADMIN },
+queryClient.clear()
+localStorage.removeItem('gce:selectedAccountId')
+await signOut({ redirectTo: '/login' })
 ```
 
-Rules:
-- Account-scoped pages (Level 1) may omit `permission` if every user of the selected
-  account should see them — `Dashboard`, `Users`, `Org Structure`, `KPI Monitoring`
-  follow this pattern
-- Platform-scoped pages (Level 2) MUST set `permission` to a platform-level key —
-  `SUPER_ADMIN`, `PLATFORM_ROLES_MANAGE`, etc.
-- Visibility ≠ authorization. A hidden nav item is NOT a security control — the page
-  itself MUST still refuse to render / refuse to fetch for users without permission
-
-## Mutations and cache invalidation
-
-Every mutation that changes scoped data MUST invalidate the scoped query keys, not just
-the global ones. This is why `UserTableContent` in `users-table.tsx` accepts an
-`invalidateKeys` prop — the same component is reused across a global listing and a
-per-account listing, and each flavour needs its own keys invalidated.
-
-```tsx
-// Global listing (Super Admin only)
-<UserTableContent queryKey={['users']} invalidateKeys={[['users']]} />
-
-// Per-account listing
-<UserTableContent
-  queryKey={['accounts', accountId, 'users']}
-  invalidateKeys={[['users'], ['accounts'], ['accounts', accountId], ['accounts', accountId, 'users']]}
-/>
-```
-
-Rules:
-- An account-scoped mutation invalidates: the scoped list key, the account's summary keys,
-  and any global keys that could otherwise cache stale counts
-- Sign-out MUST call `queryClient.clear()` (see `topbar.tsx:107`) — leaving cache across
-  users is a privacy bug
-- Account switch does NOT need `queryClient.clear()` because query keys already include
-  `accountId` — but DO verify every account-scoped `useQuery` actually includes it in the key
+And `lib/api.ts` has a global 401 handler with a single-fire latch: on `401`, calls
+`signOut({ callbackUrl: '/login' })` unless already on `/login`. Don't duplicate that
+logic in per-query error handlers.
 
 ## Review Checklist
 
-### Page-level gating
-- [ ] Account-scoped pages resolve `selectedAccount` from `useAccount()` and gate the initial render on `isLoading`
-- [ ] Platform-wide pages check `isSuperAdmin` (or the platform permission) at the top of the component and early-return otherwise
-- [ ] Detail routes (`/entity/[id]`) verify the user can see this entity — either via scoped endpoint that returns 404 for unauthorized, or an explicit `can(...)` check
-- [ ] Routes that show "my" data (profile, my submissions) read `userId` from `usePermissions()`, never from URL params
+### Frontend — Page-level gating
+- [ ] Account-scoped pages resolve `selectedAccount` and gate initial render on `isLoading`
+- [ ] Platform-wide pages check `isSuperAdmin` (or the platform permission) at top of component with an early return
+- [ ] Detail routes verify the user can see this entity (scoped endpoint returning 404, or explicit `can(...)`)
+- [ ] "My data" routes read `userId` from `usePermissions()`, never from URL params
+- [ ] Routes needing "any of" gating use the `RequiredPermission` array form and `hasRequiredPermission(required, can)`
 
-### Queries (`useQuery`)
+### Frontend — Queries (`useQuery`)
 - [ ] Account-scoped queries include `selectedAccount?.accountId` in `queryKey`
 - [ ] Account-scoped queries set `enabled: !!selectedAccount?.accountId`
-- [ ] Account-scoped queries call `api.accounts.X(id)` or `api.X.list({ accountId })`, **not** `api.X.list()` without a filter
-- [ ] Platform-wide queries set `enabled: isSuperAdmin` (or the relevant `can(...)` result) so non-super-admins never trigger the fetch
-- [ ] User-self queries key on `userId` from `usePermissions()`, with `enabled: !!userId`
-- [ ] No `useQuery` uses an unscoped endpoint on a page reachable by non-super-admins without an explicit `can(...)` gate
+- [ ] Account-scoped queries call `api.accounts.X(id)` or `api.X.list({ accountId })`, NOT `api.X.list()`
+- [ ] Platform-wide queries set `enabled: isSuperAdmin` (or relevant `can(...)`)
+- [ ] User-self queries key on `userId` with `enabled: !!userId`
+- [ ] Site-scoped UI narrowing (below account level) uses `useAccessibleSites()` and passes BOTH dropdown options AND row rendering through the predicate
 
-### Mutations
-- [ ] Every mutation invalidates the **scoped** query keys, not only the global one
-- [ ] Mutations that modify account-level entities invalidate `['accounts', accountId]` and `['accounts', accountId, <entity>]`
-- [ ] Cross-account writes (Super Admin only) are gated with `<PermissionGate>` or `can(PERMISSIONS.X)` before the UI renders
+### Frontend — Mutations
+- [ ] Mutations invalidate the scoped query keys, not only the global one
+- [ ] Account-level mutations invalidate `['accounts', accountId]` and `['accounts', accountId, <entity>]`
+- [ ] Cross-account writes wrapped in `<PermissionGate>` or guarded inline with `can(PERMISSIONS.X)`
 
-### Action buttons & UI gating
-- [ ] Create / Edit / Delete / Onboard buttons are wrapped in `<PermissionGate permission={PERMISSIONS.X}>` OR gated inline with `can(PERMISSIONS.X) ? ... : null` (see `users/page.tsx:22`)
-- [ ] `<RowActions onToggle>` mutations are only rendered when the user can manage the entity
-- [ ] Destructive actions inside `<ConfirmDialog>` still require a permission gate on the trigger — the dialog is not an authorization layer
-- [ ] Hardcoded permission strings (`'users.manage'`) are replaced with `PERMISSIONS.USERS_MANAGE`
-- [ ] `permissions.includes(...)` direct comparisons are replaced with `can(...)` so super-admins auto-pass
+### Frontend — UI gating
+- [ ] Create / Edit / Delete / Onboard buttons use `<PermissionGate>` or inline `can(PERMISSIONS.X) ? ... : null`
+- [ ] `<RowActions onToggle>` only rendered when the user can manage the entity
+- [ ] Destructive actions inside `<ConfirmDialog>` still require a permission gate on the trigger
+- [ ] No hardcoded permission strings — use `PERMISSIONS.X`
+- [ ] No `permissions.includes(...)` — use `can(...)` so super-admins auto-pass
 
-### Sidebar & navigation
-- [ ] Nav items for platform-scoped pages have a `permission` entry in `NAV_SECTIONS`
-- [ ] Nav item visibility changes are paired with a page-level `can(...)` / `isSuperAdmin` check — hiding alone is not enough
-- [ ] Account switcher: no page reads `selectedAccount` for platform-scoped work (e.g. a super-admin filtering `/users` should use a page-level account filter, not the sidebar switcher)
+### Frontend — Sidebar & navigation
+- [ ] Nav items for platform-scoped pages have `permission` in `NAV_SECTIONS`
+- [ ] Nav items for "any-of" routes set `permission` to the matching array (see KPI Assignments)
+- [ ] Visibility changes paired with a page-level guard — hiding alone is never an authorization control
+- [ ] `admin-shell.tsx` and `sidebar.tsx` both route through `hasRequiredPermission(required, can)` — no duplicated `Array.isArray` branches
 
-### Session & cache hygiene
-- [ ] Sign-out calls `queryClient.clear()` AND removes `gce:selectedAccountId` from `localStorage` (see `topbar.tsx:107-110`)
-- [ ] No code persists entity IDs into `localStorage` without namespacing by user/account
-- [ ] No code writes the user's permissions into `localStorage` — always read from the live session
+### Backend — Permission gating
+- [ ] Every mutation endpoint calls `HasPermissionAsync` or `HasAnyPermissionAsync` BEFORE any DB write
+- [ ] `kpi.assign` endpoints use `HasAnyPermissionAsync(user, conn, Permissions.KpiAssign, Permissions.KpiAdmin)` — never `HasPermissionAsync(..., KpiAssign)` alone
+- [ ] Read endpoints that return multi-tenant data branch on `SuperAdmin` and filter non-admins through `AccessScope.AccessibleAccountsCte`
+- [ ] `/users/{id}/*` sub-resources go through `RequireUserAccessAsync` (or equivalent `CanAccessUserAsync` gate) to prevent ID enumeration
+- [ ] 404 (not 403) on scope misses so callers cannot distinguish "doesn't exist" from "outside your scope"
 
-### Endpoint choice
-- [ ] List pages use the scoped endpoint variant whenever tenant-context is available
-- [ ] Unscoped endpoints appear only in files gated behind a platform permission
-- [ ] New endpoints added to `api.ts` that return multi-tenant data have both a scoped and an unscoped variant where appropriate (follow `api.roles.list({ accountId })` as the model)
+### Backend — Scoping SQL
+- [ ] `AccessScope.AccessibleAccountsCte` is prepended (not inlined / copy-pasted); `@UserId` is supplied as a Dapper parameter
+- [ ] Views that expose `AccountId` filter on `AccountId IN (SELECT AccountId FROM AccessibleAccounts)`
+- [ ] Views that only expose `AccountCode` join through `Dim.Account` and filter on `AccountId IN ...`
+- [ ] SQL is parameterised — no string interpolation of user input into a query
+- [ ] Site-level gating on a single-resource endpoint verifies `Dim.OrgUnit.AccountId IN AccessibleAccounts` before returning data
+
+### Config
+- [ ] `appsettings.json` sets `"ValidateAudience": true` (base); only `appsettings.Development.json` overrides to `false` for dev-bypass
+- [ ] Dev-bypass middleware in `Program.cs` is wrapped in `if (app.Environment.IsDevelopment())`
+- [ ] Frontend `DEV_BYPASS` flows through `lib/dev-bypass.ts` (requires `NODE_ENV !== 'production'`); `next.config.mjs` build-time guard rejects prod builds with the flag set
 
 ## Common anti-patterns to grep for
 
-When auditing, run these searches across `frontend/src/`:
-
+### Frontend
 | Pattern | Why it's a red flag |
 |---|---|
-| `api.users.list()` | Unscoped user list — only valid for Super Admin pages |
-| `api.roles.list()` (no args) | Unscoped roles list — usually should be `api.roles.list({ accountId })` |
-| `useQuery` without `selectedAccount` or `isSuperAdmin` in the same file | Likely missing scoping or platform gate |
-| `permissions.includes(` | Raw check — use `can(...)` so super-admins auto-pass |
-| `'users.manage'` / `'kpi.manage'` string literals | Hardcoded permission — use `PERMISSIONS.X` |
-| `queryKey: ['users']` on a non-super-admin page | Global key on scoped data — cache leakage across accounts |
-| `invalidateQueries({ queryKey: ['users'] })` with only this key on a scoped mutation | Missing scoped invalidations |
+| `api.users.list()` in a non-super-admin page | Unscoped list |
+| `api.roles.list()` (no args) | Usually should be `api.roles.list({ accountId })` |
+| `'kpi.manage'` string literal | Legacy code — split into `kpi.admin` / `kpi.assign` |
+| `PERMISSIONS.KPI_MANAGE` | Legacy constant — removed in Apr 2026 |
+| `permissions.includes(` | Use `can(...)` so super-admins auto-pass |
+| `queryKey: ['users']` on a non-super-admin page | Global key on scoped data |
+| `process.env.NEXT_PUBLIC_DEV_BYPASS === 'true'` (direct) | Use `DEV_BYPASS` from `lib/dev-bypass.ts` |
+
+### Backend
+| Pattern | Why it's a red flag |
+|---|---|
+| `Permissions.KpiManage` | Legacy constant — removed |
+| `HasPermissionAsync(..., Permissions.KpiAssign)` without `KpiAdmin` | Missing the superset — use `HasAnyPermissionAsync` |
+| `Results.NotFound()` (no `ApiError` body) | Breaks the frontend `{code, message}` parser |
+| Inline CTE copied from `AccountEndpoints.cs` | Should use `AccessScope.AccessibleAccountsCte` |
+| `app.MapGet("...", async (...) =>` with no `Permissions.` check inside a mutation-style path | Unauthorized write |
+| `user.FindFirst(ClaimTypes.Email)?.Value ?? user.FindFirst(ClaimTypes.Name)?.Value` | Bypasses `PlatformAuthService.GetUpn` precedence — use the static helper |
 
 ## Key file locations
 
 | Resource | Path |
 |---|---|
-| Permission hook | `frontend/src/hooks/usePermissions.ts` |
-| Permission enum | `frontend/src/types/api.ts` (top of file) |
-| Account context | `frontend/src/contexts/account-context.tsx` |
-| Permission gate component | `frontend/src/components/shared/permission-gate.tsx` |
-| Sidebar (nav + permission gating) | `frontend/src/components/layout/sidebar.tsx` |
-| Topbar (sign-out cache cleanup) | `frontend/src/components/layout/topbar.tsx` |
-| API surface (scoped vs unscoped) | `frontend/src/lib/api.ts` |
-| Canonical gated action button | `frontend/src/app/(admin)/users/page.tsx` |
-| Canonical scoped-vs-global query reuse | `frontend/src/app/(admin)/users/users-table.tsx` (`UserTableContent`) |
+| Frontend permission enum | `frontend/src/types/api.ts` (top) |
+| `usePermissions` | `frontend/src/hooks/usePermissions.ts` |
+| `useAccount` | `frontend/src/contexts/account-context.tsx` |
+| `useAccessibleSites` | `frontend/src/hooks/useAccessibleSites.ts` |
+| `<PermissionGate>` | `frontend/src/components/shared/permission-gate.tsx` |
+| Route → permission map | `frontend/src/lib/route-permissions.ts` |
+| Admin shell guard | `frontend/src/app/(admin)/admin-shell.tsx` |
+| Sidebar + nav | `frontend/src/components/layout/sidebar.tsx` |
+| Topbar / sign-out cleanup | `frontend/src/components/layout/topbar.tsx` |
+| Global 401 handler | `frontend/src/lib/api.ts` (`handleUnauthorized`) |
+| Dev bypass guard | `frontend/src/lib/dev-bypass.ts` · `frontend/next.config.mjs` |
+| Canonical scoped-vs-global table | `frontend/src/app/(admin)/users/users-table.tsx` (`UserTableContent`) |
+| Canonical site-level UI narrowing | `frontend/src/app/(admin)/kpi/assignments/page-client.tsx` |
+| Backend `Permissions` constants | `backend/GcePlatform.Api/Services/PlatformAuthService.cs` |
+| Backend scoping helper | `backend/GcePlatform.Api/Helpers/AccessScope.cs` |
+| Canonical scoped list endpoint | `backend/GcePlatform.Api/Endpoints/AccountEndpoints.cs` |
+| Canonical `/{id}/*` gating | `backend/GcePlatform.Api/Endpoints/UserEndpoints.cs` (`RequireUserAccessAsync`) |
+| Canonical `HasAnyPermissionAsync` usage | `backend/GcePlatform.Api/Endpoints/KpiSubmissionEndpoints.cs` |
