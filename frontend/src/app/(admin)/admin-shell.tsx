@@ -11,9 +11,16 @@ import { usePathname } from 'next/navigation'
 import { Lock } from 'lucide-react'
 import { Topbar } from '@/components/layout/topbar'
 import { usePermissions } from '@/hooks/usePermissions'
-import { getRequiredPermission } from '@/lib/route-permissions'
+import {
+  getRequiredPermission,
+  hasRequiredPermission,
+  type RequiredPermission,
+} from '@/lib/route-permissions'
 
-function AccessDenied({ permission }: { permission: string }) {
+function AccessDenied({ permission }: { permission: RequiredPermission }) {
+  // Render either a single code or a " / "-joined list when the route accepts
+  // any-of (e.g. kpi.assign OR kpi.admin).
+  const label = Array.isArray(permission) ? permission.join(' / ') : permission
   return (
     <div className="mx-auto max-w-lg">
       <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-8 text-center">
@@ -24,7 +31,7 @@ function AccessDenied({ permission }: { permission: string }) {
           You don&apos;t have access to this page
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          This page requires the <code className="font-mono text-xs">{permission}</code> permission.
+          This page requires the <code className="font-mono text-xs">{label}</code> permission.
           Contact your administrator if you believe you should have access.
         </p>
       </div>
@@ -37,7 +44,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const { can } = usePermissions()
 
   const requiredPermission = getRequiredPermission(pathname)
-  const isAuthorized = !requiredPermission || can(requiredPermission)
+  const isAuthorized = !requiredPermission || hasRequiredPermission(requiredPermission, can)
 
   return (
     <div className="flex min-h-screen flex-1 flex-col">

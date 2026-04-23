@@ -52,7 +52,7 @@ public static class KpiPackageEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiAdmin))
                 return Results.Forbid();
 
             var upn = user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
@@ -89,7 +89,7 @@ public static class KpiPackageEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiAdmin))
                 return Results.Forbid();
 
             var current = await conn.QuerySingleOrDefaultAsync<KpiPackageDto>(@"
@@ -132,7 +132,7 @@ public static class KpiPackageEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiAdmin))
                 return Results.Forbid();
 
             if (!await conn.ExecuteScalarAsync<bool>("SELECT CAST(1 AS bit) FROM KPI.KpiPackage WHERE KpiPackageId = @Id", new { Id = id }))
@@ -154,7 +154,7 @@ public static class KpiPackageEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiAdmin))
                 return Results.Forbid();
 
             if (!await conn.ExecuteScalarAsync<bool>("SELECT CAST(1 AS bit) FROM KPI.KpiPackage WHERE KpiPackageId = @Id", new { Id = id }))
@@ -186,7 +186,9 @@ public static class KpiPackageEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            // Account-side endpoint: creating assignment templates from a package
+            // is assign-level work. KpiAdmin accepted as a strict superset.
+            if (!await platformAuth.HasAnyPermissionAsync(user, conn, Permissions.KpiAssign, Permissions.KpiAdmin))
                 return Results.Forbid();
 
             var packageItems = (await conn.QueryAsync<KpiPackageItemDto>(@"

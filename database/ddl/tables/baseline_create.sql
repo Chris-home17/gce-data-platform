@@ -412,9 +412,13 @@ IF NOT EXISTS (SELECT 1 FROM App.PlatformPermission WHERE PermissionCode = 'gran
     INSERT INTO App.PlatformPermission (PermissionCode, DisplayName, Description, Category, SortOrder)
     VALUES ('grants.manage', 'Manage Grants', 'Manage grants, delegations, and package access.', 'Administration', 40);
 GO
-IF NOT EXISTS (SELECT 1 FROM App.PlatformPermission WHERE PermissionCode = 'kpi.manage')
+IF NOT EXISTS (SELECT 1 FROM App.PlatformPermission WHERE PermissionCode = 'kpi.admin')
     INSERT INTO App.PlatformPermission (PermissionCode, DisplayName, Description, Category, SortOrder)
-    VALUES ('kpi.manage', 'Manage KPI', 'Manage KPI library, schedules, assignments, and periods.', 'KPI', 50);
+    VALUES ('kpi.admin', 'Manage KPI Library', 'Full KPI administration: library, periods, packages, and all assignment operations.', 'KPI', 50);
+GO
+IF NOT EXISTS (SELECT 1 FROM App.PlatformPermission WHERE PermissionCode = 'kpi.assign')
+    INSERT INTO App.PlatformPermission (PermissionCode, DisplayName, Description, Category, SortOrder)
+    VALUES ('kpi.assign', 'Manage KPI Assignments', 'Assign KPIs to sites and manage account-level KPI submissions.', 'KPI', 51);
 GO
 IF NOT EXISTS (SELECT 1 FROM App.PlatformPermission WHERE PermissionCode = 'policies.manage')
     INSERT INTO App.PlatformPermission (PermissionCode, DisplayName, Description, Category, SortOrder)

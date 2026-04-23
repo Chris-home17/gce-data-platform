@@ -7,7 +7,12 @@ export const PERMISSIONS = {
   ACCOUNTS_MANAGE:       'accounts.manage',
   USERS_MANAGE:          'users.manage',
   GRANTS_MANAGE:         'grants.manage',
-  KPI_MANAGE:            'kpi.manage',
+  // KPI split: admin manages the platform-wide library / periods / packages
+  // and is a strict superset of assign; assign covers account-scoped
+  // assignment and submission work. Any place that gates on KPI_ASSIGN
+  // should also accept KPI_ADMIN.
+  KPI_ADMIN:             'kpi.admin',
+  KPI_ASSIGN:            'kpi.assign',
   POLICIES_MANAGE:       'policies.manage',
   PLATFORM_ROLES_MANAGE: 'platform_roles.manage',
 } as const

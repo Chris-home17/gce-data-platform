@@ -196,7 +196,7 @@ public static class KpiSubmissionEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasAnyPermissionAsync(user, conn, Permissions.KpiAssign, Permissions.KpiAdmin))
                 return Results.Forbid();
 
             try

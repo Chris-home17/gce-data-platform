@@ -66,7 +66,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             'accounts.manage',
             'users.manage',
             'grants.manage',
-            'kpi.manage',
+            'kpi.admin',
+            'kpi.assign',
             'policies.manage',
             'platform_roles.manage',
           ]

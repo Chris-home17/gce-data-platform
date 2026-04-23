@@ -74,7 +74,7 @@ public static class KpiDefinitionEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiAdmin))
                 return Results.Forbid();
 
             // Fetch current record to get KpiCode (immutable) and IsActive (preserve)
@@ -137,7 +137,7 @@ public static class KpiDefinitionEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiAdmin))
                 return Results.Forbid();
             var item = await conn.QuerySingleOrDefaultAsync<KpiDefinitionDto>(@"
                 SELECT
@@ -175,7 +175,7 @@ public static class KpiDefinitionEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiAdmin))
                 return Results.Forbid();
 
             // Convert option list to pipe-delimited string expected by the stored proc

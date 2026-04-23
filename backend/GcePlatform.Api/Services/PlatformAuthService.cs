@@ -83,6 +83,26 @@ public class PlatformAuthService
     }
 
     /// <summary>
+    /// Returns true if the user holds ANY of the specified permissions (or the
+    /// super-admin bypass). Intended for endpoints that accept more than one
+    /// code as a grant — e.g. every `kpi.assign` endpoint also accepts
+    /// `kpi.admin`, since the admin permission is a strict KPI superset.
+    /// </summary>
+    public async Task<bool> HasAnyPermissionAsync(
+        ClaimsPrincipal user,
+        IDbConnection conn,
+        params string[] codes)
+    {
+        if (codes.Length == 0) return false;
+        var permissions = await GetPermissionsAsync(user, conn);
+        var set = new HashSet<string>(permissions, StringComparer.Ordinal);
+        if (set.Contains(Permissions.SuperAdmin)) return true;
+        foreach (var code in codes)
+            if (set.Contains(code)) return true;
+        return false;
+    }
+
+    /// <summary>
     /// Extracts the UPN from common JWT claim types issued by Azure AD / Entra ID.
     /// </summary>
     public static string? GetUpn(ClaimsPrincipal user) =>
@@ -97,7 +117,8 @@ public class PlatformAuthService
         Permissions.AccountsManage,
         Permissions.UsersManage,
         Permissions.GrantsManage,
-        Permissions.KpiManage,
+        Permissions.KpiAdmin,
+        Permissions.KpiAssign,
         Permissions.PoliciesManage,
         Permissions.PlatformRolesManage,
     };
@@ -110,7 +131,12 @@ public static class Permissions
     public const string AccountsManage      = "accounts.manage";
     public const string UsersManage         = "users.manage";
     public const string GrantsManage        = "grants.manage";
-    public const string KpiManage           = "kpi.manage";
+    // KPI permissions split: admin manages the library/periods/packages and is
+    // a strict superset of assign; assign covers account-scoped assignments
+    // and submission workflow (including unlock). Every kpi.assign check in
+    // the codebase must accept kpi.admin too — use HasAnyPermissionAsync.
+    public const string KpiAdmin            = "kpi.admin";
+    public const string KpiAssign           = "kpi.assign";
     public const string PoliciesManage      = "policies.manage";
     public const string PlatformRolesManage = "platform_roles.manage";
 }

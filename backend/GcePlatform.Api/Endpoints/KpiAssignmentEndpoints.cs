@@ -115,7 +115,7 @@ public static class KpiAssignmentEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasAnyPermissionAsync(user, conn, Permissions.KpiAssign, Permissions.KpiAdmin))
                 return Results.Forbid();
 
             var p = new DynamicParameters();
@@ -193,7 +193,7 @@ public static class KpiAssignmentEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasAnyPermissionAsync(user, conn, Permissions.KpiAssign, Permissions.KpiAdmin))
                 return Results.Forbid();
 
             var items = request.Items?.ToList();
@@ -295,7 +295,7 @@ public static class KpiAssignmentEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasAnyPermissionAsync(user, conn, Permissions.KpiAssign, Permissions.KpiAdmin))
                 return Results.Forbid();
 
             var exists = await conn.QuerySingleOrDefaultAsync<int?>(@"
@@ -319,7 +319,7 @@ public static class KpiAssignmentEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasAnyPermissionAsync(user, conn, Permissions.KpiAssign, Permissions.KpiAdmin))
                 return Results.Forbid();
             var item = await conn.QuerySingleOrDefaultAsync<KpiAssignmentTemplateDto>(@"
                 SELECT
@@ -573,7 +573,7 @@ public static class KpiAssignmentEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasAnyPermissionAsync(user, conn, Permissions.KpiAssign, Permissions.KpiAdmin))
                 return Results.Forbid();
             var item = await conn.QuerySingleOrDefaultAsync<KpiAssignmentDto>(@"
                 SELECT
@@ -626,7 +626,7 @@ public static class KpiAssignmentEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasAnyPermissionAsync(user, conn, Permissions.KpiAssign, Permissions.KpiAdmin))
                 return Results.Forbid();
 
             var p = new DynamicParameters();

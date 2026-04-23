@@ -41,7 +41,7 @@ public static class KpiPeriodEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiAdmin))
                 return Results.Forbid();
 
             var p = new DynamicParameters();
@@ -99,7 +99,7 @@ public static class KpiPeriodEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiAdmin))
                 return Results.Forbid();
 
             var exists = await conn.QuerySingleOrDefaultAsync<int?>(@"
@@ -125,7 +125,7 @@ public static class KpiPeriodEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiAdmin))
                 return Results.Forbid();
             var item = await conn.QuerySingleOrDefaultAsync<KpiPeriodScheduleDto>(@"
                 SELECT
@@ -224,7 +224,7 @@ public static class KpiPeriodEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiAdmin))
                 return Results.Forbid();
 
             var p = new DynamicParameters();
@@ -258,7 +258,7 @@ public static class KpiPeriodEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiAdmin))
                 return Results.Forbid();
 
             await conn.ExecuteAsync("App.usp_OpenPeriod",
@@ -284,7 +284,7 @@ public static class KpiPeriodEndpoints
         {
             using var conn = db.CreateConnection();
 
-            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiAdmin))
                 return Results.Forbid();
 
             await conn.ExecuteAsync("App.usp_ClosePeriod",

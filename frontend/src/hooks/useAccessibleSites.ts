@@ -12,7 +12,7 @@ import { usePermissions } from '@/hooks/usePermissions'
  * - `mode: 'all'` — platform super-admins see every site. No filter is applied.
  * - `mode: 'scoped'` — every other user, including tenant account admins, is
  *   narrowed to the sites their roles/delegations resolve to. Account-level
- *   platform permissions (ACCOUNTS_MANAGE, USERS_MANAGE, KPI_MANAGE) do NOT
+ *   platform permissions (ACCOUNTS_MANAGE, USERS_MANAGE, KPI_ADMIN/KPI_ASSIGN) do NOT
  *   bypass the filter — those permissions authorize *operations*, not
  *   visibility of sites outside the user's effective access scope.
  *

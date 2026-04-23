@@ -57,6 +57,9 @@
     <!-- SchemaHygiene: NOT NULL audit columns, UNIQUE on tag name, missing indexes -->
     <EmbeddedResource Include="Migrations\Scripts\SchemaHygiene.Up.sql" />
     <EmbeddedResource Include="Migrations\Scripts\SchemaHygiene.Down.sql" />
+    <!-- SplitKpiPermissions: replace kpi.manage with kpi.admin + kpi.assign -->
+    <EmbeddedResource Include="Migrations\Scripts\SplitKpiPermissions.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\SplitKpiPermissions.Down.sql" />
   </ItemGroup>
 
 </Project>

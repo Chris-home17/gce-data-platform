@@ -40,7 +40,11 @@ import {
 import { usePermissions } from '@/hooks/usePermissions'
 import { useAccount } from '@/contexts/account-context'
 import { PERMISSIONS } from '@/types/api'
-import { getRequiredPermission } from '@/lib/route-permissions'
+import {
+  getRequiredPermission,
+  hasRequiredPermission,
+  type RequiredPermission,
+} from '@/lib/route-permissions'
 
 // ---------------------------------------------------------------------------
 // Nav structure
@@ -50,7 +54,9 @@ interface NavItem {
   label: string
   href: Route
   icon: React.ElementType
-  permission?: string
+  // Single code or any-of array; matches RequiredPermission so the same
+  // predicate gates sidebar visibility and the admin-shell route guard.
+  permission?: RequiredPermission
 }
 
 interface NavSection {
@@ -86,10 +92,10 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'KPI Management',
     items: [
-      { label: 'KPI Library', href: '/kpi/definitions', icon: ListChecks, permission: PERMISSIONS.KPI_MANAGE },
-      { label: 'KPI Periods', href: '/kpi/periods', icon: Calendar, permission: PERMISSIONS.KPI_MANAGE },
-      { label: 'KPI Packages', href: '/kpi/packages', icon: Package, permission: PERMISSIONS.KPI_MANAGE },
-      { label: 'KPI Assignments', href: '/kpi/assignments', icon: ClipboardList, permission: PERMISSIONS.KPI_MANAGE },
+      { label: 'KPI Library', href: '/kpi/definitions', icon: ListChecks, permission: PERMISSIONS.KPI_ADMIN },
+      { label: 'KPI Periods', href: '/kpi/periods', icon: Calendar, permission: PERMISSIONS.KPI_ADMIN },
+      { label: 'KPI Packages', href: '/kpi/packages', icon: Package, permission: PERMISSIONS.KPI_ADMIN },
+      { label: 'KPI Assignments', href: '/kpi/assignments', icon: ClipboardList, permission: [PERMISSIONS.KPI_ASSIGN, PERMISSIONS.KPI_ADMIN] },
     ],
   },
   {
@@ -232,7 +238,7 @@ function SidebarContent() {
       ...section,
       items: section.items.filter(item => {
         const required = item.permission ?? getRequiredPermission(item.href)
-        return !required || can(required)
+        return !required || hasRequiredPermission(required, can)
       }),
     }))
     .filter(section => section.items.length > 0)
