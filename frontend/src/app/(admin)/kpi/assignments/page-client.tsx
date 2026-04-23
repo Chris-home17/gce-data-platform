@@ -17,6 +17,7 @@ import { AssignmentTemplatesTable } from './assignment-templates-table'
 import { AssignKpisWizard } from './assign-kpis-wizard'
 import { useAccount } from '@/contexts/account-context'
 import { usePermissions } from '@/hooks/usePermissions'
+import { useAccessibleSites } from '@/hooks/useAccessibleSites'
 
 const ALL_FILTER = 'all'
 const ACCOUNT_WIDE_FILTER = '__account_wide__'
@@ -45,7 +46,18 @@ function matchesSharedFilters<T extends FilterableAssignmentScope | FilterableTe
 export function KpiAssignmentsPageClient() {
   const { selectedAccount } = useAccount()
   const { isSuperAdmin } = usePermissions()
+  const accessible = useAccessibleSites()
   const accountId = selectedAccount?.accountId
+
+  // Backend scopes to account-level; narrow further to sites the caller can
+  // actually reach. Account-wide rows (item.siteCode === null / isAccountWide)
+  // always stay — they implicitly apply to every site in the account.
+  const isSiteAccessible = useMemo(() => {
+    if (accessible.mode === 'all') return () => true
+    const { siteCodes } = accessible
+    return (siteCode: string | null | undefined, isAccountWide: boolean) =>
+      isAccountWide || !siteCode || siteCodes.has(siteCode)
+  }, [accessible])
 
   // Non-super-admins are pinned to their selected account. Super admins default
   // to the selected account but can opt into the cross-account "All accounts"
@@ -125,7 +137,7 @@ export function KpiAssignmentsPageClient() {
     const items = [
       ...(templatesQuery.data?.items ?? []),
       ...(assignmentsQuery.data?.items ?? []),
-    ]
+    ].filter((item) => isSiteAccessible(item.siteCode, item.isAccountWide))
 
     const scopedItems = accountFilter === ALL_FILTER
       ? items
@@ -144,7 +156,7 @@ export function KpiAssignmentsPageClient() {
       hasAccountWide,
       sites: Array.from(siteMap.entries()).sort((a, b) => a[0].localeCompare(b[0])),
     }
-  }, [accountFilter, assignmentsQuery.data?.items, templatesQuery.data?.items])
+  }, [accountFilter, assignmentsQuery.data?.items, templatesQuery.data?.items, isSiteAccessible])
 
   useEffect(() => {
     if (scopeFilter === ALL_FILTER) return
@@ -154,13 +166,19 @@ export function KpiAssignmentsPageClient() {
   }, [availableScopes, scopeFilter])
 
   const filteredTemplates = useMemo(
-    () => (templatesQuery.data?.items ?? []).filter((item) => matchesSharedFilters(item, accountFilter, scopeFilter, groupFilter)),
-    [accountFilter, scopeFilter, groupFilter, templatesQuery.data?.items],
+    () =>
+      (templatesQuery.data?.items ?? [])
+        .filter((item) => isSiteAccessible(item.siteCode, item.isAccountWide))
+        .filter((item) => matchesSharedFilters(item, accountFilter, scopeFilter, groupFilter)),
+    [accountFilter, scopeFilter, groupFilter, templatesQuery.data?.items, isSiteAccessible],
   )
 
   const filteredAssignments = useMemo(
-    () => (assignmentsQuery.data?.items ?? []).filter((item) => matchesSharedFilters(item, accountFilter, scopeFilter, groupFilter)),
-    [accountFilter, assignmentsQuery.data?.items, scopeFilter, groupFilter],
+    () =>
+      (assignmentsQuery.data?.items ?? [])
+        .filter((item) => isSiteAccessible(item.siteCode, item.isAccountWide))
+        .filter((item) => matchesSharedFilters(item, accountFilter, scopeFilter, groupFilter)),
+    [accountFilter, assignmentsQuery.data?.items, scopeFilter, groupFilter, isSiteAccessible],
   )
 
   return (
