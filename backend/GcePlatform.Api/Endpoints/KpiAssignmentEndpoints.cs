@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Dapper;
 using GcePlatform.Api.Data;
+using GcePlatform.Api.Helpers;
 using GcePlatform.Api.Models;
 using GcePlatform.Api.Services;
 
@@ -10,59 +11,101 @@ public static class KpiAssignmentEndpoints
 {
     public static WebApplication MapKpiAssignmentEndpoints(this WebApplication app)
     {
-        app.MapGet("/kpi/assignment-groups", async (int? accountId, DbConnectionFactory db) =>
+        app.MapGet("/kpi/assignment-groups", async (ClaimsPrincipal user, int? accountId, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
-            var items = await conn.QueryAsync<KpiAssignmentGroupDto>(@"
-                SELECT AccountId, AccountCode, AccountName, GroupName
-                FROM App.vAssignmentGroups
-                WHERE (@AccountId IS NULL OR AccountId = @AccountId)
-                ORDER BY AccountCode, GroupName",
-                new { AccountId = accountId });
+
+            IEnumerable<KpiAssignmentGroupDto> items;
+            if (await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
+            {
+                items = await conn.QueryAsync<KpiAssignmentGroupDto>(@"
+                    SELECT AccountId, AccountCode, AccountName, GroupName
+                    FROM App.vAssignmentGroups
+                    WHERE (@AccountId IS NULL OR AccountId = @AccountId)
+                    ORDER BY AccountCode, GroupName",
+                    new { AccountId = accountId });
+            }
+            else
+            {
+                var currentUserId = await AccessScope.GetCurrentUserIdAsync(user, conn);
+                if (currentUserId is null)
+                    return Results.Ok(new ApiList<KpiAssignmentGroupDto>(new List<KpiAssignmentGroupDto>(), 0));
+
+                items = await conn.QueryAsync<KpiAssignmentGroupDto>($@"
+                    {AccessScope.AccessibleAccountsCte}
+                    SELECT AccountId, AccountCode, AccountName, GroupName
+                    FROM App.vAssignmentGroups
+                    WHERE (@AccountId IS NULL OR AccountId = @AccountId)
+                      AND AccountId IN (SELECT AccountId FROM AccessibleAccounts)
+                    ORDER BY AccountCode, GroupName",
+                    new { AccountId = accountId, UserId = currentUserId.Value });
+            }
 
             var list = items.ToList();
             return Results.Ok(new ApiList<KpiAssignmentGroupDto>(list, list.Count));
         }).RequireAuthorization();
 
-        app.MapGet("/kpi/assignment-templates", async (int? accountId, DbConnectionFactory db) =>
+        app.MapGet("/kpi/assignment-templates", async (ClaimsPrincipal user, int? accountId, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
-            var items = await conn.QueryAsync<KpiAssignmentTemplateDto>(@"
-                SELECT
-                    AssignmentTemplateId,
-                    ExternalId,
-                    KpiCode,
-                    KpiName,
-                    CustomKpiName,
-                    CustomKpiDescription,
-                    EffectiveKpiName,
-                    EffectiveKpiDescription,
-                    Category,
-                    PeriodScheduleId,
-                    ScheduleName,
-                    FrequencyType,
-                    FrequencyInterval,
-                    AccountCode,
-                    AccountName,
-                    SiteCode,
-                    SiteName,
-                    CAST(IsAccountWide AS bit) AS IsAccountWide,
-                    DataType,
-                    IsRequired,
-                    TargetValue,
-                    ThresholdGreen,
-                    ThresholdAmber,
-                    ThresholdRed,
-                    EffectiveThresholdDirection,
-                    IsActive,
-                    GeneratedAssignmentCount,
-                    KpiPackageId,
-                    KpiPackageName,
-                    AssignmentGroupName
-                FROM App.vKpiAssignmentTemplates
-                WHERE (@AccountId IS NULL OR AccountId = @AccountId)
-                ORDER BY ScheduleName, AccountCode, KpiCode",
-                new { AccountId = accountId });
+
+            const string columns = @"
+                AssignmentTemplateId,
+                ExternalId,
+                KpiCode,
+                KpiName,
+                CustomKpiName,
+                CustomKpiDescription,
+                EffectiveKpiName,
+                EffectiveKpiDescription,
+                Category,
+                PeriodScheduleId,
+                ScheduleName,
+                FrequencyType,
+                FrequencyInterval,
+                AccountCode,
+                AccountName,
+                SiteCode,
+                SiteName,
+                CAST(IsAccountWide AS bit) AS IsAccountWide,
+                DataType,
+                IsRequired,
+                TargetValue,
+                ThresholdGreen,
+                ThresholdAmber,
+                ThresholdRed,
+                EffectiveThresholdDirection,
+                IsActive,
+                GeneratedAssignmentCount,
+                KpiPackageId,
+                KpiPackageName,
+                AssignmentGroupName";
+
+            IEnumerable<KpiAssignmentTemplateDto> items;
+            if (await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
+            {
+                items = await conn.QueryAsync<KpiAssignmentTemplateDto>($@"
+                    SELECT {columns}
+                    FROM App.vKpiAssignmentTemplates
+                    WHERE (@AccountId IS NULL OR AccountId = @AccountId)
+                    ORDER BY ScheduleName, AccountCode, KpiCode",
+                    new { AccountId = accountId });
+            }
+            else
+            {
+                var currentUserId = await AccessScope.GetCurrentUserIdAsync(user, conn);
+                if (currentUserId is null)
+                    return Results.Ok(new ApiList<KpiAssignmentTemplateDto>(new List<KpiAssignmentTemplateDto>(), 0));
+
+                items = await conn.QueryAsync<KpiAssignmentTemplateDto>($@"
+                    {AccessScope.AccessibleAccountsCte}
+                    SELECT {columns}
+                    FROM App.vKpiAssignmentTemplates
+                    WHERE (@AccountId IS NULL OR AccountId = @AccountId)
+                      AND AccountId IN (SELECT AccountId FROM AccessibleAccounts)
+                    ORDER BY ScheduleName, AccountCode, KpiCode",
+                    new { AccountId = accountId, UserId = currentUserId.Value });
+            }
 
             var list = items.ToList();
             return Results.Ok(new ApiList<KpiAssignmentTemplateDto>(list, list.Count));
@@ -325,82 +368,131 @@ public static class KpiAssignmentEndpoints
         // Returns the resolved assignment set for submission-facing screens:
         // site-specific assignments shadow account-wide ones for the same KPI + period,
         // and account-wide assignments are expanded to one row per active site.
-        app.MapGet("/kpi/effective-assignments", async (int? periodId, int? accountId, string? siteCode, DbConnectionFactory db) =>
+        app.MapGet("/kpi/effective-assignments", async (ClaimsPrincipal user, int? periodId, int? accountId, string? siteCode, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
-            var items = await conn.QueryAsync<EffectiveKpiAssignmentDto>(@"
-                SELECT
-                    AssignmentId,
-                    ExternalId,
-                    KpiCode,
-                    KpiName,
-                    EffectiveKpiName,
-                    EffectiveKpiDescription,
-                    Category,
-                    AccountCode,
-                    AccountName,
-                    SiteCode,
-                    SiteName,
-                    CAST(IsAccountWide AS bit) AS IsAccountWide,
-                    PeriodLabel,
-                    PeriodYear,
-                    PeriodMonth,
-                    PeriodStatus,
-                    IsRequired,
-                    TargetValue,
-                    ThresholdGreen,
-                    ThresholdAmber,
-                    ThresholdRed,
-                    EffectiveThresholdDirection,
-                    SubmitterGuidance,
-                    IsActive
-                FROM App.vEffectiveKpiAssignments
-                WHERE (@PeriodId  IS NULL OR PeriodId   = @PeriodId)
-                  AND (@AccountId IS NULL OR AccountId  = @AccountId)
-                  AND (@SiteCode  IS NULL OR SiteCode   = @SiteCode)
-                  AND IsActive = 1
-                ORDER BY AccountCode, SiteCode, KpiCode",
-                new { PeriodId = periodId, AccountId = accountId, SiteCode = siteCode });
+
+            const string columns = @"
+                AssignmentId,
+                ExternalId,
+                KpiCode,
+                KpiName,
+                EffectiveKpiName,
+                EffectiveKpiDescription,
+                Category,
+                AccountCode,
+                AccountName,
+                SiteCode,
+                SiteName,
+                CAST(IsAccountWide AS bit) AS IsAccountWide,
+                PeriodLabel,
+                PeriodYear,
+                PeriodMonth,
+                PeriodStatus,
+                IsRequired,
+                TargetValue,
+                ThresholdGreen,
+                ThresholdAmber,
+                ThresholdRed,
+                EffectiveThresholdDirection,
+                SubmitterGuidance,
+                IsActive";
+
+            IEnumerable<EffectiveKpiAssignmentDto> items;
+            if (await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
+            {
+                items = await conn.QueryAsync<EffectiveKpiAssignmentDto>($@"
+                    SELECT {columns}
+                    FROM App.vEffectiveKpiAssignments
+                    WHERE (@PeriodId  IS NULL OR PeriodId   = @PeriodId)
+                      AND (@AccountId IS NULL OR AccountId  = @AccountId)
+                      AND (@SiteCode  IS NULL OR SiteCode   = @SiteCode)
+                      AND IsActive = 1
+                    ORDER BY AccountCode, SiteCode, KpiCode",
+                    new { PeriodId = periodId, AccountId = accountId, SiteCode = siteCode });
+            }
+            else
+            {
+                var currentUserId = await AccessScope.GetCurrentUserIdAsync(user, conn);
+                if (currentUserId is null)
+                    return Results.Ok(new ApiList<EffectiveKpiAssignmentDto>(new List<EffectiveKpiAssignmentDto>(), 0));
+
+                items = await conn.QueryAsync<EffectiveKpiAssignmentDto>($@"
+                    {AccessScope.AccessibleAccountsCte}
+                    SELECT {columns}
+                    FROM App.vEffectiveKpiAssignments
+                    WHERE (@PeriodId  IS NULL OR PeriodId   = @PeriodId)
+                      AND (@AccountId IS NULL OR AccountId  = @AccountId)
+                      AND (@SiteCode  IS NULL OR SiteCode   = @SiteCode)
+                      AND AccountId IN (SELECT AccountId FROM AccessibleAccounts)
+                      AND IsActive = 1
+                    ORDER BY AccountCode, SiteCode, KpiCode",
+                    new { PeriodId = periodId, AccountId = accountId, SiteCode = siteCode, UserId = currentUserId.Value });
+            }
 
             var list = items.ToList();
             return Results.Ok(new ApiList<EffectiveKpiAssignmentDto>(list, list.Count));
         }).RequireAuthorization();
 
         // GET /kpi/assignments?periodId=&accountId=&siteCode=
-        app.MapGet("/kpi/assignments", async (int? periodId, int? accountId, string? siteCode, DbConnectionFactory db) =>
+        app.MapGet("/kpi/assignments", async (ClaimsPrincipal user, int? periodId, int? accountId, string? siteCode, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
-            var items = await conn.QueryAsync<KpiAssignmentDto>(@"
-                SELECT
-                    AssignmentId,
-                    ExternalId,
-                    KpiCode,
-                    KpiName,
-                    Category,
-                    AccountCode,
-                    AccountName,
-                    SiteCode,
-                    SiteName,
-                    CAST(IsAccountWide AS bit) AS IsAccountWide,
-                    DataType,
-                    PeriodId,
-                    PeriodScheduleId,
-                    ScheduleName,
-                    PeriodLabel,
-                    IsRequired,
-                    TargetValue,
-                    ThresholdGreen,
-                    ThresholdAmber,
-                    ThresholdRed,
-                    EffectiveThresholdDirection,
-                    IsActive,
-                    AssignmentGroupName
-                FROM App.vKpiAssignments
-                WHERE (@PeriodId IS NULL OR PeriodId = @PeriodId)
-                  AND (@AccountId IS NULL OR AccountId = @AccountId)
-                  AND (@SiteCode IS NULL OR SiteCode = @SiteCode)
-                ORDER BY AccountCode, KpiCode",
-                new { PeriodId = periodId, AccountId = accountId, SiteCode = siteCode });
+
+            const string columns = @"
+                AssignmentId,
+                ExternalId,
+                KpiCode,
+                KpiName,
+                Category,
+                AccountCode,
+                AccountName,
+                SiteCode,
+                SiteName,
+                CAST(IsAccountWide AS bit) AS IsAccountWide,
+                DataType,
+                PeriodId,
+                PeriodScheduleId,
+                ScheduleName,
+                PeriodLabel,
+                IsRequired,
+                TargetValue,
+                ThresholdGreen,
+                ThresholdAmber,
+                ThresholdRed,
+                EffectiveThresholdDirection,
+                IsActive,
+                AssignmentGroupName";
+
+            IEnumerable<KpiAssignmentDto> items;
+            if (await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
+            {
+                items = await conn.QueryAsync<KpiAssignmentDto>($@"
+                    SELECT {columns}
+                    FROM App.vKpiAssignments
+                    WHERE (@PeriodId IS NULL OR PeriodId = @PeriodId)
+                      AND (@AccountId IS NULL OR AccountId = @AccountId)
+                      AND (@SiteCode IS NULL OR SiteCode = @SiteCode)
+                    ORDER BY AccountCode, KpiCode",
+                    new { PeriodId = periodId, AccountId = accountId, SiteCode = siteCode });
+            }
+            else
+            {
+                var currentUserId = await AccessScope.GetCurrentUserIdAsync(user, conn);
+                if (currentUserId is null)
+                    return Results.Ok(new ApiList<KpiAssignmentDto>(new List<KpiAssignmentDto>(), 0));
+
+                items = await conn.QueryAsync<KpiAssignmentDto>($@"
+                    {AccessScope.AccessibleAccountsCte}
+                    SELECT {columns}
+                    FROM App.vKpiAssignments
+                    WHERE (@PeriodId IS NULL OR PeriodId = @PeriodId)
+                      AND (@AccountId IS NULL OR AccountId = @AccountId)
+                      AND (@SiteCode IS NULL OR SiteCode = @SiteCode)
+                      AND AccountId IN (SELECT AccountId FROM AccessibleAccounts)
+                    ORDER BY AccountCode, KpiCode",
+                    new { PeriodId = periodId, AccountId = accountId, SiteCode = siteCode, UserId = currentUserId.Value });
+            }
 
             var list = items.ToList();
             return Results.Ok(new ApiList<KpiAssignmentDto>(list, list.Count));

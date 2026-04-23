@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Dapper;
 using GcePlatform.Api.Data;
+using GcePlatform.Api.Helpers;
 using GcePlatform.Api.Models;
 using GcePlatform.Api.Services;
 
@@ -8,27 +9,55 @@ namespace GcePlatform.Api.Endpoints;
 
 public static class UserEndpoints
 {
+    private const string UserColumns = @"
+        UserId,
+        UPN,
+        DisplayName,
+        IsActive,
+        RoleCount,
+        RoleList,
+        SiteCount,
+        AccountCount,
+        PackageCount,
+        ReportCount,
+        GapStatus";
+
     public static WebApplication MapUserEndpoints(this WebApplication app)
     {
-        // GET /users
-        app.MapGet("/users", async (DbConnectionFactory db) =>
+        // GET /users — super-admins see everyone; others see only users who
+        // have at least one authorized site in an account the caller can access.
+        app.MapGet("/users", async (ClaimsPrincipal user, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
-            var items = await conn.QueryAsync<UserDto>(@"
-                SELECT
-                    UserId,
-                    UPN,
-                    DisplayName,
-                    IsActive,
-                    RoleCount,
-                    RoleList,
-                    SiteCount,
-                    AccountCount,
-                    PackageCount,
-                    ReportCount,
-                    GapStatus
-                FROM App.vUsers
-                ORDER BY DisplayName");
+
+            IEnumerable<UserDto> items;
+            if (await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
+            {
+                items = await conn.QueryAsync<UserDto>($@"
+                    SELECT {UserColumns}
+                    FROM App.vUsers
+                    ORDER BY DisplayName");
+            }
+            else
+            {
+                var currentUserId = await AccessScope.GetCurrentUserIdAsync(user, conn);
+                if (currentUserId is null)
+                    return Results.Ok(new ApiList<UserDto>(new List<UserDto>(), 0));
+
+                items = await conn.QueryAsync<UserDto>($@"
+                    {AccessScope.AccessibleAccountsCte}
+                    SELECT {UserColumns}
+                    FROM App.vUsers AS u
+                    WHERE u.UserId IN
+                    (
+                        SELECT DISTINCT auth.UserPrincipalId
+                        FROM Sec.vAuthorizedSitesDynamic AS auth
+                        WHERE auth.AccountId IN (SELECT AccountId FROM AccessibleAccounts)
+                    )
+                    OR u.UserId = @UserId
+                    ORDER BY u.DisplayName",
+                    new { UserId = currentUserId.Value });
+            }
 
             var list = items.ToList();
             return Results.Ok(new ApiList<UserDto>(list, list.Count));
@@ -63,16 +92,43 @@ public static class UserEndpoints
             return Results.Created($"/users/{newId}", created);
         }).RequireAuthorization();
 
-        // GET /users/{id}
-        app.MapGet("/users/{id:int}", async (int id, DbConnectionFactory db) =>
+        // GET /users/{id} — super-admins see everyone; others only see users
+        // who overlap with an account the caller can access (or themselves).
+        app.MapGet("/users/{id:int}", async (ClaimsPrincipal user, int id, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
-            var item = await conn.QuerySingleOrDefaultAsync<UserDto>(@"
-                SELECT UserId, UPN, DisplayName, IsActive,
-                       RoleCount, RoleList, SiteCount, AccountCount, PackageCount, ReportCount, GapStatus
-                FROM App.vUsers
-                WHERE UserId = @Id",
-                new { Id = id });
+
+            UserDto? item;
+            if (await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
+            {
+                item = await conn.QuerySingleOrDefaultAsync<UserDto>($@"
+                    SELECT {UserColumns}
+                    FROM App.vUsers
+                    WHERE UserId = @Id",
+                    new { Id = id });
+            }
+            else
+            {
+                var currentUserId = await AccessScope.GetCurrentUserIdAsync(user, conn);
+                if (currentUserId is null)
+                    return Results.NotFound(new ApiError("USER_NOT_FOUND", $"User {id} not found."));
+
+                item = await conn.QuerySingleOrDefaultAsync<UserDto>($@"
+                    {AccessScope.AccessibleAccountsCte}
+                    SELECT {UserColumns}
+                    FROM App.vUsers AS u
+                    WHERE u.UserId = @Id
+                      AND (
+                            u.UserId = @UserId
+                         OR u.UserId IN
+                            (
+                                SELECT DISTINCT auth.UserPrincipalId
+                                FROM Sec.vAuthorizedSitesDynamic AS auth
+                                WHERE auth.AccountId IN (SELECT AccountId FROM AccessibleAccounts)
+                            )
+                          )",
+                    new { Id = id, UserId = currentUserId.Value });
+            }
 
             return item is null
                 ? Results.NotFound(new ApiError("USER_NOT_FOUND", $"User {id} not found."))

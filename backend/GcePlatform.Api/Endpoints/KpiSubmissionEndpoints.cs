@@ -1,5 +1,6 @@
 using Dapper;
 using GcePlatform.Api.Data;
+using GcePlatform.Api.Helpers;
 using GcePlatform.Api.Models;
 using GcePlatform.Api.Services;
 using System.Security.Claims;
@@ -122,10 +123,35 @@ public static class KpiSubmissionEndpoints
         }).RequireAuthorization();
 
         // GET /kpi/site-submissions?siteOrgUnitId=&periodId=
-        // Admin drill-down: all assignments for a site+period with current submission state
-        app.MapGet("/kpi/site-submissions", async (int siteOrgUnitId, int periodId, DbConnectionFactory db) =>
+        // Admin drill-down: all assignments for a site+period with current submission state.
+        // Non-super-admins are rejected when the site belongs to an account they cannot access.
+        app.MapGet("/kpi/site-submissions", async (ClaimsPrincipal user, int siteOrgUnitId, int periodId, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
+            {
+                var currentUserId = await AccessScope.GetCurrentUserIdAsync(user, conn);
+                if (currentUserId is null)
+                    return Results.NotFound(new ApiError("SITE_NOT_FOUND", $"Site {siteOrgUnitId} not found."));
+
+                var canAccess = await conn.ExecuteScalarAsync<bool>($@"
+                    {AccessScope.AccessibleAccountsCte}
+                    SELECT CAST(
+                        CASE WHEN EXISTS
+                        (
+                            SELECT 1
+                            FROM Dim.OrgUnit AS ou
+                            WHERE ou.OrgUnitId = @SiteOrgUnitId
+                              AND ou.AccountId IN (SELECT AccountId FROM AccessibleAccounts)
+                        )
+                        THEN 1 ELSE 0 END AS bit)",
+                    new { SiteOrgUnitId = siteOrgUnitId, UserId = currentUserId.Value });
+
+                if (!canAccess)
+                    return Results.NotFound(new ApiError("SITE_NOT_FOUND", $"Site {siteOrgUnitId} not found."));
+            }
+
             var items = await conn.QueryAsync<SiteSubmissionDetailDto>(@"
                 SELECT
                     AssignmentId,

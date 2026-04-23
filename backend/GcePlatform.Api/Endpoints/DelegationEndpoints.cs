@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Dapper;
 using GcePlatform.Api.Data;
+using GcePlatform.Api.Helpers;
 using GcePlatform.Api.Models;
 using GcePlatform.Api.Services;
 using Microsoft.Data.SqlClient;
@@ -188,32 +189,72 @@ public static class DelegationEndpoints
             return Results.Ok(new DelegationScopeOptionsDto(accounts, orgUnits));
         }).RequireAuthorization();
 
-        // GET /delegations
-        app.MapGet("/delegations", async (DbConnectionFactory db) =>
+        // GET /delegations — super-admins see all (including platform-level
+        // delegations with AccountCode='ALL'); others only see delegations
+        // scoped to an account they can access.
+        app.MapGet("/delegations", async (ClaimsPrincipal user, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
-            var items = await conn.QueryAsync<DelegationDto>(@"
-                SELECT
-                    PrincipalDelegationId,
-                    DelegatorPrincipalId,
-                    DelegatePrincipalId,
-                    DelegatorName,
-                    DelegatorType,
-                    DelegateName,
-                    DelegateType,
-                    AccessType,
-                    ScopeType,
-                    AccountCode,
-                    AccountName,
-                    OrgUnitType,
-                    OrgUnitCode,
-                    OrgUnitName,
-                    ValidFromDate,
-                    ValidToDate,
-                    IsActive,
-                    CreatedOnUtc
-                FROM App.vDelegations
-                ORDER BY DelegatorName, DelegateName");
+
+            IEnumerable<DelegationDto> items;
+            if (await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
+            {
+                items = await conn.QueryAsync<DelegationDto>(@"
+                    SELECT
+                        PrincipalDelegationId,
+                        DelegatorPrincipalId,
+                        DelegatePrincipalId,
+                        DelegatorName,
+                        DelegatorType,
+                        DelegateName,
+                        DelegateType,
+                        AccessType,
+                        ScopeType,
+                        AccountCode,
+                        AccountName,
+                        OrgUnitType,
+                        OrgUnitCode,
+                        OrgUnitName,
+                        ValidFromDate,
+                        ValidToDate,
+                        IsActive,
+                        CreatedOnUtc
+                    FROM App.vDelegations
+                    ORDER BY DelegatorName, DelegateName");
+            }
+            else
+            {
+                var currentUserId = await AccessScope.GetCurrentUserIdAsync(user, conn);
+                if (currentUserId is null)
+                    return Results.Ok(new ApiList<DelegationDto>(new List<DelegationDto>(), 0));
+
+                items = await conn.QueryAsync<DelegationDto>($@"
+                    {AccessScope.AccessibleAccountsCte}
+                    SELECT
+                        d.PrincipalDelegationId,
+                        d.DelegatorPrincipalId,
+                        d.DelegatePrincipalId,
+                        d.DelegatorName,
+                        d.DelegatorType,
+                        d.DelegateName,
+                        d.DelegateType,
+                        d.AccessType,
+                        d.ScopeType,
+                        d.AccountCode,
+                        d.AccountName,
+                        d.OrgUnitType,
+                        d.OrgUnitCode,
+                        d.OrgUnitName,
+                        d.ValidFromDate,
+                        d.ValidToDate,
+                        d.IsActive,
+                        d.CreatedOnUtc
+                    FROM App.vDelegations AS d
+                    JOIN Dim.Account AS a ON a.AccountCode = d.AccountCode
+                    WHERE a.AccountId IN (SELECT AccountId FROM AccessibleAccounts)
+                    ORDER BY d.DelegatorName, d.DelegateName",
+                    new { UserId = currentUserId.Value });
+            }
 
             var list = items.ToList();
             return Results.Ok(new ApiList<DelegationDto>(list, list.Count));
