@@ -17,9 +17,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { OnboardUserWizard } from '@/components/shared/onboard-user-wizard'
 import { useAccount } from '@/contexts/account-context'
+import { usePermissions } from '@/hooks/usePermissions'
+import { useAccessibleSites } from '@/hooks/useAccessibleSites'
 
 // ---------------------------------------------------------------------------
 // Stat card
@@ -92,12 +94,20 @@ function QuickAction({ label, description, icon: Icon, onClick, variant: _varian
 // ---------------------------------------------------------------------------
 
 function CoverageHealthCard() {
+  // Coverage is a cross-tenant platform-wide aggregation and is only safe to
+  // surface for super-admins. The /coverage page itself is gated at the
+  // route-permission layer; this card would otherwise pull the same unscoped
+  // data onto every tenant admin's dashboard.
+  const { isSuperAdmin } = usePermissions()
   const { data, isLoading } = useQuery({
     queryKey: ['coverage'],
     queryFn: () => api.coverage.list(),
+    enabled: isSuperAdmin,
   })
 
   const router = useRouter()
+
+  if (!isSuperAdmin) return null
 
   if (isLoading) {
     return (
@@ -135,24 +145,24 @@ function CoverageHealthCard() {
       </CardHeader>
       <CardContent className="space-y-3">
         {/* OK */}
-        <div className="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2.5 dark:bg-emerald-950/20">
+        <div className="flex items-center justify-between rounded-lg bg-success-muted px-3 py-2.5">
           <div className="flex items-center gap-2.5">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            <span className="text-sm font-medium text-emerald-800 dark:text-emerald-400">Full coverage</span>
+            <CheckCircle2 className="h-4 w-4 text-success" />
+            <span className="text-sm font-medium text-success-muted-foreground">Full coverage</span>
           </div>
-          <span className="text-sm font-bold tabular-nums text-emerald-700">
+          <span className="text-sm font-bold tabular-nums text-success-muted-foreground">
             {okUsers} / {totalUsers}
           </span>
         </div>
 
         {/* Gaps */}
         {gapUsers.length > 0 ? (
-          <div className="flex items-center justify-between rounded-lg bg-amber-50 px-3 py-2.5 dark:bg-amber-950/20">
+          <div className="flex items-center justify-between rounded-lg bg-warning-muted px-3 py-2.5">
             <div className="flex items-center gap-2.5">
-              <AlertTriangle className="h-4 w-4 text-amber-600" />
-              <span className="text-sm font-medium text-amber-800 dark:text-amber-400">Coverage gaps</span>
+              <AlertTriangle className="h-4 w-4 text-warning" />
+              <span className="text-sm font-medium text-warning-muted-foreground">Coverage gaps</span>
             </div>
-            <Badge variant="outline" className="border-amber-400 bg-amber-100 text-amber-800 tabular-nums text-xs">
+            <Badge variant="outline" className="border-warning-border bg-warning-muted text-warning-muted-foreground tabular-nums text-xs">
               {gapUsers.length} {gapUsers.length === 1 ? 'user' : 'users'}
             </Badge>
           </div>
@@ -182,12 +192,19 @@ function CoverageHealthCard() {
 // ---------------------------------------------------------------------------
 
 function RecentDelegationsCard() {
+  const { selectedAccount } = useAccount()
+  const accountId = selectedAccount?.accountId
+
+  // api.delegations.list() is not yet filterable server-side. We scope the
+  // cache key on accountId so switching accounts does not surface stale
+  // counts from another tenant, and filter client-side to ALL delegations
+  // + delegations tagged to this account.
   const { data, isLoading } = useQuery({
-    queryKey: ['delegations'],
+    queryKey: ['delegations', { accountId }],
     queryFn: () => api.delegations.list(),
+    enabled: !!accountId,
   })
   const router = useRouter()
-  const { selectedAccount } = useAccount()
 
   const recent = (data?.items ?? [])
     .filter(
@@ -276,18 +293,37 @@ export function DashboardContent() {
     enabled: !!accountId,
   })
 
+  // Account-scoped: roles for this account (api.roles.list already supports { accountId }).
   const { data: rolesData, isLoading: rolesLoading } = useQuery({
-    queryKey: ['roles'],
-    queryFn: () => api.roles.list(),
+    queryKey: ['roles', { accountId }],
+    queryFn: () => api.roles.list({ accountId }),
+    enabled: !!accountId,
   })
 
+  // Delegations are not yet filterable server-side, but we key the cache on
+  // accountId so switching accounts doesn't surface stale counts. The counter
+  // below still filters client-side to ALL delegations + this-account delegations.
   const { data: delegationsData, isLoading: delegationsLoading } = useQuery({
-    queryKey: ['delegations'],
+    queryKey: ['delegations', { accountId }],
     queryFn: () => api.delegations.list(),
+    enabled: !!accountId,
   })
+
+  const accessible = useAccessibleSites()
 
   const activeUsers = accountUsersData?.items.filter((u) => u.isActive).length ?? 0
-  const totalOrgUnits = orgUnitsData?.totalCount ?? 0
+
+  // Scope the org-units count to what the user can actually see. Role-scoped
+  // users otherwise see "25 sites" on the dashboard when they have access to
+  // 1 — which reads as if the /sites page has a bug even though the tree is
+  // filtered correctly.
+  const totalOrgUnits = useMemo(() => {
+    const raw = orgUnitsData?.items ?? []
+    if (accessible.mode === 'all') return orgUnitsData?.totalCount ?? raw.length
+    if (accessible.isLoading) return 0
+    return raw.filter((u) => accessible.siteCodes.has(u.orgUnitCode)).length
+  }, [orgUnitsData, accessible])
+
   const activeRoles = rolesData?.items.filter((r) => r.isActive).length ?? 0
 
   // Scope delegations to the selected account:
@@ -342,7 +378,7 @@ export function DashboardContent() {
           value={activeUsers}
           subtitle={accountUsersData ? `${accountUsersData.totalCount} total` : undefined}
           icon={Users}
-          iconColor="bg-blue-100 text-blue-600 dark:bg-blue-950/40"
+          iconColor="bg-info-muted text-info-muted-foreground"
           loading={usersLoading || accountsLoading}
         />
         <StatCard
@@ -350,7 +386,7 @@ export function DashboardContent() {
           value={totalOrgUnits}
           subtitle={selectedAccount ? `in ${selectedAccount.accountCode}` : undefined}
           icon={Building2}
-          iconColor="bg-violet-100 text-violet-600 dark:bg-violet-950/40"
+          iconColor="bg-brand-muted text-brand"
           loading={orgUnitsLoading || accountsLoading}
         />
         <StatCard
@@ -358,7 +394,7 @@ export function DashboardContent() {
           value={activeRoles}
           subtitle={rolesData ? `${rolesData.totalCount} total` : undefined}
           icon={Shield}
-          iconColor="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40"
+          iconColor="bg-success-muted text-success-muted-foreground"
           loading={rolesLoading}
         />
         <StatCard
@@ -366,7 +402,7 @@ export function DashboardContent() {
           value={activeDelegations}
           subtitle={delegationsData ? `${delegationsData.totalCount} total` : undefined}
           icon={ArrowRightLeft}
-          iconColor="bg-amber-100 text-amber-600 dark:bg-amber-950/40"
+          iconColor="bg-warning-muted text-warning-muted-foreground"
           loading={delegationsLoading}
         />
       </div>

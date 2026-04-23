@@ -102,7 +102,7 @@ const packageGrantColumns: ColumnDef<PackageGrant, unknown>[] = [
       }
       return (
         <div className="flex items-center gap-1.5">
-          <Badge variant="outline" className="bg-blue-50 text-xs text-blue-700 border-blue-300">Role</Badge>
+          <Badge variant="outline" className="text-xs">Role</Badge>
           <span className="text-sm font-medium">{row.original.sourceName}</span>
         </div>
       )
@@ -161,14 +161,14 @@ const effectiveAccessColumns: ColumnDef<EffectiveAccessEntry, unknown>[] = [
       if (grantSource === 'ROLE')
         return (
           <div className="flex items-center gap-1.5">
-            <Badge variant="outline" className="text-xs border-blue-300 text-blue-700 bg-blue-50">Role</Badge>
+            <Badge variant="outline" className="text-xs">Role</Badge>
             <span className="text-sm font-medium">{sourceName}</span>
             <span className="font-mono text-xs text-muted-foreground">{sourceCode}</span>
           </div>
         )
       return (
         <div className="flex items-center gap-1.5">
-          <Badge variant="outline" className="text-xs border-amber-300 text-amber-700 bg-amber-50">Delegated</Badge>
+          <Badge variant="outline" className="text-xs">Delegated</Badge>
           <span className="text-sm">{sourceName ?? sourceCode}</span>
         </div>
       )
@@ -480,13 +480,13 @@ export function UserDetail({ userId }: { userId: number }) {
 
           {/* Coverage status — prominent banner */}
           {hasGap && (
-            <div className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:bg-amber-950/20 dark:border-amber-800">
-              <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
+            <div className="flex items-center gap-3 rounded-xl border border-warning-border bg-warning-muted px-4 py-3">
+              <AlertTriangle className="h-5 w-5 shrink-0 text-warning" />
               <div>
-                <p className="text-sm font-medium text-amber-800 dark:text-amber-400">
+                <p className="text-sm font-medium text-warning-muted-foreground">
                   Coverage gap detected: <span className="font-semibold">{user.gapStatus}</span>
                 </p>
-                <p className="text-xs text-amber-700/80 dark:text-amber-500">
+                <p className="text-xs text-warning-muted-foreground/80">
                   This user has sites without package access, or packages without site access.
                 </p>
               </div>

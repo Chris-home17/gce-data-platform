@@ -253,7 +253,7 @@ export function EditDefinitionSheet({ kpi, open, onClose }: EditDefinitionSheetP
                       </SelectContent>
                     </Select>
                     {kpi.assignmentCount > 0 && (
-                      <p className="text-xs text-amber-600">
+                      <p className="text-xs text-warning">
                         {kpi.assignmentCount} assignment{kpi.assignmentCount !== 1 ? 's' : ''} exist — changing type may affect existing data.
                       </p>
                     )}

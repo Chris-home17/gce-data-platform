@@ -222,8 +222,8 @@ function StepRoles({
                       className={cn(
                         'text-[10px] px-1 py-0 shrink-0',
                         isGlobal
-                          ? 'border-violet-300 text-violet-600 dark:border-violet-700 dark:text-violet-400'
-                          : 'border-blue-300 text-blue-600 dark:border-blue-700 dark:text-blue-400'
+                          ? 'border-primary/40 text-primary'
+                          : 'border-info-border bg-info-muted text-info-muted-foreground'
                       )}
                     >
                       {isGlobal ? 'Global' : 'Account'}
@@ -485,8 +485,8 @@ function StepReview({ state }: { state: WizardState }) {
                       className={cn(
                         'text-[10px] px-1 py-0',
                         isGlobal
-                          ? 'border-violet-300 text-violet-600 dark:border-violet-700 dark:text-violet-400'
-                          : 'border-blue-300 text-blue-600 dark:border-blue-700 dark:text-blue-400'
+                          ? 'border-primary/40 text-primary'
+                          : 'border-info-border bg-info-muted text-info-muted-foreground'
                       )}
                     >
                       {isGlobal ? 'Global' : 'Account'}
@@ -673,7 +673,7 @@ export function OnboardUserWizard({ open, onOpenChange, accountId }: OnboardUser
         {done ? (
           <div className="space-y-4 py-2">
             <div className="flex flex-col items-center gap-3 py-6 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success-muted text-success">
                 <Check className="h-6 w-6" />
               </div>
               <div>

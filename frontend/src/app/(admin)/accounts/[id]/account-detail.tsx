@@ -105,26 +105,26 @@ function AccountCoverageTab({ accountId }: { accountId: number }) {
     <div className="space-y-4">
       {/* Summary */}
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="flex items-center justify-between rounded-xl border bg-emerald-50/50 px-4 py-3 dark:bg-emerald-950/10">
+        <div className="flex items-center justify-between rounded-xl border bg-success-muted/50 px-4 py-3">
           <div className="flex items-center gap-2.5">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            <CheckCircle2 className="h-4 w-4 text-success" />
             <span className="text-sm font-medium">Full coverage</span>
           </div>
-          <span className="text-lg font-bold tabular-nums text-emerald-700">{okUsers.length}</span>
+          <span className="text-lg font-bold tabular-nums text-success-muted-foreground">{okUsers.length}</span>
         </div>
-        <div className="flex items-center justify-between rounded-xl border bg-amber-50/50 px-4 py-3 dark:bg-amber-950/10">
+        <div className="flex items-center justify-between rounded-xl border bg-warning-muted/50 px-4 py-3">
           <div className="flex items-center gap-2.5">
-            <AlertTriangle className="h-4 w-4 text-amber-600" />
+            <AlertTriangle className="h-4 w-4 text-warning" />
             <span className="text-sm font-medium">Coverage gaps</span>
           </div>
-          <span className="text-lg font-bold tabular-nums text-amber-700">{gapUsers.length}</span>
+          <span className="text-lg font-bold tabular-nums text-warning-muted-foreground">{gapUsers.length}</span>
         </div>
       </div>
 
       {/* Gap users */}
       {gapUsers.length === 0 ? (
         <div className="rounded-xl border border-dashed py-8 text-center">
-          <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-emerald-500" />
+          <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-success" />
           <p className="text-sm font-medium text-muted-foreground">No coverage gaps for this account</p>
         </div>
       ) : (
@@ -294,11 +294,11 @@ function AccountKpiTab({ accountId }: { accountId: number }) {
             <p className="text-xs text-muted-foreground mt-0.5">Avg completion</p>
           </div>
           <div className="rounded-xl border p-4 text-center">
-            <p className="text-2xl font-bold tabular-nums text-emerald-600">{completedSites}</p>
+            <p className="text-2xl font-bold tabular-nums text-success">{completedSites}</p>
             <p className="text-xs text-muted-foreground mt-0.5">Sites complete</p>
           </div>
           <div className="rounded-xl border p-4 text-center">
-            <p className="text-2xl font-bold tabular-nums text-amber-600">{totalSites - completedSites}</p>
+            <p className="text-2xl font-bold tabular-nums text-warning">{totalSites - completedSites}</p>
             <p className="text-xs text-muted-foreground mt-0.5">Pending</p>
           </div>
         </div>
@@ -325,7 +325,7 @@ function AccountKpiTab({ accountId }: { accountId: number }) {
         <div className="rounded-xl border divide-y overflow-hidden">
           {sites.slice(0, 10).map((site) => {
             const pct = Math.min(Math.round(site.completionPct), 100)
-            const color = pct >= 100 ? 'bg-emerald-500' : pct >= 75 ? 'bg-amber-400' : 'bg-red-400'
+            const color = pct >= 100 ? 'bg-success' : pct >= 75 ? 'bg-warning' : 'bg-danger'
             return (
               <div key={site.siteOrgUnitId} className="flex items-center gap-4 px-4 py-3">
                 <div className="min-w-0 flex-1">
@@ -344,7 +344,7 @@ function AccountKpiTab({ accountId }: { accountId: number }) {
                   </div>
                   <Badge
                     variant={pct >= 100 ? 'default' : 'secondary'}
-                    className={cn('text-xs sm:hidden', pct >= 100 ? 'bg-emerald-100 text-emerald-800' : '')}
+                    className={cn('text-xs sm:hidden', pct >= 100 ? 'bg-success-muted text-success-muted-foreground' : '')}
                   >
                     {pct}%
                   </Badge>
@@ -473,34 +473,34 @@ export function AccountDetail({ accountId }: AccountDetailProps) {
           title="Sites"
           value={accountLoading ? '—' : account?.siteCount ?? 0}
           icon={MapPin}
-          iconColor="bg-blue-100 text-blue-600 dark:bg-blue-950/40"
+          iconColor="bg-info-muted text-info-muted-foreground"
           loading={accountLoading}
         />
         <StatCard
           title="Users"
           value={accountLoading ? '—' : account?.userCount ?? 0}
           icon={Users}
-          iconColor="bg-violet-100 text-violet-600 dark:bg-violet-950/40"
+          iconColor="bg-brand-muted text-brand"
           loading={accountLoading}
         />
         <StatCard
           title="Org Units"
           value={orgUnitsLoading ? '—' : orgUnitsData?.totalCount ?? 0}
           icon={Building2}
-          iconColor="bg-amber-100 text-amber-600 dark:bg-amber-950/40"
+          iconColor="bg-warning-muted text-warning-muted-foreground"
           loading={orgUnitsLoading}
         />
         <StatCard
           title="Packages"
           value={activePackages}
           icon={Package}
-          iconColor="bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40"
+          iconColor="bg-success-muted text-success-muted-foreground"
         />
         <StatCard
           title="Roles"
           value={rolesLoading ? '—' : accountRoleCount}
           icon={Shield}
-          iconColor="bg-slate-100 text-slate-600 dark:bg-slate-800/40"
+          iconColor="bg-muted text-muted-foreground"
           loading={rolesLoading}
         />
       </div>

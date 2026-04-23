@@ -10,10 +10,39 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusBadge } from '@/components/shared/status-badge'
 import { RowActions } from '@/components/shared/row-actions'
 import { usePermissions } from '@/hooks/usePermissions'
+import { useAccessibleSites } from '@/hooks/useAccessibleSites'
 import { api } from '@/lib/api'
 import type { OrgUnit, OrgUnitType } from '@/types/api'
 import { PERMISSIONS } from '@/types/api'
 import { ImportOrgUnitsDialog } from './import-org-units-dialog'
+
+/**
+ * For a role-scoped user, keep only the org units whose `orgUnitCode` is in
+ * the user's accessible-site set, plus every ancestor of those units, so
+ * hierarchy rows (Region → Country → Site) render coherently and the tree
+ * doesn't appear disconnected.
+ */
+function filterToAccessibleSubtree(items: OrgUnit[], siteCodes: Set<string>): OrgUnit[] {
+  const byId = new Map<number, OrgUnit>()
+  items.forEach((u) => byId.set(u.orgUnitId, u))
+
+  const keep = new Set<number>()
+  items.forEach((unit) => {
+    // Direct match on a leaf (typically a 'Site'). Walk up parents to keep the
+    // path visible. A user scoped at a Country level will have EffectiveSite
+    // rows for each descendant Site — we still keep the Country / Region
+    // ancestors so the breadcrumb makes sense.
+    if (!siteCodes.has(unit.orgUnitCode)) return
+    let cursor: OrgUnit | undefined = unit
+    while (cursor) {
+      if (keep.has(cursor.orgUnitId)) break
+      keep.add(cursor.orgUnitId)
+      cursor = cursor.parentOrgUnitId != null ? byId.get(cursor.parentOrgUnitId) : undefined
+    }
+  })
+
+  return items.filter((u) => keep.has(u.orgUnitId))
+}
 
 function pathDepth(path: string): number {
   return path.split('|').filter(Boolean).length - 1
@@ -127,8 +156,8 @@ function OrgUnitRow({
         'border-b transition-colors hover:bg-muted/40',
         canDrag ? 'cursor-grab active:cursor-grabbing' : '',
         isDragged ? 'opacity-45' : '',
-        isValidDropTarget ? 'bg-emerald-50 ring-1 ring-inset ring-emerald-300' : '',
-        isInvalidDropTarget ? 'bg-red-50/60' : '',
+        isValidDropTarget ? 'bg-success-muted ring-1 ring-inset ring-success-border' : '',
+        isInvalidDropTarget ? 'bg-danger-muted/60' : '',
       ].join(' ')}
     >
       <td className="py-2.5 pl-4 pr-2 w-[36px] align-middle">
@@ -215,7 +244,17 @@ function SitesTreeTable({
       api.orgUnits.list(currentAccountId ? { accountId: currentAccountId } : undefined),
   })
 
-  const items = data?.items ?? []
+  const accessible = useAccessibleSites()
+
+  // Narrow the tree to the user's accessible sites (+ ancestors) when the
+  // backend `/org-units` endpoint returns the full account tree but the user
+  // only has role-scoped access to a subset.
+  const items = useMemo(() => {
+    const raw = data?.items ?? []
+    if (accessible.mode === 'all') return raw
+    if (accessible.isLoading) return []
+    return filterToAccessibleSubtree(raw, accessible.siteCodes)
+  }, [data, accessible])
   const draggedUnit = useMemo(
     () => items.find((unit) => unit.orgUnitId === draggedUnitId) ?? null,
     [draggedUnitId, items],

@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -349,7 +350,7 @@ function StepContext({ context, onChange, open }: StepContextProps) {
 
       <div className="space-y-3">
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Account</label>
+          <Label>Account</Label>
           <Select
             value={context.accountCode}
             onValueChange={(v) => onChange({ accountCode: v, orgUnitCodes: [] })}
@@ -383,7 +384,7 @@ function StepContext({ context, onChange, open }: StepContextProps) {
 
         {!context.isAccountWide && (
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Sites</label>
+            <Label>Sites</Label>
             <SiteMultiSelect
               sites={sites}
               selectedCodes={context.orgUnitCodes}
@@ -398,7 +399,7 @@ function StepContext({ context, onChange, open }: StepContextProps) {
       <SectionHeading>Schedule</SectionHeading>
 
       <div className="space-y-1.5">
-        <label className="text-sm font-medium">Period Schedule</label>
+        <Label>Period Schedule</Label>
         <Select
           value={context.periodScheduleId ? String(context.periodScheduleId) : ''}
           onValueChange={(v) => onChange({ periodScheduleId: parseInt(v, 10) })}
@@ -420,26 +421,37 @@ function StepContext({ context, onChange, open }: StepContextProps) {
       <SectionHeading>Group <span className="font-normal text-muted-foreground">(optional)</span></SectionHeading>
 
       <div className="space-y-1.5">
-        <label className="text-sm font-medium">Group name</label>
+        <Label>Group name</Label>
         <div className="flex gap-2">
           <Input
             placeholder="e.g. Technology, Operational…"
             value={context.groupName ?? ''}
             onChange={(e) => onChange({ groupName: e.target.value || null })}
-            list="group-suggestions"
             className="flex-1"
           />
           {context.groupName && (
-            <Button variant="ghost" size="icon" onClick={() => onChange({ groupName: null })} title="Remove group">
+            <Button variant="ghost" size="icon" aria-label="Remove group" onClick={() => onChange({ groupName: null })}>
               <X className="h-4 w-4" />
             </Button>
           )}
         </div>
-        <datalist id="group-suggestions">
-          {existingGroups.map((g) => (
-            <option key={g} value={g} />
-          ))}
-        </datalist>
+        {existingGroups.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <span className="text-xs text-muted-foreground">Existing:</span>
+            {existingGroups.map((g) => (
+              <Button
+                key={g}
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="h-7 px-2.5 text-xs font-normal"
+                onClick={() => onChange({ groupName: g })}
+              >
+                {g}
+              </Button>
+            ))}
+          </div>
+        )}
         <p className="text-xs text-muted-foreground">
           Assign this set of KPIs to a named group. Create a separate assignment with a different group name for other teams on the same account.
         </p>
@@ -842,16 +854,13 @@ function KpiTailoringRow({ kpi, values, onChange, fieldErrors, showErrors }: Kpi
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium">
+                  <Label className="text-xs">
                     Target value <span className="text-destructive">*</span>
-                  </label>
-                  <input
+                  </Label>
+                  <Input
                     type="number"
                     step="0.01"
-                    className={cn(
-                      "flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                      err('targetValue') ? "border-destructive focus-visible:ring-destructive" : "border-input"
-                    )}
+                    className={cn("h-9", err('targetValue') && "border-destructive focus-visible:ring-destructive")}
                     value={values.targetValue}
                     onChange={(e) => onChange({ targetValue: e.target.value })}
                     placeholder="Required"
@@ -859,7 +868,7 @@ function KpiTailoringRow({ kpi, values, onChange, fieldErrors, showErrors }: Kpi
                   {err('targetValue') && <p className="text-xs text-destructive">Required</p>}
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-medium">Direction</label>
+                  <Label className="text-xs">Direction</Label>
                   <Select
                     value={values.thresholdDirection}
                     onValueChange={(v) => onChange({ thresholdDirection: v as KpiTailoringValues['thresholdDirection'] })}
@@ -878,16 +887,13 @@ function KpiTailoringRow({ kpi, values, onChange, fieldErrors, showErrors }: Kpi
               <div className="grid grid-cols-3 gap-3">
                 {(['thresholdGreen', 'thresholdAmber', 'thresholdRed'] as const).map((field) => (
                   <div key={field} className="space-y-1.5">
-                    <label className="text-xs font-medium capitalize">
+                    <Label className="text-xs capitalize">
                       {field.replace('threshold', '')} <span className="text-destructive">*</span>
-                    </label>
-                    <input
+                    </Label>
+                    <Input
                       type="number"
                       step="0.01"
-                      className={cn(
-                        "flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                        err(field) ? "border-destructive focus-visible:ring-destructive" : "border-input"
-                      )}
+                      className={cn("h-9", err(field) && "border-destructive focus-visible:ring-destructive")}
                       value={values[field]}
                       onChange={(e) => onChange({ [field]: e.target.value })}
                       placeholder="Required"
@@ -920,7 +926,7 @@ function KpiTailoringRow({ kpi, values, onChange, fieldErrors, showErrors }: Kpi
           {values.overrideKpiName && (
             <div className="space-y-3">
               <div className="space-y-1.5">
-                <label className="text-xs font-medium">Display name</label>
+                <Label className="text-xs">Display name</Label>
                 <Input
                   value={values.customKpiName}
                   onChange={(e) => onChange({ customKpiName: e.target.value })}
@@ -929,9 +935,9 @@ function KpiTailoringRow({ kpi, values, onChange, fieldErrors, showErrors }: Kpi
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-medium">
+                <Label className="text-xs">
                   Display description <span className="font-normal text-muted-foreground">(optional)</span>
-                </label>
+                </Label>
                 <Textarea
                   value={values.customKpiDescription}
                   onChange={(e) => onChange({ customKpiDescription: e.target.value })}
@@ -944,9 +950,9 @@ function KpiTailoringRow({ kpi, values, onChange, fieldErrors, showErrors }: Kpi
             </div>
           )}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium">
+            <Label className="text-xs">
               Submitter guidance <span className="font-normal text-muted-foreground">(optional)</span>
-            </label>
+            </Label>
             <Textarea
               value={values.submitterGuidance}
               onChange={(e) => onChange({ submitterGuidance: e.target.value })}

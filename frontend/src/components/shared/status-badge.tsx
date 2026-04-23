@@ -8,6 +8,7 @@ type StatusValue =
   | 'Closed'
   | 'Draft'
   | 'Distributed'
+  | 'Locked'
   | 'Green'
   | 'Amber'
   | 'Red'
@@ -18,23 +19,29 @@ interface StatusBadgeProps {
   className?: string
 }
 
+const SUCCESS = 'bg-success-muted text-success-muted-foreground border-success-border'
+const DANGER = 'bg-danger-muted text-danger-muted-foreground border-danger-border'
+const WARNING = 'bg-warning-muted text-warning-muted-foreground border-warning-border'
+const INFO = 'bg-info-muted text-info-muted-foreground border-info-border'
+
 const STATUS_STYLES: Record<string, string> = {
   // Green variants
-  active: 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800',
-  open: 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800',
-  green: 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800',
+  active: SUCCESS,
+  open: SUCCESS,
+  green: SUCCESS,
 
   // Red variants
-  inactive: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800',
-  closed: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800',
-  red: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800',
+  inactive: DANGER,
+  closed: DANGER,
+  red: DANGER,
 
   // Amber variants
-  draft: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800',
-  amber: 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800',
+  draft: WARNING,
+  amber: WARNING,
+  locked: WARNING,
 
   // Blue variants
-  distributed: 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800',
+  distributed: INFO,
 }
 
 const FALLBACK_STYLE =

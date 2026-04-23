@@ -28,6 +28,31 @@
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
 
+    /* Semantic signal tokens (RAG / warnings / info) */
+    --success: 142 71% 45%;
+    --success-foreground: 140 60% 15%;
+    --success-muted: 142 76% 94%;
+    --success-muted-foreground: 142 72% 25%;
+    --success-border: 142 60% 80%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 28 80% 20%;
+    --warning-muted: 48 96% 92%;
+    --warning-muted-foreground: 28 74% 33%;
+    --warning-border: 40 80% 78%;
+
+    --danger: 0 84.2% 60.2%;
+    --danger-foreground: 0 60% 20%;
+    --danger-muted: 0 93% 94%;
+    --danger-muted-foreground: 0 70% 40%;
+    --danger-border: 0 80% 85%;
+
+    --info: 217 91% 60%;
+    --info-foreground: 224 76% 20%;
+    --info-muted: 214 100% 95%;
+    --info-muted-foreground: 224 64% 33%;
+    --info-border: 214 90% 82%;
+
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
@@ -64,6 +89,31 @@
 
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
+
+    /* Semantic signal tokens (dark) */
+    --success: 142 65% 50%;
+    --success-foreground: 140 60% 90%;
+    --success-muted: 142 40% 18%;
+    --success-muted-foreground: 142 60% 70%;
+    --success-border: 142 30% 28%;
+
+    --warning: 38 92% 55%;
+    --warning-foreground: 48 90% 90%;
+    --warning-muted: 32 40% 18%;
+    --warning-muted-foreground: 40 80% 70%;
+    --warning-border: 32 35% 30%;
+
+    --danger: 0 72% 55%;
+    --danger-foreground: 0 90% 95%;
+    --danger-muted: 0 40% 20%;
+    --danger-muted-foreground: 0 75% 75%;
+    --danger-border: 0 35% 30%;
+
+    --info: 217 91% 65%;
+    --info-foreground: 214 90% 92%;
+    --info-muted: 220 40% 20%;
+    --info-muted-foreground: 214 80% 75%;
+    --info-border: 220 35% 30%;
 
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;

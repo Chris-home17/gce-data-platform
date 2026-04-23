@@ -10,13 +10,13 @@ import type { CoverageSummary } from '@/types/api'
 
 function GapBadge({ status }: { status: string }) {
   if (status === 'OK') {
-    return <Badge variant="outline" className="text-xs text-emerald-700 border-emerald-300 bg-emerald-50">OK</Badge>
+    return <Badge variant="outline" className="text-xs border-success-border bg-success-muted text-success-muted-foreground">OK</Badge>
   }
   if (status === 'Sites without packages') {
-    return <Badge variant="outline" className="text-xs text-amber-700 border-amber-300 bg-amber-50">Sites w/o packages</Badge>
+    return <Badge variant="outline" className="text-xs border-warning-border bg-warning-muted text-warning-muted-foreground">Sites w/o packages</Badge>
   }
   if (status === 'Packages without sites') {
-    return <Badge variant="outline" className="text-xs text-orange-700 border-orange-300 bg-orange-50">Packages w/o sites</Badge>
+    return <Badge variant="outline" className="text-xs border-warning-border bg-warning-muted text-warning-muted-foreground">Packages w/o sites</Badge>
   }
   return <Badge variant="outline" className="text-xs text-destructive border-destructive/40 bg-destructive/5">{status}</Badge>
 }
@@ -141,11 +141,11 @@ export function CoverageSummaryStats() {
       </div>
       <div className="rounded-lg border p-4">
         <p className="text-xs text-muted-foreground uppercase tracking-wide">No Gaps</p>
-        <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-600">{ok}</p>
+        <p className="mt-1 text-2xl font-semibold tabular-nums text-success">{ok}</p>
       </div>
-      <div className={`rounded-lg border p-4 ${gaps > 0 ? 'border-amber-200 bg-amber-50/50' : ''}`}>
+      <div className={`rounded-lg border p-4 ${gaps > 0 ? 'border-warning-border bg-warning-muted/50' : ''}`}>
         <p className="text-xs text-muted-foreground uppercase tracking-wide">With Gaps</p>
-        <p className={`mt-1 text-2xl font-semibold tabular-nums ${gaps > 0 ? 'text-amber-700' : 'text-muted-foreground'}`}>{gaps}</p>
+        <p className={`mt-1 text-2xl font-semibold tabular-nums ${gaps > 0 ? 'text-warning-muted-foreground' : 'text-muted-foreground'}`}>{gaps}</p>
       </div>
     </div>
   )

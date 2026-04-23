@@ -245,12 +245,12 @@ export function ImportSharedGeoDialog() {
                   </Badge>
                 )}
                 {warningCount > 0 && (
-                  <Badge variant="secondary" className="border-amber-200 bg-amber-100 text-xs text-amber-700">
+                  <Badge variant="secondary" className="border-warning-border bg-warning-muted text-xs text-warning-muted-foreground">
                     {warningCount} warning{warningCount !== 1 ? 's' : ''}
                   </Badge>
                 )}
                 {!hasErrors && errorCount === 0 && warningCount === 0 && (
-                  <Badge variant="secondary" className="border-emerald-200 bg-emerald-100 text-xs text-emerald-700">
+                  <Badge variant="secondary" className="border-success-border bg-success-muted text-xs text-success-muted-foreground">
                     All valid
                   </Badge>
                 )}
@@ -274,8 +274,8 @@ export function ImportSharedGeoDialog() {
                         key={i}
                         className={[
                           'border-b last:border-0',
-                          vr.status === 'error' ? 'bg-red-50' : '',
-                          vr.status === 'warning' ? 'bg-amber-50' : '',
+                          vr.status === 'error' ? 'bg-danger-muted/50' : '',
+                          vr.status === 'warning' ? 'bg-warning-muted/50' : '',
                         ].join(' ')}
                       >
                         <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{i + 1}</td>
@@ -292,9 +292,9 @@ export function ImportSharedGeoDialog() {
                             </span>
                           )}
                           {vr.status === 'warning' && (
-                            <span className="text-xs text-amber-500" title={vr.warnings.join(' ')}>⚠</span>
+                            <span className="text-xs text-warning" title={vr.warnings.join(' ')}>⚠</span>
                           )}
-                          {vr.status === 'valid' && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+                          {vr.status === 'valid' && <CheckCircle2 className="h-4 w-4 text-success" />}
                         </td>
                       </tr>
                     ))}
@@ -311,7 +311,7 @@ export function ImportSharedGeoDialog() {
                       </p>
                     )),
                     ...vr.warnings.map((w) => (
-                      <p key={`w-${i}-${w}`} className="text-xs text-amber-700">
+                      <p key={`w-${i}-${w}`} className="text-xs text-warning-muted-foreground">
                         Row {i + 1}: {w}
                       </p>
                     )),
@@ -338,7 +338,7 @@ export function ImportSharedGeoDialog() {
                         <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{result.rowIndex + 1}</td>
                         <td className="px-3 py-1.5">
                           {result.success ? (
-                            <span className="inline-flex items-center gap-1 text-emerald-700">
+                            <span className="inline-flex items-center gap-1 text-success-muted-foreground">
                               <CheckCircle2 className="h-4 w-4" />
                               Imported
                             </span>

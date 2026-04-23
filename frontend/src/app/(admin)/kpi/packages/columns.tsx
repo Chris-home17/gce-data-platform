@@ -65,7 +65,7 @@ function PackageActions({ pkg }: { pkg: KpiPackage }) {
             </DropdownMenuItem>
           ) : (
             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); toggleMutation.mutate() }}>
-              <CheckCircle className="mr-2 h-4 w-4 text-emerald-600" />
+              <CheckCircle className="mr-2 h-4 w-4 text-success" />
               Activate
             </DropdownMenuItem>
           )}

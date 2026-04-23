@@ -11,7 +11,30 @@
       "Bash(dotnet build:*)",
       "Bash(grep -n \"KPI.SubmissionToken\\\\|END -- KPI\\\\|GO$\" \"/Users/chrisdw/Documents/Developer/Claude Code/gce-data-platform/database/ddl/tables/baseline_create.sql\")",
       "Bash(grep -v \"^$\")",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(tee /tmp/tsc.log)",
+      "Bash(grep -rnE \"#[0-9A-Fa-f]{3,8}\\\\b\" src/ --include=\"*.tsx\")",
+      "Bash(tee /tmp/build.log)",
+      "Bash(echo \"---EXIT $?---\")",
+      "Bash(grep -Ev \"^#|^$\")",
+      "Bash(awk -F= '{print $1}')",
+      "Bash(ls \"src/app/api/auth/[...nextauth]/\")",
+      "Bash(cat \"src/app/api/auth/[...nextauth]/route.ts\")",
+      "Bash(cat \"src/app/api/auth/[...nextauth]/route.js\")",
+      "Bash(find src/app -name \"not-found.tsx\" -o -name \"404.tsx\")",
+      "Bash(ps -o pid,command -p 99206 99651)",
+      "Bash(curl -sI \"http://localhost:3000/api/auth/signin/microsoft-entra-id\")",
+      "Bash(curl -sI -X POST \"http://localhost:3000/api/auth/signin/microsoft-entra-id\")",
+      "Bash(curl -s \"http://localhost:3000/api/auth/providers\")",
+      "Bash(curl -sI \"http://localhost:3000/api/auth/csrf\")",
+      "Bash(ls -la \"src/app/api/auth/\")",
+      "Bash(ls \"src/app/api/auth/\\\\\\\\[...nextauth\\\\\\\\]/\")",
+      "Bash(ls \"src/app/\")",
+      "Bash(curl -sv \"http://localhost:3000/api/auth/providers\")",
+      "Bash(touch \"src/app/api/auth/[...nextauth]/route.ts\")",
+      "Bash(curl -s -o /tmp/providers.out -w \"HTTP %{http_code}\\\\n\" \"http://localhost:3000/api/auth/providers\")",
+      "Bash(curl -s -o /tmp/csrf.out -w \"HTTP %{http_code}\\\\n\" \"http://localhost:3000/api/auth/csrf\")",
+      "Bash(echo \"exit $?\")"
     ]
   }
 }

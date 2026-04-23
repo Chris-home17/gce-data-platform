@@ -1,6 +1,7 @@
 import type { ColumnDef } from '@tanstack/react-table'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { RowActions } from '@/components/shared/row-actions'
+import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
 import type { KpiAssignment } from '@/types/api'
 
@@ -36,9 +37,9 @@ export const assignmentColumns: ColumnDef<KpiAssignment, unknown>[] = [
       const { isAccountWide, siteCode, siteName } = row.original
       if (isAccountWide) {
         return (
-          <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
+          <Badge variant="outline" className="border-info-border bg-info-muted text-info-muted-foreground text-xs font-medium">
             Account-wide
-          </span>
+          </Badge>
         )
       }
       return (

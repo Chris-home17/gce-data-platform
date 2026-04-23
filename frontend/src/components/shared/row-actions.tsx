@@ -54,7 +54,7 @@ export function RowActions({ isActive, onToggle, invalidateKeys, entityLabel: _e
           <DropdownMenuItem
             onClick={(e) => { e.stopPropagation(); mutation.mutate() }}
           >
-            <CheckCircle className="mr-2 h-4 w-4 text-emerald-600" />
+            <CheckCircle className="mr-2 h-4 w-4 text-success" />
             Activate
           </DropdownMenuItem>
         )}

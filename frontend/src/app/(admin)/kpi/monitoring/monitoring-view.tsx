@@ -25,6 +25,9 @@ import {
 import { DataTable } from '@/components/shared/data-table'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { KpiPeriod, SiteCompletion } from '@/types/api'
+import { useAccount } from '@/contexts/account-context'
+import { usePermissions } from '@/hooks/usePermissions'
+import { useAccessibleSites } from '@/hooks/useAccessibleSites'
 
 const KPI_MONITORING_REFRESH_EVENT = 'gce:kpi-monitoring-refresh'
 
@@ -108,7 +111,7 @@ function StatCard({
 
 function CompletionBar({ pct }: { pct: number }) {
   const colour =
-    pct >= 100 ? 'bg-green-500' : pct >= 75 ? 'bg-amber-400' : 'bg-red-500'
+    pct >= 100 ? 'bg-success' : pct >= 75 ? 'bg-warning' : 'bg-danger'
 
   return (
     <div className="flex items-center gap-2">
@@ -223,7 +226,7 @@ const monitoringColumns: ColumnDef<SiteCompletion, unknown>[] = [
     accessorKey: 'totalSubmitted',
     header: 'Submitted',
     cell: ({ row }) => (
-      <span className="tabular-nums text-sm text-green-700 dark:text-green-400 font-medium">
+      <span className="tabular-nums text-sm text-success-muted-foreground font-medium">
         {row.original.totalSubmitted}
       </span>
     ),
@@ -235,7 +238,7 @@ const monitoringColumns: ColumnDef<SiteCompletion, unknown>[] = [
     cell: ({ row }) => {
       const n = row.original.totalMissing
       return (
-        <span className={cn('tabular-nums text-sm font-medium', n > 0 ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground')}>
+        <span className={cn('tabular-nums text-sm font-medium', n > 0 ? 'text-danger' : 'text-muted-foreground')}>
           {n}
         </span>
       )
@@ -258,7 +261,7 @@ const monitoringColumns: ColumnDef<SiteCompletion, unknown>[] = [
         return <span className="text-xs text-muted-foreground">—</span>
       const label = `Level ${reminderLevel}`
       const colour =
-        reminderLevel >= 3 ? 'text-red-600' : reminderLevel === 2 ? 'text-amber-600' : 'text-muted-foreground'
+        reminderLevel >= 3 ? 'text-danger' : reminderLevel === 2 ? 'text-warning' : 'text-muted-foreground'
       return <span className={cn('text-xs font-medium', colour)}>{label}</span>
     },
     meta: { className: 'w-24' },
@@ -277,18 +280,41 @@ const monitoringColumns: ColumnDef<SiteCompletion, unknown>[] = [
 export function MonitoringView() {
   const router = useRouter()
   const [selectedPeriodLabel, setSelectedPeriodLabel] = useState<string>('')
+  const { selectedAccount: sidebarAccount } = useAccount()
+  const { isSuperAdmin } = usePermissions()
+
   const [selectedScheduleId, setSelectedScheduleId] = useState<string>('all')
-  const [selectedAccountCode, setSelectedAccountCode] = useState<string>('all')
+  // Non-super-admins are pinned to their sidebar account. Super admins default
+  // to the sidebar account but can opt into "All accounts" via the filter.
+  const [selectedAccountCode, setSelectedAccountCode] = useState<string>(
+    sidebarAccount?.accountCode ?? 'all',
+  )
   const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('all')
+
+  // Keep the monitoring filter in sync with the sidebar account switcher.
+  useEffect(() => {
+    if (!sidebarAccount) return
+    if (!isSuperAdmin) {
+      setSelectedAccountCode(sidebarAccount.accountCode)
+      return
+    }
+    setSelectedAccountCode((prev) =>
+      prev === 'all' ? 'all' : sidebarAccount.accountCode,
+    )
+  }, [sidebarAccount, isSuperAdmin])
 
   const { data: periodsData } = useQuery({
     queryKey: ['kpi', 'periods'],
     queryFn: () => api.kpi.periods.list(),
   })
 
+  // Super admins see the cross-account dropdown; tenant admins don't need the
+  // full accounts list at all. `selectedAccount` below is resolved from the
+  // sidebar account for tenant admins.
   const { data: accountsData } = useQuery({
     queryKey: ['accounts'],
     queryFn: () => api.accounts.list(),
+    enabled: isSuperAdmin,
   })
 
   const sortedPeriods = useMemo(() => {
@@ -365,7 +391,11 @@ export function MonitoringView() {
           || a.periodScheduleId - b.periodScheduleId
       })[0]
   }, [selectedPeriodLabel, selectedScheduleId, sortedPeriods])
-  const selectedAccount = accountsData?.items.find((a) => a.accountCode === selectedAccountCode)
+  // Super admins pick an account from the cross-tenant dropdown (`accountsData`);
+  // tenant admins are pinned to their sidebar account via `sidebarAccount`.
+  const selectedAccount = isSuperAdmin
+    ? accountsData?.items.find((a) => a.accountCode === selectedAccountCode)
+    : sidebarAccount
 
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['kpi', 'monitoring', selectedPeriod?.periodId ?? 'none', selectedAccount?.accountId ?? 'all'],
@@ -413,12 +443,24 @@ export function MonitoringView() {
     })
   }, [data])
 
+  const accessible = useAccessibleSites()
+
   const filteredItems = useMemo(() => {
-    const all = data?.items ?? []
+    let all = data?.items ?? []
+
+    // Narrow to the user's accessible sites when they're role-scoped. Account
+    // admins and super-admins pass through unchanged. While resolvedAccess is
+    // still fetching, render an empty table rather than the full account list
+    // so a site-scoped user never flashes data they shouldn't see.
+    if (accessible.mode === 'scoped') {
+      if (accessible.isLoading) return []
+      all = all.filter((row) => accessible.siteCodes.has(row.siteCode))
+    }
+
     if (selectedGroupFilter === 'all') return all
     if (selectedGroupFilter === '__nogroup__') return all.filter((i) => i.groupName === null)
     return all.filter((i) => i.groupName === selectedGroupFilter)
-  }, [data, selectedGroupFilter])
+  }, [data, selectedGroupFilter, accessible])
 
   // Aggregate stats across filtered items
   const stats = useMemo(() => {
@@ -486,22 +528,24 @@ export function MonitoringView() {
           </Select>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">Account:</span>
-          <Select value={selectedAccountCode} onValueChange={setSelectedAccountCode}>
-            <SelectTrigger className="h-8 w-48 text-sm">
-              <SelectValue placeholder="All accounts" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All accounts</SelectItem>
-              {(accountsData?.items ?? []).map((account) => (
-                <SelectItem key={account.accountId} value={account.accountCode}>
-                  {account.accountName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        {isSuperAdmin && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Account:</span>
+            <Select value={selectedAccountCode} onValueChange={setSelectedAccountCode}>
+              <SelectTrigger className="h-8 w-48 text-sm">
+                <SelectValue placeholder="All accounts" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All accounts</SelectItem>
+                {(accountsData?.items ?? []).map((account) => (
+                  <SelectItem key={account.accountId} value={account.accountCode}>
+                    {account.accountName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         {groupOptions.length > 1 && (
           <div className="flex items-center gap-2">
@@ -534,7 +578,7 @@ export function MonitoringView() {
           <div className="ml-auto rounded-md border bg-muted/40 px-3 py-1.5 text-sm">
             <span className="text-muted-foreground">Window</span>{' '}
             <span className={cn(
-              (selectedPeriod.daysRemaining ?? 0) <= 3 ? 'font-medium text-red-600' : 'font-medium'
+              (selectedPeriod.daysRemaining ?? 0) <= 3 ? 'font-medium text-danger' : 'font-medium'
             )}>
               {selectedPeriod.daysRemaining}d remaining
             </span>
@@ -550,28 +594,28 @@ export function MonitoringView() {
             value={formatPercent(stats.overallPct)}
             sub={`${stats.siteCount} sites`}
             icon={CheckCircle2}
-            colour={stats.overallPct >= 100 ? 'text-green-600' : stats.overallPct >= 75 ? 'text-amber-600' : 'text-red-600'}
+            colour={stats.overallPct >= 100 ? 'text-success' : stats.overallPct >= 75 ? 'text-warning' : 'text-danger'}
           />
           <StatCard
             label="Submitted"
             value={stats.totalSubmitted}
             sub={`of ${stats.totalRequired} required`}
             icon={CheckCircle2}
-            colour="text-green-600"
+            colour="text-success"
           />
           <StatCard
             label="Locked"
             value={stats.totalLocked}
             sub="confirmed"
             icon={Lock}
-            colour="text-blue-600"
+            colour="text-info"
           />
           <StatCard
             label="Missing"
             value={stats.totalMissing}
             sub={stats.totalMissing > 0 ? 'not yet submitted' : 'all submitted'}
             icon={stats.totalMissing > 0 ? AlertTriangle : AlertCircle}
-            colour={stats.totalMissing > 0 ? 'text-red-600' : 'text-muted-foreground'}
+            colour={stats.totalMissing > 0 ? 'text-danger' : 'text-muted-foreground'}
           />
         </div>
       )}

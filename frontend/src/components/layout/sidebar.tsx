@@ -40,6 +40,7 @@ import {
 import { usePermissions } from '@/hooks/usePermissions'
 import { useAccount } from '@/contexts/account-context'
 import { PERMISSIONS } from '@/types/api'
+import { getRequiredPermission } from '@/lib/route-permissions'
 
 // ---------------------------------------------------------------------------
 // Nav structure
@@ -78,8 +79,8 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Tenants',
     items: [
-      { label: 'All Accounts', href: '/accounts', icon: Building2 },
-      { label: 'Packages', href: '/packages', icon: Package },
+      { label: 'All Accounts', href: '/accounts', icon: Building2, permission: PERMISSIONS.SUPER_ADMIN },
+      { label: 'Packages', href: '/packages', icon: Package, permission: PERMISSIONS.SUPER_ADMIN },
     ],
   },
   {
@@ -88,7 +89,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: 'KPI Library', href: '/kpi/definitions', icon: ListChecks, permission: PERMISSIONS.KPI_MANAGE },
       { label: 'KPI Periods', href: '/kpi/periods', icon: Calendar, permission: PERMISSIONS.KPI_MANAGE },
       { label: 'KPI Packages', href: '/kpi/packages', icon: Package, permission: PERMISSIONS.KPI_MANAGE },
-      { label: 'KPI Assignments', href: '/kpi/assignments', icon: ClipboardList },
+      { label: 'KPI Assignments', href: '/kpi/assignments', icon: ClipboardList, permission: PERMISSIONS.KPI_MANAGE },
     ],
   },
   {
@@ -221,14 +222,18 @@ function AccountSwitcher() {
 }
 
 function SidebarContent() {
-  const { can, isSuperAdmin } = usePermissions()
+  const { can } = usePermissions()
 
+  // Visibility is derived from the route→permission map in lib/route-permissions
+  // merged with any explicit `permission` on the nav item. This keeps sidebar
+  // visibility and the direct-URL guard in admin-shell.tsx in lockstep.
   const visibleSections = NAV_SECTIONS
     .map(section => ({
       ...section,
-      items: section.items.filter(item =>
-        !item.permission || isSuperAdmin || can(item.permission)
-      ),
+      items: section.items.filter(item => {
+        const required = item.permission ?? getRequiredPermission(item.href)
+        return !required || can(required)
+      }),
     }))
     .filter(section => section.items.length > 0)
 

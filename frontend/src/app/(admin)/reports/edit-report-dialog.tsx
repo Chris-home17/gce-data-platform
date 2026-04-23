@@ -21,6 +21,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 import type { BiReport } from '@/types/api'
@@ -80,7 +81,7 @@ export function EditReportDialog({ report, open, onOpenChange }: EditReportDialo
         <Form {...form}>
           <form onSubmit={form.handleSubmit((v) => mutation.mutate(v))} className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium leading-none">Code</label>
+              <Label>Code</Label>
               <Input value={report.reportCode} disabled className="font-mono bg-muted" />
             </div>
 

@@ -50,7 +50,7 @@ function formatDate(iso: string | null | undefined) {
 
 function ragDot(rag: string | null | undefined) {
   if (!rag) return null
-  const colour = rag === 'Green' ? 'bg-green-500' : rag === 'Amber' ? 'bg-amber-400' : 'bg-red-500'
+  const colour = rag === 'Green' ? 'bg-success' : rag === 'Amber' ? 'bg-warning' : 'bg-danger'
   return <span className={cn('inline-block h-2.5 w-2.5 rounded-full shrink-0', colour)} title={rag} />
 }
 
@@ -67,7 +67,7 @@ function LockBadge({ lockState }: { lockState: SiteSubmissionDetail['lockState']
     return <Badge variant="secondary" className="text-xs gap-1"><Lock className="h-3 w-3" />Period closed</Badge>
   if (lockState === 'LockedByAuto')
     return <Badge variant="secondary" className="text-xs gap-1"><Lock className="h-3 w-3" />Auto-locked</Badge>
-  return <Badge variant="outline" className="text-xs gap-1 border-amber-300 text-amber-700"><Lock className="h-3 w-3" />Locked</Badge>
+  return <Badge variant="outline" className="text-xs gap-1 border-warning-border bg-warning-muted text-warning-muted-foreground"><Lock className="h-3 w-3" />Locked</Badge>
 }
 
 // ---------------------------------------------------------------------------
@@ -104,7 +104,7 @@ function SubmissionRow({ row, periodStatus, onUnlocked }: SubmissionRowProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             {row.isRequired && (
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-red-500 bg-red-50 dark:bg-red-950/30 px-1.5 py-0.5 rounded">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-danger-muted-foreground bg-danger-muted px-1.5 py-0.5 rounded">
                 Required
               </span>
             )}
@@ -136,7 +136,7 @@ function SubmissionRow({ row, periodStatus, onUnlocked }: SubmissionRowProps) {
             </div>
           ) : (
             <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3 text-amber-400" />
+              <AlertTriangle className="h-3 w-3 text-warning" />
               Not yet submitted
             </p>
           )}
@@ -165,7 +165,7 @@ function SubmissionRow({ row, periodStatus, onUnlocked }: SubmissionRowProps) {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
                   onClick={() => mutation.mutate()}
-                  className="text-amber-700 focus:text-amber-700"
+                  className="text-warning-muted-foreground focus:text-warning-muted-foreground"
                 >
                   <LockOpen className="mr-2 h-4 w-4" />
                   Unlock
@@ -174,7 +174,7 @@ function SubmissionRow({ row, periodStatus, onUnlocked }: SubmissionRowProps) {
             </DropdownMenu>
           )}
           {row.isSubmitted && (!row.lockState || row.lockState === 'Unlocked') && (
-            <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+            <CheckCircle2 className="h-4 w-4 text-success shrink-0" />
           )}
         </div>
       </div>
@@ -249,10 +249,10 @@ function StatCard({
 
 function PeriodStatusBadge({ status }: { status: string }) {
   const variants: Record<string, string> = {
-    Open: 'border-green-300 bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400',
-    Closed: 'border-gray-300 text-gray-600',
-    Draft: 'border-blue-300 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400',
-    Distributed: 'border-purple-300 bg-purple-50 text-purple-700',
+    Open: 'border-success-border bg-success-muted text-success-muted-foreground',
+    Closed: 'bg-muted text-muted-foreground',
+    Draft: 'bg-secondary text-secondary-foreground',
+    Distributed: 'border-info-border bg-info-muted text-info-muted-foreground',
   }
   return (
     <Badge variant="outline" className={cn('text-xs', variants[status])}>
@@ -413,14 +413,14 @@ export function SitePeriodDetail({ siteOrgUnitId, periodId }: SitePeriodDetailPr
                 {summary.periodLabel}
               </span>
               {groupFilterActive && (
-                <Badge variant="outline" className="text-xs gap-1.5 border-blue-300 bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400">
+                <Badge variant="outline" className="text-xs font-normal">
                   {groupFilterValue ?? '(No group)'}
                 </Badge>
               )}
               {period?.daysRemaining !== null && period?.status === 'Open' && (
                 <span className={cn(
                   'flex items-center gap-1.5',
-                  (period.daysRemaining ?? 0) <= 3 ? 'text-red-600 font-medium' : '',
+                  (period.daysRemaining ?? 0) <= 3 ? 'text-danger font-medium' : '',
                 )}>
                   <Clock className="h-3.5 w-3.5" />
                   {period.daysRemaining}d remaining
@@ -443,28 +443,28 @@ export function SitePeriodDetail({ siteOrgUnitId, periodId }: SitePeriodDetailPr
           value={formatPercent(completionPct)}
           sub={isLoading ? undefined : `${summary?.siteCode ?? ''}`}
           icon={CheckCircle2}
-          colour={completionPct >= 100 ? 'text-green-600' : completionPct >= 75 ? 'text-amber-600' : 'text-red-600'}
+          colour={completionPct >= 100 ? 'text-success' : completionPct >= 75 ? 'text-warning' : 'text-danger'}
         />
         <StatCard
           label="Submitted"
           value={isLoading ? '—' : totalSubmitted}
           sub={`of ${totalRequired} required`}
           icon={CheckCircle2}
-          colour="text-green-600"
+          colour="text-success"
         />
         <StatCard
           label="Locked"
           value={isLoading ? '—' : totalLocked}
           sub="confirmed"
           icon={Lock}
-          colour="text-blue-600"
+          colour="text-info"
         />
         <StatCard
           label="Missing"
           value={isLoading ? '—' : totalMissing}
           sub={totalMissing > 0 ? 'not yet submitted' : 'all submitted'}
           icon={totalMissing > 0 ? AlertTriangle : AlertCircle}
-          colour={totalMissing > 0 ? 'text-red-600' : 'text-muted-foreground'}
+          colour={totalMissing > 0 ? 'text-danger' : 'text-muted-foreground'}
         />
       </div>
 
@@ -478,7 +478,7 @@ export function SitePeriodDetail({ siteOrgUnitId, periodId }: SitePeriodDetailPr
           <div
             className={cn(
               'h-full rounded-full transition-all',
-              completionPct >= 100 ? 'bg-green-500' : completionPct >= 75 ? 'bg-amber-400' : 'bg-red-500',
+              completionPct >= 100 ? 'bg-success' : completionPct >= 75 ? 'bg-warning' : 'bg-danger',
             )}
             style={{ width: `${Math.min(completionPct, 100)}%` }}
           />
@@ -506,7 +506,7 @@ export function SitePeriodDetail({ siteOrgUnitId, periodId }: SitePeriodDetailPr
                     <Separator className="flex-1" />
                     <span className={cn(
                       'text-[11px] font-mono font-medium',
-                      catSubmitted === items.length ? 'text-green-600' : 'text-muted-foreground',
+                      catSubmitted === items.length ? 'text-success' : 'text-muted-foreground',
                     )}>
                       {catSubmitted}/{items.length}
                     </span>

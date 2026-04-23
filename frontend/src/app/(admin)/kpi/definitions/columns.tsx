@@ -70,7 +70,7 @@ function DefinitionActions({ kpi }: { kpi: KpiDefinition }) {
             <DropdownMenuItem
               onClick={(e) => { e.stopPropagation(); toggleMutation.mutate() }}
             >
-              <CheckCircle className="mr-2 h-4 w-4 text-emerald-600" />
+              <CheckCircle className="mr-2 h-4 w-4 text-success" />
               Activate
             </DropdownMenuItem>
           )}
@@ -135,7 +135,7 @@ export const definitionColumns: ColumnDef<KpiDefinition, unknown>[] = [
       const dir = row.original.thresholdDirection
       if (!dir) return <span className="text-muted-foreground">—</span>
       return (
-        <span className={`text-sm font-medium ${dir === 'Higher' ? 'text-green-700' : 'text-blue-700'}`}>
+        <span className={`text-sm font-medium ${dir === 'Higher' ? 'text-success' : 'text-info'}`}>
           {dir === 'Higher' ? '↑ Higher' : '↓ Lower'}
         </span>
       )

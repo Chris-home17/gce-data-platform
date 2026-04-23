@@ -22,6 +22,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { Label } from '@/components/ui/label'
 import { api } from '@/lib/api'
 import { usePermissions } from '@/hooks/usePermissions'
 import type { BulkOrgUnitResult } from '@/types/api'
@@ -173,7 +174,7 @@ export function ImportOrgUnitsDialog({ defaultAccountCode }: ImportOrgUnitsDialo
               {/* Account selector — hidden when a default account is pre-selected */}
               {!defaultAccountCode && (
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Account</label>
+                  <Label>Account</Label>
                   <Select value={accountCode} onValueChange={setAccountCode}>
                     <SelectTrigger>
                       <SelectValue placeholder="Select account…" />
@@ -282,12 +283,12 @@ export function ImportOrgUnitsDialog({ defaultAccountCode }: ImportOrgUnitsDialo
                   </Badge>
                 )}
                 {warningCount > 0 && (
-                  <Badge variant="secondary" className="text-xs text-amber-700 bg-amber-100 border-amber-200">
+                  <Badge variant="secondary" className="text-xs bg-warning-muted text-warning-muted-foreground border-warning-border">
                     {warningCount} warning{warningCount !== 1 ? 's' : ''}
                   </Badge>
                 )}
                 {!hasErrors && errorCount === 0 && warningCount === 0 && (
-                  <Badge variant="secondary" className="text-xs text-emerald-700 bg-emerald-100 border-emerald-200">
+                  <Badge variant="secondary" className="text-xs bg-success-muted text-success-muted-foreground border-success-border">
                     All valid
                   </Badge>
                 )}
@@ -311,8 +312,8 @@ export function ImportOrgUnitsDialog({ defaultAccountCode }: ImportOrgUnitsDialo
                         key={i}
                         className={[
                           'border-b last:border-0',
-                          vr.status === 'error' ? 'bg-red-50' : '',
-                          vr.status === 'warning' ? 'bg-amber-50' : '',
+                          vr.status === 'error' ? 'bg-danger-muted/50' : '',
+                          vr.status === 'warning' ? 'bg-warning-muted/50' : '',
                         ].join(' ')}
                       >
                         <td className="px-3 py-1.5 text-muted-foreground tabular-nums">{i + 1}</td>
@@ -333,10 +334,10 @@ export function ImportOrgUnitsDialog({ defaultAccountCode }: ImportOrgUnitsDialo
                             </span>
                           )}
                           {vr.status === 'warning' && (
-                            <span className="text-amber-500 text-xs" title={vr.warnings.join(' ')}>⚠</span>
+                            <span className="text-warning text-xs" title={vr.warnings.join(' ')}>⚠</span>
                           )}
                           {vr.status === 'valid' && (
-                            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                            <CheckCircle2 className="h-4 w-4 text-success" />
                           )}
                         </td>
                       </tr>
@@ -355,7 +356,7 @@ export function ImportOrgUnitsDialog({ defaultAccountCode }: ImportOrgUnitsDialo
                       </p>
                     )),
                     ...vr.warnings.map((w) => (
-                      <p key={`w-${i}-${w}`} className="text-xs text-amber-600">
+                      <p key={`w-${i}-${w}`} className="text-xs text-warning">
                         Row {i + 1}: {w}
                       </p>
                     )),
@@ -369,7 +370,7 @@ export function ImportOrgUnitsDialog({ defaultAccountCode }: ImportOrgUnitsDialo
             <div className="space-y-3">
               <div className="flex items-center gap-3">
                 <span className="text-sm font-medium">{importResults.length} rows processed</span>
-                <Badge variant="secondary" className="text-xs text-emerald-700 bg-emerald-100 border-emerald-200">
+                <Badge variant="secondary" className="text-xs bg-success-muted text-success-muted-foreground border-success-border">
                   {importResults.filter((r) => r.success).length} created
                 </Badge>
                 {importResults.some((r) => !r.success) && (
@@ -398,7 +399,7 @@ export function ImportOrgUnitsDialog({ defaultAccountCode }: ImportOrgUnitsDialo
                           key={i}
                           className={[
                             'border-b last:border-0',
-                            !result.success ? 'bg-red-50' : '',
+                            !result.success ? 'bg-danger-muted/50' : '',
                           ].join(' ')}
                         >
                           <td className="px-3 py-1.5 text-muted-foreground tabular-nums">{result.rowIndex + 1}</td>
@@ -409,7 +410,7 @@ export function ImportOrgUnitsDialog({ defaultAccountCode }: ImportOrgUnitsDialo
                           <td className="px-3 py-1.5">{vr?.row.orgUnitName}</td>
                           <td className="px-3 py-1.5">
                             {result.success ? (
-                              <span className="flex items-center gap-1 text-emerald-600">
+                              <span className="flex items-center gap-1 text-success">
                                 <CheckCircle2 className="h-3.5 w-3.5" /> Created
                               </span>
                             ) : (

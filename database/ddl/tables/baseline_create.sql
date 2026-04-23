@@ -2458,24 +2458,63 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- Look up by EntraObjectId first, fall back to UPN
+    -- Look up by EntraObjectId first (the authoritative identity key).
     SELECT @UserId = UserId
     FROM Sec.[User]
     WHERE EntraObjectId = @EntraObjectId;
 
+    -- UPN fallback — tolerated only when the matched row isn't already linked
+    -- to a different Azure identity. Without this guard the SP would silently
+    -- weld a fresh Azure sign-in onto any pre-existing row sharing the UPN
+    -- (seed super-admin rows, stale dev-bypass placeholders, or a real user
+    -- whose UPN was later reassigned in Azure AD), and the whole session
+    -- would then operate as the wrong UserId.
     IF @UserId IS NULL AND @UPN IS NOT NULL
     BEGIN
-        SELECT @UserId = UserId FROM Sec.[User] WHERE UPN = @UPN;
+        DECLARE @CandidateUserId         INT;
+        DECLARE @CandidateEntraObjectId  NVARCHAR(128);
 
-        -- Back-fill EntraObjectId if user was created before Entra integration
-        IF @UserId IS NOT NULL
-            UPDATE Sec.[User]
-            SET EntraObjectId = @EntraObjectId,
-                ModifiedOnUtc = SYSUTCDATETIME()
-            WHERE UserId = @UserId;
+        SELECT @CandidateUserId        = UserId,
+               @CandidateEntraObjectId = EntraObjectId
+        FROM Sec.[User]
+        WHERE UPN = @UPN;
+
+        IF @CandidateUserId IS NOT NULL
+        BEGIN
+            -- Safe cases for UPN fallback:
+            --   (a) row has no Entra identity yet (pre-Entra user)
+            --   (b) row carries the DEV_BYPASS placeholder ('dev-user-*')
+            --   (c) row already matches this Entra identity (idempotent)
+            IF @CandidateEntraObjectId IS NULL
+               OR @CandidateEntraObjectId LIKE 'dev-user-%'
+               OR @CandidateEntraObjectId = @EntraObjectId
+            BEGIN
+                SET @UserId = @CandidateUserId;
+
+                UPDATE Sec.[User]
+                SET EntraObjectId = @EntraObjectId,
+                    ModifiedOnUtc = SYSUTCDATETIME()
+                WHERE UserId = @UserId
+                  AND (EntraObjectId IS NULL
+                       OR EntraObjectId <> @EntraObjectId);
+            END
+            ELSE
+            BEGIN
+                -- UPN collision with a different, already-linked Entra
+                -- identity. Refuse rather than weld silently — an admin
+                -- must re-assign the UPN or clear the stale link.
+                DECLARE @ErrMsg NVARCHAR(500) = CONCAT(
+                    'UPN ''', @UPN,
+                    ''' is already linked to a different Azure AD identity (UserId=',
+                    CAST(@CandidateUserId AS NVARCHAR(10)),
+                    '). An administrator must re-assign the UPN before this user can sign in.'
+                );
+                THROW 50120, @ErrMsg, 1;
+            END
+        END
     END
 
-    -- Just-in-time provisioning: create user on first login if not found
+    -- Just-in-time provisioning: create user on first login if not found.
     IF @UserId IS NULL AND @UPN IS NOT NULL
     BEGIN
         EXEC App.UpsertUser
@@ -2487,7 +2526,7 @@ BEGIN
             @UserId        = @UserId OUTPUT;
     END
 
-    -- Update last login timestamp
+    -- Update last login timestamp.
     IF @UserId IS NOT NULL
         UPDATE Sec.[User]
         SET LastLoginAt   = SYSUTCDATETIME(),

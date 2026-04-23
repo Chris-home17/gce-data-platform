@@ -59,7 +59,7 @@ export function createPeriodColumns(handlers: PeriodColumnHandlers): ColumnDef<K
         if (status !== 'Open') return <span className="text-muted-foreground">—</span>
         if (daysRemaining === null || daysRemaining === undefined)
           return <span className="text-muted-foreground">—</span>
-        const colour = daysRemaining <= 3 ? 'text-red-600 font-medium' : daysRemaining <= 7 ? 'text-amber-600' : 'text-foreground'
+        const colour = daysRemaining <= 3 ? 'text-danger font-medium' : daysRemaining <= 7 ? 'text-warning' : 'text-foreground'
         return (
           <span className={colour}>
             {isCurrentlyOpen ? `${daysRemaining}d` : 'Window closed'}

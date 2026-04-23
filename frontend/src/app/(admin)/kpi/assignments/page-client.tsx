@@ -15,6 +15,8 @@ import type { KpiAssignment, KpiAssignmentTemplate } from '@/types/api'
 import { AssignmentsTable } from './assignments-table'
 import { AssignmentTemplatesTable } from './assignment-templates-table'
 import { AssignKpisWizard } from './assign-kpis-wizard'
+import { useAccount } from '@/contexts/account-context'
+import { usePermissions } from '@/hooks/usePermissions'
 
 const ALL_FILTER = 'all'
 const ACCOUNT_WIDE_FILTER = '__account_wide__'
@@ -41,13 +43,39 @@ function matchesSharedFilters<T extends FilterableAssignmentScope | FilterableTe
 }
 
 export function KpiAssignmentsPageClient() {
-  const [accountFilter, setAccountFilter] = useState<string>(ALL_FILTER)
+  const { selectedAccount } = useAccount()
+  const { isSuperAdmin } = usePermissions()
+  const accountId = selectedAccount?.accountId
+
+  // Non-super-admins are pinned to their selected account. Super admins default
+  // to the selected account but can opt into the cross-account "All accounts"
+  // view via the filter dropdown below.
+  const [accountFilter, setAccountFilter] = useState<string>(
+    selectedAccount?.accountCode ?? ALL_FILTER,
+  )
   const [scopeFilter, setScopeFilter] = useState<string>(ALL_FILTER)
   const [groupFilter, setGroupFilter] = useState<string>(ALL_FILTER)
 
+  // Keep the filter in sync with the sidebar account switcher.
+  useEffect(() => {
+    if (!selectedAccount) return
+    if (!isSuperAdmin) {
+      setAccountFilter(selectedAccount.accountCode)
+      return
+    }
+    // Super admins: respect an explicit "All accounts" selection,
+    // otherwise follow the sidebar selection.
+    setAccountFilter((prev) =>
+      prev === ALL_FILTER ? ALL_FILTER : selectedAccount.accountCode,
+    )
+  }, [selectedAccount, isSuperAdmin])
+
+  // Super admins can fetch the cross-account accounts list for the filter
+  // dropdown. Tenant admins don't need it — their filter is locked.
   const accountsQuery = useQuery({
     queryKey: ['accounts'],
     queryFn: () => api.accounts.list(),
+    enabled: isSuperAdmin,
   })
 
   const periodsQuery = useQuery({
@@ -55,14 +83,24 @@ export function KpiAssignmentsPageClient() {
     queryFn: () => api.kpi.periods.list(),
   })
 
+  // Resolve which accountId to send to the API:
+  //   - super admin + "All accounts" filter → undefined (cross-account fetch)
+  //   - otherwise → the selectedAccount.accountId (narrow scope)
+  const apiAccountId = useMemo(() => {
+    if (isSuperAdmin && accountFilter === ALL_FILTER) return undefined
+    return accountId
+  }, [isSuperAdmin, accountFilter, accountId])
+
   const templatesQuery = useQuery({
-    queryKey: ['kpi', 'assignment-templates'],
-    queryFn: () => api.kpi.assignments.templates.list(),
+    queryKey: ['kpi', 'assignment-templates', apiAccountId ?? 'all'],
+    queryFn: () => api.kpi.assignments.templates.list({ accountId: apiAccountId }),
+    enabled: isSuperAdmin || !!accountId,
   })
 
   const assignmentsQuery = useQuery({
-    queryKey: ['kpi', 'assignments'],
-    queryFn: () => api.kpi.assignments.list(),
+    queryKey: ['kpi', 'assignments', apiAccountId ?? 'all'],
+    queryFn: () => api.kpi.assignments.list({ accountId: apiAccountId }),
+    enabled: isSuperAdmin || !!accountId,
   })
 
   // Distinct group names across templates + assignments for the current account filter
@@ -135,29 +173,31 @@ export function KpiAssignmentsPageClient() {
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Account:</span>
-            <Select
-              value={accountFilter}
-              onValueChange={(value) => {
-                setAccountFilter(value)
-                setScopeFilter(ALL_FILTER)
-                setGroupFilter(ALL_FILTER)
-              }}
-            >
-              <SelectTrigger className="h-8 w-44 text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_FILTER}>All accounts</SelectItem>
-                {(accountsQuery.data?.items ?? []).map((account) => (
-                  <SelectItem key={account.accountCode} value={account.accountCode}>
-                    {account.accountName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {isSuperAdmin && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Account:</span>
+              <Select
+                value={accountFilter}
+                onValueChange={(value) => {
+                  setAccountFilter(value)
+                  setScopeFilter(ALL_FILTER)
+                  setGroupFilter(ALL_FILTER)
+                }}
+              >
+                <SelectTrigger className="h-8 w-44 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_FILTER}>All accounts</SelectItem>
+                  {(accountsQuery.data?.items ?? []).map((account) => (
+                    <SelectItem key={account.accountCode} value={account.accountCode}>
+                      {account.accountName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground">Scope:</span>

@@ -16,11 +16,29 @@ public static class PlatformRoleEndpoints
         {
             using var conn = db.CreateConnection();
 
-            var upn = PlatformAuthService.GetUpn(user) ?? "dev@gce-platform.local";
+            var upn = PlatformAuthService.GetUpn(user);
+            if (string.IsNullOrWhiteSpace(upn))
+                return Results.Problem(
+                    "No UPN claim present on the signed-in token.",
+                    statusCode: StatusCodes.Status401Unauthorized);
+
+            // Resolve the Entra object identifier. .NET's JWT handler maps the
+            // raw "oid" claim to the schema URI below by default, so we try both
+            // names. Never fall back to a placeholder string here — doing so
+            // caused real sign-ins to be persisted with EntraObjectId='dev-user-001',
+            // which then collided across users (unique index) and silently welded
+            // identities together. Fail loudly if oid is genuinely missing.
+            var entraObjectId =
+                user.FindFirstValue("oid") ??
+                user.FindFirstValue("http://schemas.microsoft.com/identity/claims/objectidentifier");
+            if (string.IsNullOrWhiteSpace(entraObjectId))
+                return Results.Problem(
+                    "Unable to determine Azure AD object identifier for the signed-in user.",
+                    statusCode: StatusCodes.Status401Unauthorized);
 
             // JIT provisioning: record login (creates user in DB if not yet present)
             var p = new DynamicParameters();
-            p.Add("@EntraObjectId", user.FindFirstValue("oid") ?? "dev-user-001");
+            p.Add("@EntraObjectId", entraObjectId);
             p.Add("@UPN", upn);
             p.Add("@DisplayName", user.FindFirstValue(ClaimTypes.Name) ?? user.FindFirstValue("name") ?? upn);
             p.Add("@UserId", dbType: System.Data.DbType.Int32, direction: System.Data.ParameterDirection.Output);
