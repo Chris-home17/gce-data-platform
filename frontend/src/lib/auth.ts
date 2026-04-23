@@ -14,8 +14,7 @@
 import NextAuth from 'next-auth'
 import AzureAD from 'next-auth/providers/microsoft-entra-id'
 import Credentials from 'next-auth/providers/credentials'
-
-const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_BYPASS === 'true'
+import { DEV_BYPASS } from './dev-bypass'
 const BASE_SCOPES = ['openid', 'profile', 'email', 'offline_access']
 const API_SCOPE = process.env.AZURE_AD_API_SCOPE?.trim()
 const AUTHORIZATION_SCOPE = [...BASE_SCOPES, ...(API_SCOPE ? [API_SCOPE] : [])].join(' ')

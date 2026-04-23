@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using Dapper;
 using GcePlatform.Api.Data;
 using GcePlatform.Api.Models;
+using GcePlatform.Api.Services;
 
 namespace GcePlatform.Api.Endpoints;
 
@@ -51,9 +53,13 @@ public static class BiReportEndpoints
         }).RequireAuthorization();
 
         // POST /reports
-        app.MapPost("/reports", async (CreateBiReportRequest req, DbConnectionFactory db) =>
+        app.MapPost("/reports", async (ClaimsPrincipal user, CreateBiReportRequest req, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.AccountsManage))
+                return Results.Forbid();
+
             var p = new DynamicParameters();
             p.Add("@ReportCode", req.ReportCode);
             p.Add("@ReportName", req.ReportName);
@@ -78,9 +84,13 @@ public static class BiReportEndpoints
         }).RequireAuthorization();
 
         // PUT /reports/{id} — update name and URI
-        app.MapPut("/reports/{id:int}", async (int id, UpdateBiReportRequest req, DbConnectionFactory db) =>
+        app.MapPut("/reports/{id:int}", async (ClaimsPrincipal user, int id, UpdateBiReportRequest req, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.AccountsManage))
+                return Results.Forbid();
+
             var existing = await conn.QuerySingleOrDefaultAsync<BiReportDto>(
                 "SELECT BiReportId, ReportCode, ReportName, ReportUri, CAST(IsActive AS bit) AS IsActive, PackageCount, ISNULL(PackageList,'') AS PackageList FROM App.vBiReports WHERE BiReportId = @Id",
                 new { Id = id });
@@ -107,9 +117,13 @@ public static class BiReportEndpoints
         }).RequireAuthorization();
 
         // POST /reports/assign  — add or remove a report↔package link
-        app.MapPost("/reports/assign", async (AssignReportToPackageRequest req, DbConnectionFactory db) =>
+        app.MapPost("/reports/assign", async (ClaimsPrincipal user, AssignReportToPackageRequest req, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.AccountsManage))
+                return Results.Forbid();
+
             var p = new DynamicParameters();
             p.Add("@ReportCode",  req.ReportCode);
             p.Add("@PackageCode", req.PackageCode);
@@ -123,9 +137,13 @@ public static class BiReportEndpoints
 
         // PATCH /reports/{id}/status
         app.MapMethods("/reports/{id:int}/status", new[] { "PATCH" },
-            async (int id, SetActiveRequest req, DbConnectionFactory db) =>
+            async (ClaimsPrincipal user, int id, SetActiveRequest req, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.AccountsManage))
+                return Results.Forbid();
+
             var item = await conn.QuerySingleOrDefaultAsync<BiReportDto>(
                 "SELECT BiReportId, ReportCode, ReportName, ReportUri, CAST(IsActive AS bit) AS IsActive, PackageCount, ISNULL(PackageList,'') AS PackageList FROM App.vBiReports WHERE BiReportId = @Id",
                 new { Id = id });

@@ -1,6 +1,7 @@
 using Dapper;
 using GcePlatform.Api.Data;
 using GcePlatform.Api.Models;
+using GcePlatform.Api.Services;
 using System.Security.Claims;
 
 namespace GcePlatform.Api.Endpoints;
@@ -165,9 +166,13 @@ public static class KpiSubmissionEndpoints
         // Unlock a manually-locked submission so the submitter can update it via their token link.
         // Only allowed while the period is still Open.
         app.MapMethods("/kpi/submissions/{externalId:guid}/unlock", new[] { "PATCH" },
-            async (Guid externalId, DbConnectionFactory db) =>
+            async (ClaimsPrincipal user, Guid externalId, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiManage))
+                return Results.Forbid();
+
             try
             {
                 await conn.ExecuteAsync("App.usp_UnlockKpiSubmission",

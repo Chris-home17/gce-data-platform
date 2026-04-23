@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using Dapper;
 using GcePlatform.Api.Data;
 using GcePlatform.Api.Models;
+using GcePlatform.Api.Services;
 
 namespace GcePlatform.Api.Endpoints;
 
@@ -44,9 +46,13 @@ public static class SourceMappingEndpoints
         return Results.Ok(new ApiList<SourceMappingDto>(list, list.Count));
     }
 
-    private static async Task<IResult> CreateSourceMapping(CreateSourceMappingRequest req, DbConnectionFactory db)
+    private static async Task<IResult> CreateSourceMapping(ClaimsPrincipal user, CreateSourceMappingRequest req, DbConnectionFactory db, PlatformAuthService platformAuth)
     {
         using var conn = db.CreateConnection();
+
+        if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.AccountsManage))
+            return Results.Forbid();
+
         var p = new DynamicParameters();
         p.Add("@AccountCode", req.AccountCode);
         p.Add("@OrgUnitCode", req.OrgUnitCode);

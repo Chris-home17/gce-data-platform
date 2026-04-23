@@ -5,8 +5,7 @@ import { signIn } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Loader2 } from 'lucide-react'
-
-const DEV_BYPASS = process.env.NEXT_PUBLIC_DEV_BYPASS === 'true'
+import { DEV_BYPASS } from '@/lib/dev-bypass'
 
 export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)

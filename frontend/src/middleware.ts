@@ -14,9 +14,10 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { auth } from '@/lib/auth'
+import { DEV_BYPASS } from '@/lib/dev-bypass'
 
 export function middleware(request: NextRequest) {
-  if (process.env.NEXT_PUBLIC_DEV_BYPASS === 'true') {
+  if (DEV_BYPASS) {
     return NextResponse.next()
   }
   // next-auth v5 `auth` accepts a NextRequest in middleware context

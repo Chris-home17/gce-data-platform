@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using Dapper;
 using GcePlatform.Api.Data;
 using GcePlatform.Api.Models;
+using GcePlatform.Api.Services;
 
 namespace GcePlatform.Api.Endpoints;
 
@@ -71,9 +73,13 @@ public static class PackageEndpoints
         }).RequireAuthorization();
 
         // POST /packages
-        app.MapPost("/packages", async (CreatePackageRequest req, DbConnectionFactory db) =>
+        app.MapPost("/packages", async (ClaimsPrincipal user, CreatePackageRequest req, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
+                return Results.Forbid();
+
             var p = new DynamicParameters();
             p.Add("@PackageCode",  req.PackageCode);
             p.Add("@PackageName",  req.PackageName);
@@ -98,9 +104,13 @@ public static class PackageEndpoints
 
         // PATCH /packages/{id}/status
         app.MapMethods("/packages/{id:int}/status", new[] { "PATCH" },
-            async (int id, SetActiveRequest req, DbConnectionFactory db) =>
+            async (ClaimsPrincipal user, int id, SetActiveRequest req, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
+                return Results.Forbid();
+
             var item = await conn.QuerySingleOrDefaultAsync<PackageDto>(
                 "SELECT PackageId, PackageCode, PackageName, PackageGroup, CAST(IsActive AS bit) AS IsActive, ReportCount FROM App.vPackages WHERE PackageId = @Id",
                 new { Id = id });

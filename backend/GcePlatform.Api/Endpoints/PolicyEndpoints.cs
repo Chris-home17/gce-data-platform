@@ -233,9 +233,12 @@ public static class PolicyEndpoints
         }).RequireAuthorization();
 
         // POST /policies/{id}/refresh
-        app.MapPost("/policies/{id:int}/refresh", async (int id, DbConnectionFactory db) =>
+        app.MapPost("/policies/{id:int}/refresh", async (ClaimsPrincipal user, int id, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.PoliciesManage))
+                return Results.Forbid();
 
             var exists = await conn.ExecuteScalarAsync<int>(@"
                 SELECT COUNT(1)

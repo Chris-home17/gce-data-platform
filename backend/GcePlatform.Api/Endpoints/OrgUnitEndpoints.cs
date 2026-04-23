@@ -30,9 +30,13 @@ public static class OrgUnitEndpoints
             return Results.Ok(new ApiList<SharedGeoUnitDto>(list, list.Count));
         }).RequireAuthorization();
 
-        app.MapPost("/shared-geo-units", async (CreateSharedGeoUnitRequest req, DbConnectionFactory db) =>
+        app.MapPost("/shared-geo-units", async (ClaimsPrincipal user, CreateSharedGeoUnitRequest req, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
+                return Results.Forbid();
+
             var p = new DynamicParameters();
             p.Add("@GeoUnitType", req.GeoUnitType);
             p.Add("@GeoUnitCode", req.GeoUnitCode);
@@ -62,9 +66,12 @@ public static class OrgUnitEndpoints
             return Results.Created($"/shared-geo-units/{id}", item);
         }).RequireAuthorization();
 
-        app.MapPut("/shared-geo-units/{id:int}", async (int id, UpdateSharedGeoUnitRequest req, DbConnectionFactory db) =>
+        app.MapPut("/shared-geo-units/{id:int}", async (ClaimsPrincipal user, int id, UpdateSharedGeoUnitRequest req, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
+                return Results.Forbid();
 
             var exists = await conn.QuerySingleOrDefaultAsync<int?>(
                 "SELECT SharedGeoUnitId FROM App.vSharedGeoUnits WHERE SharedGeoUnitId = @Id",
@@ -102,9 +109,13 @@ public static class OrgUnitEndpoints
             return Results.Ok(item);
         }).RequireAuthorization();
 
-        app.MapPost("/shared-geo-units/bulk", async (BulkCreateSharedGeoUnitsRequest req, DbConnectionFactory db) =>
+        app.MapPost("/shared-geo-units/bulk", async (ClaimsPrincipal user, BulkCreateSharedGeoUnitsRequest req, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
+                return Results.Forbid();
+
             var results = new List<BulkSharedGeoUnitResult>();
 
             for (int i = 0; i < req.Rows.Count; i++)

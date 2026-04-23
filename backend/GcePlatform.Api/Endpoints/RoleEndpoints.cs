@@ -138,9 +138,12 @@ public static class RoleEndpoints
         }).RequireAuthorization();
 
         // POST /roles/{id}/members — add a user to this role
-        app.MapPost("/roles/{id:int}/members", async (int id, AddRoleMemberRequest req, DbConnectionFactory db) =>
+        app.MapPost("/roles/{id:int}/members", async (ClaimsPrincipal user, int id, AddRoleMemberRequest req, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.GrantsManage))
+                return Results.Forbid();
 
             // Resolve the role code for the stored proc
             var roleCode = await conn.QuerySingleOrDefaultAsync<string>(
@@ -160,9 +163,12 @@ public static class RoleEndpoints
         }).RequireAuthorization();
 
         // DELETE /roles/{id}/members/{userId} — remove a user from this role
-        app.MapDelete("/roles/{id:int}/members/{userId:int}", async (int id, int userId, DbConnectionFactory db) =>
+        app.MapDelete("/roles/{id:int}/members/{userId:int}", async (ClaimsPrincipal user, int id, int userId, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.GrantsManage))
+                return Results.Forbid();
 
             var roleCode = await conn.QuerySingleOrDefaultAsync<string>(
                 "SELECT RoleCode FROM App.vRoles WHERE RoleId = @Id", new { Id = id });

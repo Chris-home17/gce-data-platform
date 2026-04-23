@@ -34,7 +34,9 @@
       "Bash(touch \"src/app/api/auth/[...nextauth]/route.ts\")",
       "Bash(curl -s -o /tmp/providers.out -w \"HTTP %{http_code}\\\\n\" \"http://localhost:3000/api/auth/providers\")",
       "Bash(curl -s -o /tmp/csrf.out -w \"HTTP %{http_code}\\\\n\" \"http://localhost:3000/api/auth/csrf\")",
-      "Bash(echo \"exit $?\")"
+      "Bash(echo \"exit $?\")",
+      "Bash(git check-ignore *)",
+      "Bash(npx --no-install tsc --noEmit)"
     ]
   }
 }
