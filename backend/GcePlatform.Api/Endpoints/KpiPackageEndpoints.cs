@@ -199,6 +199,13 @@ public static class KpiPackageEndpoints
             if (packageItems.Count == 0)
                 return Results.BadRequest(new ApiError("PACKAGE_EMPTY", "The package has no active KPIs."));
 
+            // Defensive cap: a package is expected to hold tens of KPIs, not thousands.
+            const int MaxPackageItems = 500;
+            if (packageItems.Count > MaxPackageItems)
+                return Results.BadRequest(new ApiError(
+                    "PACKAGE_TOO_LARGE",
+                    $"Package has {packageItems.Count} items; the per-request cap is {MaxPackageItems}."));
+
             var upn = user.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
                    ?? user.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value;
 

@@ -1054,18 +1054,8 @@ AS
         a.IsActive,
         a.CreatedOnUtc,
         a.ModifiedOnUtc,
-        -- Site count
-        ISNULL(sites.SiteCount, 0)          AS SiteCount,
-        -- User count (distinct users with any access grant to this account)
-        ISNULL(users.UserCount, 0)          AS UserCount,
-        -- Access policy count
-        ISNULL(accPol.AccessPolicyCount, 0) AS AccessPolicyCount,
-        -- Package policy count
-        ISNULL(pkgPol.PackagePolicyCount, 0)AS PackagePolicyCount,
-        -- Total policy count
-        ISNULL(accPol.AccessPolicyCount, 0) +
-        ISNULL(pkgPol.PackagePolicyCount, 0)AS TotalPolicyCount,
-        -- Branding
+        ISNULL(sites.SiteCount, 0) AS SiteCount,
+        ISNULL(users.UserCount, 0) AS UserCount,
         a.PrimaryColor,
         a.PrimaryColor2,
         a.SecondaryColor,
@@ -1075,7 +1065,6 @@ AS
         a.TextOnSecondaryOverride,
         a.LogoDataUrl
     FROM Dim.Account AS a
-    -- Site count
     OUTER APPLY
     (
         SELECT COUNT(*) AS SiteCount
@@ -1084,28 +1073,13 @@ AS
           AND ou.OrgUnitType = 'Site'
           AND ou.IsActive = 1
     ) AS sites
-    -- User count via access grants
     OUTER APPLY
     (
         SELECT COUNT(DISTINCT u.UserId) AS UserCount
         FROM Sec.vAuthorizedSitesDynamic AS auth
         JOIN Sec.[User] AS u ON u.UPN = auth.UserUPN
         WHERE auth.AccountId = a.AccountId
-    ) AS users
-    -- Access policy count
-    OUTER APPLY
-    (
-        SELECT COUNT(*) AS AccessPolicyCount
-        FROM Sec.AccountAccessPolicy AS pol
-        WHERE pol.IsActive = 1
-    ) AS accPol
-    -- Package policy count
-    OUTER APPLY
-    (
-        SELECT COUNT(*) AS PackagePolicyCount
-        FROM Sec.AccountPackagePolicy AS pol
-        WHERE pol.IsActive = 1
-    ) AS pkgPol;
+    ) AS users;
 GO
 
 -- --------------------------------------------------------------------------------

@@ -213,6 +213,16 @@ public static class KpiAssignmentEndpoints
                     ? new List<string> { request.OrgUnitCode }
                     : new List<string> { (string?)null! };  // null = account-wide
 
+            // Bound the work a single request can do: each SP call is its own
+            // atomic unit, so a runaway batch would otherwise hold the connection
+            // indefinitely and can't be cleanly rolled back as a set.
+            const int MaxBatchOperations = 500;
+            var totalOps = distinctItems.Count * orgUnitCodes.Count;
+            if (totalOps > MaxBatchOperations)
+                return Results.BadRequest(new ApiError(
+                    "BATCH_TOO_LARGE",
+                    $"This batch would create {totalOps} templates; the per-request cap is {MaxBatchOperations}. Split it into smaller requests."));
+
             var createdIds = new List<int>();
             var skippedKpiCodes = new List<string>();
             var errors = new List<string>();

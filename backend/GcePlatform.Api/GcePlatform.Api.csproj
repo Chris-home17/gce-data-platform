@@ -51,6 +51,9 @@
     <!-- KpiAssignmentGroups: optional named groups for KPI assignments -->
     <EmbeddedResource Include="Migrations\Scripts\KpiAssignmentGroups.Up.sql" />
     <EmbeddedResource Include="Migrations\Scripts\KpiAssignmentGroups.Down.sql" />
+    <!-- FixVAccountsPolicyCounts: drop unscoped policy count columns from App.vAccounts -->
+    <EmbeddedResource Include="Migrations\Scripts\FixVAccountsPolicyCounts.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\FixVAccountsPolicyCounts.Down.sql" />
   </ItemGroup>
 
 </Project>

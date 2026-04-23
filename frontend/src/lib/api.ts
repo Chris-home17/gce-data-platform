@@ -9,7 +9,7 @@
  * and lifecycle management.
  */
 
-import { getSession } from 'next-auth/react'
+import { getSession, signOut } from 'next-auth/react'
 import type {
   Account,
   AccountBranding,
@@ -121,6 +121,19 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   return headers
 }
 
+// Ensures we only trigger a sign-out once per expired session, even if the
+// page has fired several parallel queries that all come back 401.
+let signingOut = false
+
+async function handleUnauthorized() {
+  if (typeof window === 'undefined') return
+  if (signingOut) return
+  // Already on the login page — nothing to recover to.
+  if (window.location.pathname.startsWith('/login')) return
+  signingOut = true
+  await signOut({ callbackUrl: '/login' })
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = await getAuthHeaders()
   const response = await fetch(`${BASE_URL}${path}`, {
@@ -137,6 +150,11 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
       message = body?.message ?? message
     } catch {
       // ignore JSON parse errors on error responses
+    }
+    if (response.status === 401) {
+      // Token is stale — kick the user back to /login. We still throw so the
+      // in-flight query sees an error and doesn't try to render partial data.
+      void handleUnauthorized()
     }
     throw new ApiResponseError(response.status, code, message)
   }
