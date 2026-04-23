@@ -657,7 +657,9 @@ public record PlatformRoleDto(
 
 public record PlatformRoleMemberDto(
     int UserId,
-    string UPN,
+    // Mixed-case Upn so System.Text.Json's camelCase policy emits "upn".
+    // All-caps "UPN" would serialize as "uPN" and break the frontend contract.
+    string Upn,
     string DisplayName,
     DateTime AssignedOnUtc
 );

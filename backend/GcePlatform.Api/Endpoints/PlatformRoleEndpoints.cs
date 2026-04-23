@@ -124,7 +124,8 @@ public static class PlatformRoleEndpoints
                 WHERE PlatformRoleId = @Id",
                 new { Id = id });
 
-            if (role is null) return Results.NotFound();
+            if (role is null)
+                return Results.NotFound(new ApiError("PLATFORM_ROLE_NOT_FOUND", $"Platform role {id} not found."));
 
             var permissions = await conn.QueryAsync<PlatformPermissionDto>(@"
                 SELECT PermissionId, PermissionCode, DisplayName, Description,
@@ -135,7 +136,7 @@ public static class PlatformRoleEndpoints
                 new { Id = id });
 
             var members = await conn.QueryAsync<PlatformRoleMemberDto>(@"
-                SELECT UserId, UPN, DisplayName, AssignedOnUtc
+                SELECT UserId, UPN AS Upn, DisplayName, AssignedOnUtc
                 FROM App.vPlatformRoleMembers
                 WHERE PlatformRoleId = @Id
                 ORDER BY DisplayName",
@@ -162,7 +163,7 @@ public static class PlatformRoleEndpoints
                 new { Id = id });
 
             if (!exists)
-                return Results.NotFound();
+                return Results.NotFound(new ApiError("PLATFORM_ROLE_NOT_FOUND", $"Platform role {id} not found."));
 
             await conn.ExecuteAsync("App.usp_SetPlatformRoleActive",
                 new { PlatformRoleId = id, request.IsActive },
@@ -186,7 +187,7 @@ public static class PlatformRoleEndpoints
 
             if (!await conn.ExecuteScalarAsync<bool>(
                     "SELECT CAST(1 AS BIT) FROM App.vPlatformRoles WHERE PlatformRoleId = @Id", new { Id = id }))
-                return Results.NotFound();
+                return Results.NotFound(new ApiError("PLATFORM_ROLE_NOT_FOUND", $"Platform role {id} not found."));
 
             await conn.ExecuteAsync("App.usp_SetPlatformRolePermissions",
                 new
@@ -204,7 +205,7 @@ public static class PlatformRoleEndpoints
         {
             using var conn = db.CreateConnection();
             var items = await conn.QueryAsync<PlatformRoleMemberDto>(@"
-                SELECT UserId, UPN, DisplayName, AssignedOnUtc
+                SELECT UserId, UPN AS Upn, DisplayName, AssignedOnUtc
                 FROM App.vPlatformRoleMembers
                 WHERE PlatformRoleId = @Id
                 ORDER BY DisplayName",

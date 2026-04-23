@@ -1042,7 +1042,7 @@ GO
 
 -- --------------------------------------------------------------------------------
 -- App.vAccounts
--- Accounts with site count, user count, and policy counts
+-- Accounts with site count and user count
 -- Used by: scrAccounts (A-01)
 -- --------------------------------------------------------------------------------
 IF OBJECT_ID('App.vAccounts', 'V') IS NOT NULL

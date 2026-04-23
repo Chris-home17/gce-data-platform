@@ -6,6 +6,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { MoreHorizontal, Pencil } from 'lucide-react'
 import { DataTable } from '@/components/shared/data-table'
 import { ErrorState } from '@/components/shared/error-state'
+import { OrgUnitTypeBadge } from '@/components/shared/org-unit-type-badge'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { StatusBadge } from '@/components/shared/status-badge'
@@ -19,22 +20,6 @@ import { api } from '@/lib/api'
 import type { SharedGeoUnit } from '@/types/api'
 import { EditSharedGeoDialog } from './edit-shared-geo-dialog'
 
-const TYPE_COLOURS: Record<SharedGeoUnit['geoUnitType'], string> = {
-  Region: 'bg-blue-100 text-blue-700 border-blue-200',
-  SubRegion: 'bg-indigo-100 text-indigo-700 border-indigo-200',
-  Cluster: 'bg-violet-100 text-violet-700 border-violet-200',
-  Country: 'bg-sky-100 text-sky-700 border-sky-200',
-}
-
-function TypeBadge({ type }: { type: SharedGeoUnit['geoUnitType'] }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium ${TYPE_COLOURS[type] ?? 'bg-muted text-muted-foreground'}`}
-    >
-      {type}
-    </span>
-  )
-}
 
 function SharedGeoRowActions({ onEdit }: { onEdit: () => void }) {
   return (
@@ -75,7 +60,7 @@ function makeColumns(onEdit: (unit: SharedGeoUnit) => void): ColumnDef<SharedGeo
     {
       accessorKey: 'geoUnitType',
       header: 'Type',
-      cell: ({ row }) => <TypeBadge type={row.original.geoUnitType} />,
+      cell: ({ row }) => <OrgUnitTypeBadge type={row.original.geoUnitType} />,
       meta: { className: 'w-[110px]' },
     },
     {

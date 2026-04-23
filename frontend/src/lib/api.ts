@@ -76,7 +76,6 @@ import type {
   Role,
   RoleMember,
   SharedGeoUnit,
-  Site,
   SiteCompletion,
   SiteSubmissionDetail,
   SourceMapping,
@@ -425,15 +424,6 @@ export const api = {
         if (err instanceof ApiResponseError && err.status === 409 && err.code === 'GRANT_ALREADY_REVOKED') return
         throw err
       }
-    },
-  },
-
-  sites: {
-    list(): Promise<ApiList<Site>> {
-      return apiFetch('/sites')
-    },
-    get(id: number): Promise<Site> {
-      return apiFetch(`/sites/${id}`)
     },
   },
 

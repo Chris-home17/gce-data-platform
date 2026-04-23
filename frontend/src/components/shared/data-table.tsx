@@ -134,7 +134,7 @@ export function DataTable<TData>({
                     tabIndex={activate ? 0 : undefined}
                     className={cn(
                       activate &&
-                        'cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/60 focus-visible:outline-none',
+                        'cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
                     )}
                   >
                     {row.getVisibleCells().map((cell) => (

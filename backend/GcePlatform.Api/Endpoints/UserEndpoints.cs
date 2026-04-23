@@ -22,6 +22,30 @@ public static class UserEndpoints
         ReportCount,
         GapStatus";
 
+    // Centralises the access check for /users/{id}/* sub-resources.
+    // Returns null when the caller is allowed; otherwise a 404 ApiError to
+    // avoid leaking "user exists but you can't see them". Uses 404 rather
+    // than 403 so a tenant admin probing integer IDs cannot distinguish
+    // nonexistent users from users outside their scope.
+    private static async Task<IResult?> RequireUserAccessAsync(
+        ClaimsPrincipal user,
+        System.Data.IDbConnection conn,
+        PlatformAuthService platformAuth,
+        int targetUserId)
+    {
+        if (await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
+            return null;
+
+        var callerUserId = await AccessScope.GetCurrentUserIdAsync(user, conn);
+        if (callerUserId is null)
+            return Results.NotFound(new ApiError("USER_NOT_FOUND", $"User {targetUserId} not found."));
+
+        if (await AccessScope.CanAccessUserAsync(conn, callerUserId.Value, targetUserId))
+            return null;
+
+        return Results.NotFound(new ApiError("USER_NOT_FOUND", $"User {targetUserId} not found."));
+    }
+
     public static WebApplication MapUserEndpoints(this WebApplication app)
     {
         // GET /users — super-admins see everyone; others see only users who
@@ -162,9 +186,13 @@ public static class UserEndpoints
         }).RequireAuthorization();
 
         // GET /users/{id}/roles — roles the user belongs to (with IDs for removal)
-        app.MapGet("/users/{id:int}/roles", async (int id, DbConnectionFactory db) =>
+        app.MapGet("/users/{id:int}/roles", async (ClaimsPrincipal user, int id, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            var deny = await RequireUserAccessAsync(user, conn, platformAuth, id);
+            if (deny is not null) return deny;
+
             var items = await conn.QueryAsync<RoleDto>(@"
                 SELECT
                     r.RoleId,
@@ -190,9 +218,13 @@ public static class UserEndpoints
         }).RequireAuthorization();
 
         // GET /users/{id}/grants
-        app.MapGet("/users/{id:int}/grants", async (int id, DbConnectionFactory db) =>
+        app.MapGet("/users/{id:int}/grants", async (ClaimsPrincipal user, int id, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            var deny = await RequireUserAccessAsync(user, conn, platformAuth, id);
+            if (deny is not null) return deny;
+
             var items = await conn.QueryAsync<GrantDto>(@"
                 SELECT PrincipalAccessGrantId, PrincipalId, PrincipalType, PrincipalName,
                        AccessType, ScopeType, AccountCode, AccountName,
@@ -207,9 +239,13 @@ public static class UserEndpoints
         }).RequireAuthorization();
 
         // GET /users/{id}/package-grants
-        app.MapGet("/users/{id:int}/package-grants", async (int id, DbConnectionFactory db) =>
+        app.MapGet("/users/{id:int}/package-grants", async (ClaimsPrincipal user, int id, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            var deny = await RequireUserAccessAsync(user, conn, platformAuth, id);
+            if (deny is not null) return deny;
+
             var items = await conn.QueryAsync<PackageGrantDto>(@"
                 -- Direct package grants on the user's own principal
                 SELECT
@@ -276,9 +312,13 @@ public static class UserEndpoints
         }).RequireAuthorization();
 
         // GET /users/{id}/effective-access — all access reasons (direct, role, delegation)
-        app.MapGet("/users/{id:int}/effective-access", async (int id, DbConnectionFactory db) =>
+        app.MapGet("/users/{id:int}/effective-access", async (ClaimsPrincipal user, int id, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            var deny = await RequireUserAccessAsync(user, conn, platformAuth, id);
+            if (deny is not null) return deny;
+
             var items = await conn.QueryAsync<EffectiveAccessEntryDto>(@"
                 -- Direct grants on the user's own principal
                 SELECT
@@ -364,12 +404,17 @@ public static class UserEndpoints
         }).RequireAuthorization();
 
         // GET /users/{id}/resolved-access — actual sites + reports via App.GetUserEffectiveAccess SP
-        app.MapGet("/users/{id:int}/resolved-access", async (int id, DbConnectionFactory db) =>
+        app.MapGet("/users/{id:int}/resolved-access", async (ClaimsPrincipal user, int id, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            var deny = await RequireUserAccessAsync(user, conn, platformAuth, id);
+            if (deny is not null) return deny;
+
             var upn = await conn.QuerySingleOrDefaultAsync<string>(
                 "SELECT u.UPN FROM Sec.[User] AS u WHERE u.UserId = @Id", new { Id = id });
-            if (upn is null) return Results.NotFound();
+            if (upn is null)
+                return Results.NotFound(new ApiError("USER_NOT_FOUND", $"User {id} not found."));
 
             using var multi = await conn.QueryMultipleAsync(
                 "EXEC App.GetUserEffectiveAccess @UserUPN", new { UserUPN = upn });
@@ -381,9 +426,13 @@ public static class UserEndpoints
         }).RequireAuthorization();
 
         // GET /users/{id}/delegations
-        app.MapGet("/users/{id:int}/delegations", async (int id, DbConnectionFactory db) =>
+        app.MapGet("/users/{id:int}/delegations", async (ClaimsPrincipal user, int id, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            var deny = await RequireUserAccessAsync(user, conn, platformAuth, id);
+            if (deny is not null) return deny;
+
             var items = await conn.QueryAsync<DelegationDto>(@"
                 SELECT
                     PrincipalDelegationId,

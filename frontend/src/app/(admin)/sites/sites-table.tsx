@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { StatusBadge } from '@/components/shared/status-badge'
 import { RowActions } from '@/components/shared/row-actions'
 import { ErrorState } from '@/components/shared/error-state'
+import { OrgUnitTypeBadge } from '@/components/shared/org-unit-type-badge'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useAccessibleSites } from '@/hooks/useAccessibleSites'
 import { api } from '@/lib/api'
@@ -77,23 +78,6 @@ function canMoveUnder(unit: OrgUnit, candidateParent: OrgUnit): boolean {
   return allowedParentTypes(unit.orgUnitType).includes(candidateParent.orgUnitType)
 }
 
-const TYPE_COLOURS: Record<OrgUnitType, string> = {
-  Region: 'bg-blue-100 text-blue-700 border-blue-200',
-  SubRegion: 'bg-indigo-100 text-indigo-700 border-indigo-200',
-  Cluster: 'bg-violet-100 text-violet-700 border-violet-200',
-  Country: 'bg-sky-100 text-sky-700 border-sky-200',
-  Area: 'bg-teal-100 text-teal-700 border-teal-200',
-  Branch: 'bg-orange-100 text-orange-700 border-orange-200',
-  Site: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-}
-
-function TypeBadge({ type }: { type: OrgUnitType }) {
-  return (
-    <span className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium ${TYPE_COLOURS[type] ?? 'bg-muted text-muted-foreground'}`}>
-      {type}
-    </span>
-  )
-}
 
 function SkeletonRows() {
   return (
@@ -180,7 +164,7 @@ function OrgUnitRow({
       </td>
 
       <td className="w-[110px] px-3 py-2.5">
-        <TypeBadge type={unit.orgUnitType} />
+        <OrgUnitTypeBadge type={unit.orgUnitType} />
       </td>
 
       <td className="w-[80px] px-3 py-2.5">

@@ -508,38 +508,59 @@ public static class KpiAssignmentEndpoints
             return Results.Ok(new ApiList<KpiAssignmentDto>(list, list.Count));
         }).RequireAuthorization();
 
-        // GET /kpi/assignments/{id}
-        app.MapGet("/kpi/assignments/{id:int}", async (int id, DbConnectionFactory db) =>
+        // GET /kpi/assignments/{id} — scoped to caller's accessible accounts.
+        app.MapGet("/kpi/assignments/{id:int}", async (ClaimsPrincipal user, int id, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
-            var item = await conn.QuerySingleOrDefaultAsync<KpiAssignmentDto>(@"
-                SELECT
-                    AssignmentId,
-                    ExternalId,
-                    KpiCode,
-                    KpiName,
-                    Category,
-                    AccountCode,
-                    AccountName,
-                    SiteCode,
-                    SiteName,
-                    CAST(IsAccountWide AS bit) AS IsAccountWide,
-                    DataType,
-                    PeriodId,
-                    PeriodScheduleId,
-                    ScheduleName,
-                    PeriodLabel,
-                    IsRequired,
-                    TargetValue,
-                    ThresholdGreen,
-                    ThresholdAmber,
-                    ThresholdRed,
-                    EffectiveThresholdDirection,
-                    IsActive,
-                    AssignmentGroupName
-                FROM App.vKpiAssignments
-                WHERE AssignmentId = @Id",
-                new { Id = id });
+
+            const string columns = @"
+                AssignmentId,
+                ExternalId,
+                KpiCode,
+                KpiName,
+                Category,
+                AccountCode,
+                AccountName,
+                SiteCode,
+                SiteName,
+                CAST(IsAccountWide AS bit) AS IsAccountWide,
+                DataType,
+                PeriodId,
+                PeriodScheduleId,
+                ScheduleName,
+                PeriodLabel,
+                IsRequired,
+                TargetValue,
+                ThresholdGreen,
+                ThresholdAmber,
+                ThresholdRed,
+                EffectiveThresholdDirection,
+                IsActive,
+                AssignmentGroupName";
+
+            KpiAssignmentDto? item;
+            if (await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
+            {
+                item = await conn.QuerySingleOrDefaultAsync<KpiAssignmentDto>($@"
+                    SELECT {columns}
+                    FROM App.vKpiAssignments
+                    WHERE AssignmentId = @Id",
+                    new { Id = id });
+            }
+            else
+            {
+                var currentUserId = await AccessScope.GetCurrentUserIdAsync(user, conn);
+                if (currentUserId is null)
+                    return Results.NotFound(new ApiError("ASSIGNMENT_NOT_FOUND", $"Assignment {id} not found."));
+
+                item = await conn.QuerySingleOrDefaultAsync<KpiAssignmentDto>($@"
+                    {AccessScope.AccessibleAccountsCte}
+                    SELECT {columns}
+                    FROM App.vKpiAssignments
+                    WHERE AssignmentId = @Id
+                      AND AccountId IN (SELECT AccountId FROM AccessibleAccounts)",
+                    new { Id = id, UserId = currentUserId.Value });
+            }
 
             return item is null
                 ? Results.NotFound(new ApiError("ASSIGNMENT_NOT_FOUND", $"Assignment {id} not found."))

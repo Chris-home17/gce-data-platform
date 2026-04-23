@@ -16,7 +16,6 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { StatusBadge } from '@/components/shared/status-badge'
@@ -26,12 +25,14 @@ import { AccountUsersTable } from '@/app/(admin)/users/users-table'
 import { ImportOrgUnitsDialog } from '@/app/(admin)/sites/import-org-units-dialog'
 import { OnboardUserWizard } from '@/components/shared/onboard-user-wizard'
 import { StatCard } from '@/components/shared/stat-card'
+import { ErrorState } from '@/components/shared/error-state'
 import { AccountBrandingTab } from './account-branding-tab'
 import { api } from '@/lib/api'
 import { PERMISSIONS } from '@/types/api'
 import type { CoverageSummary } from '@/types/api'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
+import { usePermissions } from '@/hooks/usePermissions'
 
 // ---------------------------------------------------------------------------
 // Stat card
@@ -43,9 +44,15 @@ import { cn } from '@/lib/utils'
 // ---------------------------------------------------------------------------
 
 function AccountCoverageTab({ accountId }: { accountId: number }) {
+  // /coverage is not server-filtered by account today, so fetching it for a
+  // non-super-admin would leak cross-tenant rows before the client-side filter
+  // narrows them. Gate the query the same way the dashboard CoverageHealthCard
+  // does; a non-super-admin sees an empty state.
+  const { isSuperAdmin } = usePermissions()
   const { data, isLoading } = useQuery({
     queryKey: ['coverage'],
     queryFn: () => api.coverage.list(),
+    enabled: isSuperAdmin,
   })
 
   const { data: usersData } = useQuery({
@@ -60,6 +67,16 @@ function AccountCoverageTab({ accountId }: { accountId: number }) {
 
   const gapUsers = coverage.filter((c) => c.gapStatus && c.gapStatus !== 'OK')
   const okUsers = coverage.filter((c) => !c.gapStatus || c.gapStatus === 'OK')
+
+  if (!isSuperAdmin) {
+    return (
+      <div className="rounded-xl border border-dashed py-8 text-center">
+        <p className="text-sm text-muted-foreground">
+          Coverage is only visible to platform super-admins.
+        </p>
+      </div>
+    )
+  }
 
   if (isLoading) {
     return (
@@ -387,11 +404,7 @@ export function AccountDetail({ accountId }: AccountDetailProps) {
   const accountRoleCount = (rolesData?.items ?? []).filter((r) => r.accountId === accountId).length
 
   if (accountError) {
-    return (
-      <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-6 text-center">
-        <p className="text-sm font-medium text-destructive">Failed to load account</p>
-      </div>
-    )
+    return <ErrorState title="Failed to load account" error={accountError} />
   }
 
   const activePackages = packagesData?.items.filter((p) => p.isActive).length ?? 0
@@ -479,7 +492,7 @@ export function AccountDetail({ accountId }: AccountDetailProps) {
       <Tabs defaultValue="users">
         <TabsList className="h-auto flex-wrap gap-1 p-1">
           <TabsTrigger value="users">Users</TabsTrigger>
-          <TabsTrigger value="structure">Org Structure</TabsTrigger>
+          <TabsTrigger value="structure">Org Units</TabsTrigger>
           <TabsTrigger value="access">Access & Roles</TabsTrigger>
           <TabsTrigger value="kpi">KPI</TabsTrigger>
           <TabsTrigger value="coverage">Coverage</TabsTrigger>

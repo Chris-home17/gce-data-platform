@@ -15,6 +15,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
+import { OrgUnitTypeBadge } from '@/components/shared/org-unit-type-badge'
 import { api } from '@/lib/api'
 import type { BulkSharedGeoUnitResult, SharedGeoUnit } from '@/types/api'
 import {
@@ -27,24 +28,6 @@ import {
 
 type Step = 'input' | 'preview' | 'results'
 
-const TYPE_COLOURS: Record<SharedGeoUnit['geoUnitType'], string> = {
-  Region: 'bg-blue-100 text-blue-700 border-blue-200',
-  SubRegion: 'bg-indigo-100 text-indigo-700 border-indigo-200',
-  Cluster: 'bg-violet-100 text-violet-700 border-violet-200',
-  Country: 'bg-sky-100 text-sky-700 border-sky-200',
-}
-
-function TypeChip({ type }: { type: string }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded border px-1.5 py-0.5 text-xs font-medium ${
-        TYPE_COLOURS[type as SharedGeoUnit['geoUnitType']] ?? 'bg-muted text-muted-foreground'
-      }`}
-    >
-      {type}
-    </span>
-  )
-}
 
 export function ImportSharedGeoDialog() {
   const [open, setOpen] = useState(false)
@@ -280,7 +263,7 @@ export function ImportSharedGeoDialog() {
                       >
                         <td className="px-3 py-1.5 tabular-nums text-muted-foreground">{i + 1}</td>
                         <td className="px-3 py-1.5">
-                          <TypeChip type={vr.row.geoUnitType} />
+                          <OrgUnitTypeBadge type={vr.row.geoUnitType} />
                         </td>
                         <td className="px-3 py-1.5 font-mono">{vr.row.geoUnitCode || <span className="text-muted-foreground/40">—</span>}</td>
                         <td className="px-3 py-1.5">{vr.row.geoUnitName || <span className="text-muted-foreground/40">—</span>}</td>

@@ -19,10 +19,11 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { DataTable } from '@/components/shared/data-table'
 import { StatusBadge } from '@/components/shared/status-badge'
+import { StatCard } from '@/components/shared/stat-card'
+import { ErrorState } from '@/components/shared/error-state'
 import { GrantAccessDialog } from '@/components/shared/grant-access-dialog'
 import { api } from '@/lib/api'
 import { usePermissions } from '@/hooks/usePermissions'
@@ -381,7 +382,7 @@ export function UserDetail({ userId }: { userId: number }) {
   const { can } = usePermissions()
   const [grantDialogOpen, setGrantDialogOpen] = useState(false)
 
-  const { data: user, isLoading, isError } = useQuery({
+  const { data: user, isLoading, isError, error } = useQuery({
     queryKey: ['users', userId],
     queryFn: () => api.users.get(userId),
   })
@@ -431,11 +432,7 @@ export function UserDetail({ userId }: { userId: number }) {
   })
 
   if (isError) {
-    return (
-      <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-6 text-center">
-        <p className="text-sm font-medium text-destructive">Failed to load user</p>
-      </div>
-    )
+    return <ErrorState title="Failed to load user" error={error} />
   }
 
   const hasGap = user?.gapStatus && user.gapStatus !== 'OK'
@@ -497,33 +494,27 @@ export function UserDetail({ userId }: { userId: number }) {
 
       {/* Stat cards */}
       <div className="grid grid-cols-3 gap-4">
-        <Card className="rounded-xl">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Roles</CardTitle>
-            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold tabular-nums">{isLoading ? '—' : user?.roleCount ?? 0}</div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Sites</CardTitle>
-            <MapPin className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold tabular-nums">{isLoading ? '—' : user?.siteCount ?? 0}</div>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Accounts</CardTitle>
-            <Building2 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold tabular-nums">{isLoading ? '—' : user?.accountCount ?? 0}</div>
-          </CardContent>
-        </Card>
+        <StatCard
+          title="Roles"
+          value={user?.roleCount ?? 0}
+          icon={ShieldCheck}
+          iconColor="bg-muted text-muted-foreground"
+          loading={isLoading}
+        />
+        <StatCard
+          title="Sites"
+          value={user?.siteCount ?? 0}
+          icon={MapPin}
+          iconColor="bg-muted text-muted-foreground"
+          loading={isLoading}
+        />
+        <StatCard
+          title="Accounts"
+          value={user?.accountCount ?? 0}
+          icon={Building2}
+          iconColor="bg-muted text-muted-foreground"
+          loading={isLoading}
+        />
       </div>
 
       {/* Tabs — simplified to 3 */}

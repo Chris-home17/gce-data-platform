@@ -28,6 +28,33 @@ public static class AccessScope
             new { Upn = upn });
     }
 
+    // Checks whether the caller identified by @CallerUserId can see the user
+    // at @TargetUserId. Returns true when: the caller is super-admin (resolve
+    // with PlatformAuthService before calling this), the caller is the target,
+    // or the target has at least one authorized site in an account the caller
+    // can reach. Intended for gating /users/{id}/* sub-resource endpoints.
+    public static async Task<bool> CanAccessUserAsync(
+        IDbConnection conn,
+        int callerUserId,
+        int targetUserId)
+    {
+        if (callerUserId == targetUserId) return true;
+
+        var sql = AccessibleAccountsCte + @"
+            SELECT CAST(
+                CASE WHEN EXISTS
+                (
+                    SELECT 1
+                    FROM Sec.vAuthorizedSitesDynamic AS auth
+                    WHERE auth.UserPrincipalId = @TargetUserId
+                      AND auth.AccountId IN (SELECT AccountId FROM AccessibleAccounts)
+                )
+                THEN 1 ELSE 0 END AS bit)";
+
+        return await conn.ExecuteScalarAsync<bool>(sql,
+            new { UserId = callerUserId, TargetUserId = targetUserId });
+    }
+
     // CTE chain that defines `AccessibleAccounts(AccountId)` for the caller
     // passed as the @UserId parameter. The CTE walks the caller's direct and
     // role-inherited grants plus org-unit scopes and unions every distinct

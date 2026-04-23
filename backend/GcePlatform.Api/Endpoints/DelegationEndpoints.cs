@@ -13,13 +13,30 @@ public static class DelegationEndpoints
     public static WebApplication MapDelegationEndpoints(this WebApplication app)
     {
         app.MapGet("/delegations/scope-options", async (
+            ClaimsPrincipal user,
             string delegatorType,
             string delegatorIdentifier,
             string accessType,
             string? accountCode,
-            DbConnectionFactory db) =>
+            DbConnectionFactory db,
+            PlatformAuthService platformAuth) =>
         {
             using var conn = db.CreateConnection();
+
+            // This endpoint discloses the full access topology of the requested
+            // delegator principal. Restrict to callers who hold GrantsManage,
+            // or to users querying their own UPN (the "delegate myself" flow).
+            var hasGrantsManage = await platformAuth.HasPermissionAsync(user, conn, Permissions.GrantsManage);
+            if (!hasGrantsManage)
+            {
+                var callerUpn = PlatformAuthService.GetUpn(user);
+                var isSelfUserLookup =
+                    delegatorType == "USER"
+                    && !string.IsNullOrWhiteSpace(callerUpn)
+                    && string.Equals(callerUpn, delegatorIdentifier, StringComparison.OrdinalIgnoreCase);
+                if (!isSelfUserLookup)
+                    return Results.Forbid();
+            }
 
             var principal = await conn.QuerySingleOrDefaultAsync<(int PrincipalId, string PrincipalType)>(@"
                 SELECT PrincipalId, PrincipalType

@@ -532,18 +532,6 @@ export interface CoverageSummary {
   gapStatus: string
 }
 
-/** From App.vSites (screen M-03) */
-export interface Site {
-  siteId: number
-  externalId: string
-  siteCode: string
-  siteName: string
-  accountCode: string
-  accountName: string
-  region: string | null
-  isActive: boolean
-  userCount: number
-}
 
 // ---------------------------------------------------------------------------
 // KPI domain types

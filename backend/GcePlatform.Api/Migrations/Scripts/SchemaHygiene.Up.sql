@@ -55,6 +55,16 @@ GO
 IF NOT EXISTS (
     SELECT 1 FROM sys.default_constraints
     WHERE parent_object_id = OBJECT_ID('KPI.PeriodSchedule')
+      AND name = 'DF_KpiPeriodSchedule_CreatedBy'
+)
+    ALTER TABLE KPI.PeriodSchedule
+        ADD CONSTRAINT DF_KpiPeriodSchedule_CreatedBy
+        DEFAULT SESSION_USER FOR CreatedBy;
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM sys.default_constraints
+    WHERE parent_object_id = OBJECT_ID('KPI.PeriodSchedule')
       AND name = 'DF_KpiPeriodSchedule_ModifiedOn'
 )
     ALTER TABLE KPI.PeriodSchedule
@@ -110,6 +120,16 @@ IF EXISTS (
       AND is_nullable = 1
 )
     ALTER TABLE KPI.AssignmentTemplate ALTER COLUMN ModifiedBy NVARCHAR(128) NOT NULL;
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM sys.default_constraints
+    WHERE parent_object_id = OBJECT_ID('KPI.AssignmentTemplate')
+      AND name = 'DF_KpiAssignmentTemplate_CreatedBy'
+)
+    ALTER TABLE KPI.AssignmentTemplate
+        ADD CONSTRAINT DF_KpiAssignmentTemplate_CreatedBy
+        DEFAULT SESSION_USER FOR CreatedBy;
 GO
 
 IF NOT EXISTS (

@@ -23,7 +23,6 @@ import { api } from '@/lib/api'
 import { cn, formatPercent } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,6 +31,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
+import { StatCard } from '@/components/shared/stat-card'
+import { ErrorState } from '@/components/shared/error-state'
 import type { SiteSubmissionDetail } from '@/types/api'
 
 const KPI_MONITORING_REFRESH_EVENT = 'gce:kpi-monitoring-refresh'
@@ -213,37 +214,6 @@ function CopyLinkButton({ siteOrgUnitId, periodId, assignmentGroupName, disabled
 }
 
 // ---------------------------------------------------------------------------
-// Stat card
-// ---------------------------------------------------------------------------
-
-function StatCard({
-  label,
-  value,
-  sub,
-  icon: Icon,
-  colour,
-}: {
-  label: string
-  value: string | number
-  sub?: string
-  icon: React.ElementType
-  colour: string
-}) {
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
-        <Icon className={cn('h-4 w-4', colour, 'opacity-70')} />
-      </CardHeader>
-      <CardContent>
-        <div className={cn('text-2xl font-bold tabular-nums', colour)}>{value}</div>
-        {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
-      </CardContent>
-    </Card>
-  )
-}
-
-// ---------------------------------------------------------------------------
 // Period status badge
 // ---------------------------------------------------------------------------
 
@@ -366,12 +336,7 @@ export function SitePeriodDetail({ siteOrgUnitId, periodId }: SitePeriodDetailPr
   const totalMissing = summary?.totalMissing ?? 0
 
   if (isError) {
-    return (
-      <div className="rounded-md border border-destructive/40 bg-destructive/5 p-6 text-center">
-        <AlertCircle className="mx-auto mb-2 h-5 w-5 text-destructive" />
-        <p className="text-sm font-medium text-destructive">Failed to load submission data</p>
-      </div>
-    )
+    return <ErrorState title="Failed to load submission data" />
   }
 
   return (
@@ -439,32 +404,42 @@ export function SitePeriodDetail({ siteOrgUnitId, periodId }: SitePeriodDetailPr
       {/* Stat cards */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard
-          label="Completion"
+          title="Completion"
           value={formatPercent(completionPct)}
-          sub={isLoading ? undefined : `${summary?.siteCode ?? ''}`}
+          subtitle={isLoading ? undefined : summary?.siteCode ?? ''}
           icon={CheckCircle2}
-          colour={completionPct >= 100 ? 'text-success' : completionPct >= 75 ? 'text-warning' : 'text-danger'}
+          iconColor={
+            completionPct >= 100
+              ? 'bg-success-muted text-success-muted-foreground'
+              : completionPct >= 75
+                ? 'bg-warning-muted text-warning-muted-foreground'
+                : 'bg-danger-muted text-danger-muted-foreground'
+          }
         />
         <StatCard
-          label="Submitted"
+          title="Submitted"
           value={isLoading ? '—' : totalSubmitted}
-          sub={`of ${totalRequired} required`}
+          subtitle={`of ${totalRequired} required`}
           icon={CheckCircle2}
-          colour="text-success"
+          iconColor="bg-success-muted text-success-muted-foreground"
         />
         <StatCard
-          label="Locked"
+          title="Locked"
           value={isLoading ? '—' : totalLocked}
-          sub="confirmed"
+          subtitle="confirmed"
           icon={Lock}
-          colour="text-info"
+          iconColor="bg-info-muted text-info-muted-foreground"
         />
         <StatCard
-          label="Missing"
+          title="Missing"
           value={isLoading ? '—' : totalMissing}
-          sub={totalMissing > 0 ? 'not yet submitted' : 'all submitted'}
+          subtitle={totalMissing > 0 ? 'not yet submitted' : 'all submitted'}
           icon={totalMissing > 0 ? AlertTriangle : AlertCircle}
-          colour={totalMissing > 0 ? 'text-danger' : 'text-muted-foreground'}
+          iconColor={
+            totalMissing > 0
+              ? 'bg-danger-muted text-danger-muted-foreground'
+              : 'bg-muted text-muted-foreground'
+          }
         />
       </div>
 

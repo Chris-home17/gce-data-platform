@@ -45,10 +45,3 @@ export function formatDateTime(iso: string | null | undefined): string {
 export function formatPercent(n: number): string {
   return `${n.toFixed(1)}%`
 }
-
-/**
- * Returns a stable query key array for TanStack Query.
- */
-export function queryKey(...parts: (string | number | boolean | null | undefined)[]): unknown[] {
-  return parts
-}
