@@ -64,7 +64,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
       { label: 'Users', href: '/users', icon: Users },
-      { label: 'Org Structure', href: '/sites', icon: MapPin },
+      { label: 'Org Units', href: '/sites', icon: MapPin },
       { label: 'KPI Monitoring', href: '/kpi/monitoring', icon: Activity },
     ],
   },

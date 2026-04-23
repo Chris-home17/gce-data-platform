@@ -25,6 +25,7 @@ import { AccountSitesTable } from '@/app/(admin)/sites/sites-table'
 import { AccountUsersTable } from '@/app/(admin)/users/users-table'
 import { ImportOrgUnitsDialog } from '@/app/(admin)/sites/import-org-units-dialog'
 import { OnboardUserWizard } from '@/components/shared/onboard-user-wizard'
+import { StatCard } from '@/components/shared/stat-card'
 import { AccountBrandingTab } from './account-branding-tab'
 import { api } from '@/lib/api'
 import { PERMISSIONS } from '@/types/api'
@@ -36,37 +37,6 @@ import { cn } from '@/lib/utils'
 // Stat card
 // ---------------------------------------------------------------------------
 
-interface StatCardProps {
-  title: string
-  value: string | number
-  icon: React.ElementType
-  iconColor: string
-  loading?: boolean
-  onClick?: () => void
-}
-
-function StatCard({ title, value, icon: Icon, iconColor, loading, onClick }: StatCardProps) {
-  return (
-    <Card
-      className={cn('rounded-xl', onClick && 'cursor-pointer hover:border-primary/40 transition-colors')}
-      onClick={onClick}
-    >
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <div className={`rounded-lg p-2 ${iconColor}`}>
-          <Icon className="h-4 w-4" />
-        </div>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <div className="h-8 w-12 animate-pulse rounded bg-muted" />
-        ) : (
-          <div className="text-2xl font-bold tabular-nums">{value}</div>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Coverage tab

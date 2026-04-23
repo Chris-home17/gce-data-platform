@@ -23,6 +23,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { DataTable } from '@/components/shared/data-table'
+import { StatCard } from '@/components/shared/stat-card'
+import { ErrorState } from '@/components/shared/error-state'
 import type { ColumnDef } from '@tanstack/react-table'
 import type { KpiPeriod, SiteCompletion } from '@/types/api'
 import { useAccount } from '@/contexts/account-context'
@@ -72,37 +74,6 @@ function selectCurrentPeriod(periods: KpiPeriod[]) {
   if (nextUpcoming) return nextUpcoming
 
   return [...periods].sort((a, b) => toPeriodSortValue(b) - toPeriodSortValue(a))[0]
-}
-
-// ---------------------------------------------------------------------------
-// Stat card
-// ---------------------------------------------------------------------------
-
-function StatCard({
-  label,
-  value,
-  sub,
-  icon: Icon,
-  colour,
-}: {
-  label: string
-  value: string | number
-  sub?: string
-  icon: React.ElementType
-  colour: string
-}) {
-  return (
-    <div className="rounded-lg border bg-card p-4 shadow-sm">
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">{label}</p>
-          <p className={`mt-1 text-2xl font-semibold tabular-nums ${colour}`}>{value}</p>
-          {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
-        </div>
-        <Icon className={`h-5 w-5 ${colour} opacity-70`} />
-      </div>
-    </div>
-  )
 }
 
 // ---------------------------------------------------------------------------
@@ -475,12 +446,7 @@ export function MonitoringView() {
 
   if (isError) {
     return (
-      <div className="rounded-md border border-destructive/40 bg-destructive/5 p-6 text-center">
-        <p className="text-sm font-medium text-destructive">Failed to load monitoring data</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {error instanceof Error ? error.message : 'An unexpected error occurred.'}
-        </p>
-      </div>
+      <ErrorState title="Failed to load monitoring data" error={error} />
     )
   }
 
@@ -590,32 +556,42 @@ export function MonitoringView() {
       {selectedPeriod && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatCard
-            label="Overall Completion"
+            title="Overall Completion"
             value={formatPercent(stats.overallPct)}
-            sub={`${stats.siteCount} sites`}
+            subtitle={`${stats.siteCount} sites`}
             icon={CheckCircle2}
-            colour={stats.overallPct >= 100 ? 'text-success' : stats.overallPct >= 75 ? 'text-warning' : 'text-danger'}
+            iconColor={
+              stats.overallPct >= 100
+                ? 'bg-success-muted text-success-muted-foreground'
+                : stats.overallPct >= 75
+                  ? 'bg-warning-muted text-warning-muted-foreground'
+                  : 'bg-danger-muted text-danger-muted-foreground'
+            }
           />
           <StatCard
-            label="Submitted"
+            title="Submitted"
             value={stats.totalSubmitted}
-            sub={`of ${stats.totalRequired} required`}
+            subtitle={`of ${stats.totalRequired} required`}
             icon={CheckCircle2}
-            colour="text-success"
+            iconColor="bg-success-muted text-success-muted-foreground"
           />
           <StatCard
-            label="Locked"
+            title="Locked"
             value={stats.totalLocked}
-            sub="confirmed"
+            subtitle="confirmed"
             icon={Lock}
-            colour="text-info"
+            iconColor="bg-info-muted text-info-muted-foreground"
           />
           <StatCard
-            label="Missing"
+            title="Missing"
             value={stats.totalMissing}
-            sub={stats.totalMissing > 0 ? 'not yet submitted' : 'all submitted'}
+            subtitle={stats.totalMissing > 0 ? 'not yet submitted' : 'all submitted'}
             icon={stats.totalMissing > 0 ? AlertTriangle : AlertCircle}
-            colour={stats.totalMissing > 0 ? 'text-danger' : 'text-muted-foreground'}
+            iconColor={
+              stats.totalMissing > 0
+                ? 'bg-danger-muted text-danger-muted-foreground'
+                : 'bg-muted text-muted-foreground'
+            }
           />
         </div>
       )}

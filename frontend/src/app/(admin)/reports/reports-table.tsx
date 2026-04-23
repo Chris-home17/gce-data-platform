@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { DataTable } from '@/components/shared/data-table'
 import { StatusBadge } from '@/components/shared/status-badge'
+import { ErrorState } from '@/components/shared/error-state'
 import { EditReportDialog } from './edit-report-dialog'
 import { api } from '@/lib/api'
 import type { BiReport } from '@/types/api'
@@ -142,12 +143,7 @@ export function ReportsTable() {
 
   if (isError) {
     return (
-      <div className="rounded-md border border-destructive/40 bg-destructive/5 p-6 text-center">
-        <p className="text-sm font-medium text-destructive">Failed to load reports</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {error instanceof Error ? error.message : 'An unexpected error occurred.'}
-        </p>
-      </div>
+      <ErrorState title="Failed to load reports" error={error} />
     )
   }
 

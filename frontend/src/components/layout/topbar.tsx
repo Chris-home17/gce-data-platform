@@ -92,11 +92,7 @@ function getInitials(name: string | null | undefined): string {
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase()
 }
 
-interface TopbarProps {
-  title: string
-}
-
-export function Topbar({ title: _title }: TopbarProps) {
+export function Topbar() {
   const queryClient = useQueryClient()
   const { data: session } = useSession()
   const user = session?.user

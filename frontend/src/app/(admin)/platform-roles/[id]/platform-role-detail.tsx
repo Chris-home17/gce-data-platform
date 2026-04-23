@@ -21,6 +21,7 @@ import { DataTable } from '@/components/shared/data-table'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { PermissionGate } from '@/components/shared/permission-gate'
 import { UserUpnTypeahead } from '@/components/shared/user-upn-typeahead'
+import { ErrorState } from '@/components/shared/error-state'
 import { api } from '@/lib/api'
 import type { PlatformPermission, PlatformRoleMember } from '@/types/api'
 import { PERMISSIONS } from '@/types/api'
@@ -342,9 +343,7 @@ export function PlatformRoleDetail({ roleId }: { roleId: number }) {
 
   if (isError) {
     return (
-      <div className="rounded-md border border-destructive/40 bg-destructive/5 p-6 text-center">
-        <p className="text-sm font-medium text-destructive">Failed to load platform role</p>
-      </div>
+      <ErrorState title="Failed to load platform role" />
     )
   }
 

@@ -19,45 +19,10 @@ import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
 import { useMemo, useState } from 'react'
 import { OnboardUserWizard } from '@/components/shared/onboard-user-wizard'
+import { StatCard } from '@/components/shared/stat-card'
 import { useAccount } from '@/contexts/account-context'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useAccessibleSites } from '@/hooks/useAccessibleSites'
-
-// ---------------------------------------------------------------------------
-// Stat card
-// ---------------------------------------------------------------------------
-
-interface StatCardProps {
-  title: string
-  value: string | number
-  subtitle?: string
-  icon: React.ElementType
-  iconColor: string
-  loading?: boolean
-}
-
-function StatCard({ title, value, subtitle, icon: Icon, iconColor, loading }: StatCardProps) {
-  return (
-    <Card className="rounded-xl">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <div className={`rounded-lg p-2 ${iconColor}`}>
-          <Icon className="h-4 w-4" />
-        </div>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <div className="h-8 w-16 animate-pulse rounded bg-muted" />
-        ) : (
-          <>
-            <div className="text-2xl font-bold tabular-nums">{value}</div>
-            {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
-          </>
-        )}
-      </CardContent>
-    </Card>
-  )
-}
 
 // ---------------------------------------------------------------------------
 // Quick action button
@@ -200,7 +165,10 @@ function RecentDelegationsCard() {
   // counts from another tenant, and filter client-side to ALL delegations
   // + delegations tagged to this account.
   const { data, isLoading } = useQuery({
-    queryKey: ['delegations', { accountId }],
+    // Shared key with the /delegations page: api.delegations.list() returns
+    // the full set, so there is no server-side accountId filter to key on.
+    // Filtering happens client-side below.
+    queryKey: ['delegations'],
     queryFn: () => api.delegations.list(),
     enabled: !!accountId,
   })
@@ -304,7 +272,10 @@ export function DashboardContent() {
   // accountId so switching accounts doesn't surface stale counts. The counter
   // below still filters client-side to ALL delegations + this-account delegations.
   const { data: delegationsData, isLoading: delegationsLoading } = useQuery({
-    queryKey: ['delegations', { accountId }],
+    // Shared key with the /delegations page: api.delegations.list() returns
+    // the full set, so there is no server-side accountId filter to key on.
+    // Filtering happens client-side below.
+    queryKey: ['delegations'],
     queryFn: () => api.delegations.list(),
     enabled: !!accountId,
   })

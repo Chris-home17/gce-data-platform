@@ -5,6 +5,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { DataTable } from '@/components/shared/data-table'
+import { ErrorState } from '@/components/shared/error-state'
 import { api } from '@/lib/api'
 import type { CoverageSummary } from '@/types/api'
 
@@ -89,12 +90,7 @@ export function CoverageTable({ gapsOnly = false }: CoverageTableProps) {
 
   if (isError) {
     return (
-      <div className="rounded-md border border-destructive/40 bg-destructive/5 p-6 text-center">
-        <p className="text-sm font-medium text-destructive">Failed to load coverage data</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {error instanceof Error ? error.message : 'An unexpected error occurred.'}
-        </p>
-      </div>
+      <ErrorState title="Failed to load coverage data" error={error} />
     )
   }
 

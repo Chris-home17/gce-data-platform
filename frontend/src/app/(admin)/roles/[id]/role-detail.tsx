@@ -17,6 +17,7 @@ import { DataTable } from '@/components/shared/data-table'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { GrantAccessDialog } from '@/components/shared/grant-access-dialog'
 import { UserUpnTypeahead } from '@/components/shared/user-upn-typeahead'
+import { ErrorState } from '@/components/shared/error-state'
 import { api } from '@/lib/api'
 import type { Grant, PackageGrant, RoleMember } from '@/types/api'
 import { useForm } from 'react-hook-form'
@@ -308,9 +309,7 @@ export function RoleDetail({ roleId }: { roleId: number }) {
 
   if (isError) {
     return (
-      <div className="rounded-md border border-destructive/40 bg-destructive/5 p-6 text-center">
-        <p className="text-sm font-medium text-destructive">Failed to load role</p>
-      </div>
+      <ErrorState title="Failed to load role" />
     )
   }
 

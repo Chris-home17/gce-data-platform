@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/shared/data-table'
 import { StatusBadge } from '@/components/shared/status-badge'
+import { ErrorState } from '@/components/shared/error-state'
 import { api } from '@/lib/api'
 import type { PolicyRole } from '@/types/api'
 
@@ -84,9 +85,7 @@ export function PolicyDetail({ policyId }: { policyId: number }) {
 
   if (!policy) {
     return (
-      <div className="rounded-md border border-destructive/40 bg-destructive/5 p-6 text-center">
-        <p className="text-sm font-medium text-destructive">Policy not found.</p>
-      </div>
+      <ErrorState title="Policy not found." />
     )
   }
 

@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { DataTable } from '@/components/shared/data-table'
 import { StatusBadge } from '@/components/shared/status-badge'
+import { ErrorState } from '@/components/shared/error-state'
 import { api } from '@/lib/api'
 import type { BiReport } from '@/types/api'
 import { AssignReportDialog } from './assign-report-dialog'
@@ -83,9 +84,7 @@ export function PackageDetail({ packageId }: { packageId: number }) {
 
   if (!pkg) {
     return (
-      <div className="rounded-md border border-destructive/40 bg-destructive/5 p-6 text-center">
-        <p className="text-sm font-medium text-destructive">Package not found.</p>
-      </div>
+      <ErrorState title="Package not found." />
     )
   }
 

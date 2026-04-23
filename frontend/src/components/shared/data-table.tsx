@@ -108,22 +108,46 @@ export function DataTable<TData>({
                 </TableRow>
               ))
             ) : table.getRowModel().rows.length > 0 ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  onClick={() => onRowClick?.(row.original)}
-                  className={cn(onRowClick && 'cursor-pointer hover:bg-muted/50')}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      className={cell.column.columnDef.meta?.className}
-                    >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+              table.getRowModel().rows.map((row) => {
+                const activate = onRowClick
+                  ? () => onRowClick(row.original)
+                  : undefined
+                return (
+                  <TableRow
+                    key={row.id}
+                    onClick={activate}
+                    // Keyboard parity for onRowClick: Enter/Space activate the
+                    // row like a button. Skip when the event originated from
+                    // an interactive descendant (e.g. the row-actions menu).
+                    onKeyDown={
+                      activate
+                        ? (e) => {
+                            if (e.target !== e.currentTarget) return
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              activate()
+                            }
+                          }
+                        : undefined
+                    }
+                    role={activate ? 'button' : undefined}
+                    tabIndex={activate ? 0 : undefined}
+                    className={cn(
+                      activate &&
+                        'cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/60 focus-visible:outline-none',
+                    )}
+                  >
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell
+                        key={cell.id}
+                        className={cell.column.columnDef.meta?.className}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                )
+              })
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">

@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { DataTable } from '@/components/shared/data-table'
+import { ErrorState } from '@/components/shared/error-state'
 import {
   Select,
   SelectContent,
@@ -48,12 +49,7 @@ export function AssignmentsTable({
 
   if (isError) {
     return (
-      <div className="rounded-md border border-destructive/40 bg-destructive/5 p-6 text-center">
-        <p className="text-sm font-medium text-destructive">Failed to load assignments</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {error instanceof Error ? error.message : 'An unexpected error occurred.'}
-        </p>
-      </div>
+      <ErrorState title="Failed to load assignments" error={error} />
     )
   }
 

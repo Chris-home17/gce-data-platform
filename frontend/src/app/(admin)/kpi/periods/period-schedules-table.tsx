@@ -7,6 +7,7 @@ import { MoreHorizontal, RefreshCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { DataTable } from '@/components/shared/data-table'
 import { StatusBadge } from '@/components/shared/status-badge'
+import { ErrorState } from '@/components/shared/error-state'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -142,12 +143,7 @@ export function PeriodSchedulesTable() {
 
   if (isError) {
     return (
-      <div className="rounded-md border border-destructive/40 bg-destructive/5 p-6 text-center">
-        <p className="text-sm font-medium text-destructive">Failed to load period schedules</p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {error instanceof Error ? error.message : 'An unexpected error occurred.'}
-        </p>
-      </div>
+      <ErrorState title="Failed to load period schedules" error={error} />
     )
   }
 
