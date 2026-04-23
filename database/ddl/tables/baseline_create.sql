@@ -537,6 +537,9 @@ BEGIN
 
     CREATE INDEX IX_PrincipalDelegation_Delegate
         ON Sec.PrincipalDelegation (DelegatePrincipalId, IsActive);
+
+    CREATE INDEX IX_PrincipalDelegation_Delegator
+        ON Sec.PrincipalDelegation (DelegatorPrincipalId, IsActive);
 END;
 GO
 
@@ -4450,10 +4453,12 @@ BEGIN
             CONSTRAINT DF_KpiPeriodSchedule_IsActive DEFAULT (1),
         CreatedOnUtc        DATETIME2(3) NOT NULL
             CONSTRAINT DF_KpiPeriodSchedule_CreatedOn DEFAULT SYSUTCDATETIME(),
-        CreatedBy           NVARCHAR(128) NULL
+        CreatedBy           NVARCHAR(128) NOT NULL
             CONSTRAINT DF_KpiPeriodSchedule_CreatedBy DEFAULT SESSION_USER,
-        ModifiedOnUtc       DATETIME2(3) NULL,
-        ModifiedBy          NVARCHAR(128) NULL,
+        ModifiedOnUtc       DATETIME2(3) NOT NULL
+            CONSTRAINT DF_KpiPeriodSchedule_ModifiedOn DEFAULT SYSUTCDATETIME(),
+        ModifiedBy          NVARCHAR(128) NOT NULL
+            CONSTRAINT DF_KpiPeriodSchedule_ModifiedBy DEFAULT SESSION_USER,
 
         CONSTRAINT CK_KpiPeriodSchedule_DateRange
             CHECK (EndDate IS NULL OR EndDate >= StartDate),
@@ -4625,10 +4630,12 @@ BEGIN
             CONSTRAINT DF_KpiAssignmentTemplate_IsActive DEFAULT (1),
         CreatedOnUtc         DATETIME2(3) NOT NULL
             CONSTRAINT DF_KpiAssignmentTemplate_CreatedOn DEFAULT SYSUTCDATETIME(),
-        CreatedBy            NVARCHAR(128) NULL
+        CreatedBy            NVARCHAR(128) NOT NULL
             CONSTRAINT DF_KpiAssignmentTemplate_CreatedBy DEFAULT SESSION_USER,
-        ModifiedOnUtc        DATETIME2(3) NULL,
-        ModifiedBy           NVARCHAR(128) NULL,
+        ModifiedOnUtc        DATETIME2(3) NOT NULL
+            CONSTRAINT DF_KpiAssignmentTemplate_ModifiedOn DEFAULT SYSUTCDATETIME(),
+        ModifiedBy           NVARCHAR(128) NOT NULL
+            CONSTRAINT DF_KpiAssignmentTemplate_ModifiedBy DEFAULT SESSION_USER,
 
         CONSTRAINT FK_KpiTemplate_Definition FOREIGN KEY (KPIID)    REFERENCES KPI.Definition (KPIID),
         CONSTRAINT FK_KpiTemplate_Schedule   FOREIGN KEY (PeriodScheduleID) REFERENCES KPI.PeriodSchedule (PeriodScheduleID),
@@ -4797,6 +4804,8 @@ BEGIN
     CREATE INDEX        IX_KpiSub_LockState     ON KPI.Submission (LockState);
     CREATE INDEX        IX_KpiSub_SubmittedBy   ON KPI.Submission (SubmittedByPrincipalId)
         WHERE SubmittedByPrincipalId IS NOT NULL;
+    CREATE INDEX        IX_KpiSub_LockedBy_Principal ON KPI.Submission (LockedByPrincipalId)
+        WHERE LockedByPrincipalId IS NOT NULL;
 
     PRINT '  + KPI.Submission created';
 END;
@@ -4876,6 +4885,7 @@ BEGIN
         ModifiedBy     NVARCHAR(200)  NULL,
         CONSTRAINT UX_Tag_Code UNIQUE (TagCode)
     );
+    CREATE UNIQUE INDEX UX_Tag_Name ON Dim.Tag (TagName);
     PRINT '  + Dim.Tag created';
 END;
 GO

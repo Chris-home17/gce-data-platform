@@ -54,6 +54,9 @@
     <!-- FixVAccountsPolicyCounts: drop unscoped policy count columns from App.vAccounts -->
     <EmbeddedResource Include="Migrations\Scripts\FixVAccountsPolicyCounts.Up.sql" />
     <EmbeddedResource Include="Migrations\Scripts\FixVAccountsPolicyCounts.Down.sql" />
+    <!-- SchemaHygiene: NOT NULL audit columns, UNIQUE on tag name, missing indexes -->
+    <EmbeddedResource Include="Migrations\Scripts\SchemaHygiene.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\SchemaHygiene.Down.sql" />
   </ItemGroup>
 
 </Project>
