@@ -11,6 +11,8 @@ import { DataTable } from '@/components/shared/data-table'
 import { StatusBadge } from '@/components/shared/status-badge'
 import { api } from '@/lib/api'
 import type { BiReport } from '@/types/api'
+import { AssignReportDialog } from './assign-report-dialog'
+import { NewReportForPackageDialog } from './new-report-for-package-dialog'
 
 const reportColumns: ColumnDef<BiReport, unknown>[] = [
   {
@@ -125,7 +127,13 @@ export function PackageDetail({ packageId }: { packageId: number }) {
 
       {/* Reports table */}
       <div>
-        <h2 className="text-base font-semibold mb-3">Reports in this Package</h2>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-base font-semibold">Reports in this Package</h2>
+          <div className="flex items-center gap-2">
+            <AssignReportDialog packageId={packageId} packageCode={pkg.packageCode} />
+            <NewReportForPackageDialog packageId={packageId} packageCode={pkg.packageCode} />
+          </div>
+        </div>
         <DataTable
           columns={reportColumns}
           data={reports?.items ?? []}
