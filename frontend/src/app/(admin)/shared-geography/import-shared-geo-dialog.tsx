@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { OrgUnitTypeBadge } from '@/components/shared/org-unit-type-badge'
 import { api } from '@/lib/api'
-import type { BulkSharedGeoUnitResult, SharedGeoUnit } from '@/types/api'
+import type { BulkSharedGeoUnitResult } from '@/types/api'
 import {
   parseCsv,
   parseIndented,
