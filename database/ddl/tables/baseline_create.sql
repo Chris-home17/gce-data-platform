@@ -5687,10 +5687,11 @@ AS
         sub.IsValid,
         sub.ValidationNotes,
         -- RAG status (computed; NULL if no thresholds set or non-numeric)
+        -- Time is numeric under the hood (seconds), so it gates the same way.
         CASE
-            WHEN d.DataType NOT IN ('Numeric','Percentage','Currency') THEN NULL
-            WHEN sub.SubmissionValue IS NULL                           THEN NULL
-            WHEN a.ThresholdGreen IS NULL                              THEN NULL
+            WHEN d.DataType NOT IN ('Numeric','Percentage','Currency','Time') THEN NULL
+            WHEN sub.SubmissionValue IS NULL                                  THEN NULL
+            WHEN a.ThresholdGreen IS NULL                                     THEN NULL
             WHEN COALESCE(a.ThresholdDirection, d.ThresholdDirection) = 'Higher'
             THEN
                 CASE
@@ -7283,10 +7284,11 @@ AS
         u.UPN                                                    AS SubmittedByUpn,
         sub.SubmittedAt,
         CAST(CASE WHEN sub.SubmissionID IS NOT NULL THEN 1 ELSE 0 END AS bit) AS IsSubmitted,
+        -- Time is numeric under the hood (seconds), so it gates the same way.
         CASE
-            WHEN d.DataType NOT IN ('Numeric','Percentage','Currency') THEN NULL
-            WHEN sub.SubmissionValue IS NULL                           THEN NULL
-            WHEN asgn.ThresholdGreen IS NULL                           THEN NULL
+            WHEN d.DataType NOT IN ('Numeric','Percentage','Currency','Time') THEN NULL
+            WHEN sub.SubmissionValue IS NULL                                  THEN NULL
+            WHEN asgn.ThresholdGreen IS NULL                                  THEN NULL
             WHEN COALESCE(asgn.ThresholdDirection, d.ThresholdDirection) = 'Higher'
             THEN CASE
                 WHEN sub.SubmissionValue >= asgn.ThresholdGreen THEN 'Green'

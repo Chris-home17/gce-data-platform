@@ -65,6 +65,9 @@
     <!-- AddTimeKpiDataType: extend KPI.Definition.DataType to allow 'Time' -->
     <EmbeddedResource Include="Migrations\Scripts\AddTimeKpiDataType.Up.sql" />
     <EmbeddedResource Include="Migrations\Scripts\AddTimeKpiDataType.Down.sql" />
+    <!-- IncludeTimeInRagViews: surface RAG dot for Time KPIs in monitoring views -->
+    <EmbeddedResource Include="Migrations\Scripts\IncludeTimeInRagViews.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\IncludeTimeInRagViews.Down.sql" />
   </ItemGroup>
 
 </Project>
