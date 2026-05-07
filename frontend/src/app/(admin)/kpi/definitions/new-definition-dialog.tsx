@@ -48,7 +48,7 @@ const schema = z.object({
   kpiDescription: z.string().max(1000).optional(),
   category: z.string().max(100).optional(),
   unit: z.string().max(50).optional(),
-  dataType: z.enum(['Numeric', 'Percentage', 'Boolean', 'Text', 'Currency', 'DropDown']),
+  dataType: z.enum(['Numeric', 'Percentage', 'Boolean', 'Text', 'Currency', 'DropDown', 'Time']),
   allowMultiValue: z.boolean().default(false),
   collectionType: z.enum(['Manual', 'Automated', 'BulkUpload']),
   thresholdDirection: z.enum(['Higher', 'Lower', 'none']).optional(),
@@ -245,7 +245,7 @@ export function NewDefinitionDialog() {
                     <Select value={field.value} onValueChange={field.onChange}>
                       <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                       <SelectContent>
-                        {(['Numeric', 'Percentage', 'Boolean', 'Text', 'Currency', 'DropDown'] as const).map((v) => (
+                        {(['Numeric', 'Percentage', 'Boolean', 'Text', 'Currency', 'DropDown', 'Time'] as const).map((v) => (
                           <SelectItem key={v} value={v}>{v}</SelectItem>
                         ))}
                       </SelectContent>

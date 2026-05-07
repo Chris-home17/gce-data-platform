@@ -36,6 +36,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { TimeInput } from '@/components/shared/time-input'
 import { api } from '@/lib/api'
 
 const schema = z.object({
@@ -201,7 +202,8 @@ export function NewAssignmentSheet() {
   }
 
   const selectedKpi = activeKpis.find((k) => k.kpiCode === form.watch('kpiCode'))
-  const supportsThresholds = ['Numeric', 'Percentage', 'Currency'].includes(selectedKpi?.dataType ?? '')
+  const supportsThresholds = ['Numeric', 'Percentage', 'Currency', 'Time'].includes(selectedKpi?.dataType ?? '')
+  const isTimeKpi = selectedKpi?.dataType === 'Time'
 
   // Clear threshold fields when switching to a KPI that doesn't support them
   useEffect(() => {
@@ -450,7 +452,11 @@ export function NewAssignmentSheet() {
                       <FormItem>
                         <FormLabel>Target value</FormLabel>
                         <FormControl>
-                          <Input type="number" step="0.01" value={field.value ?? ''} onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))} />
+                          {isTimeKpi ? (
+                            <TimeInput value={field.value ?? null} onChange={field.onChange} />
+                          ) : (
+                            <Input type="number" step="0.01" value={field.value ?? ''} onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))} />
+                          )}
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -489,7 +495,11 @@ export function NewAssignmentSheet() {
                       <FormItem>
                         <FormLabel>Green</FormLabel>
                         <FormControl>
-                          <Input type="number" step="0.01" value={field.value ?? ''} onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))} />
+                          {isTimeKpi ? (
+                            <TimeInput value={field.value ?? null} onChange={field.onChange} />
+                          ) : (
+                            <Input type="number" step="0.01" value={field.value ?? ''} onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))} />
+                          )}
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -502,7 +512,11 @@ export function NewAssignmentSheet() {
                       <FormItem>
                         <FormLabel>Amber</FormLabel>
                         <FormControl>
-                          <Input type="number" step="0.01" value={field.value ?? ''} onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))} />
+                          {isTimeKpi ? (
+                            <TimeInput value={field.value ?? null} onChange={field.onChange} />
+                          ) : (
+                            <Input type="number" step="0.01" value={field.value ?? ''} onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))} />
+                          )}
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -515,7 +529,11 @@ export function NewAssignmentSheet() {
                       <FormItem>
                         <FormLabel>Red</FormLabel>
                         <FormControl>
-                          <Input type="number" step="0.01" value={field.value ?? ''} onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))} />
+                          {isTimeKpi ? (
+                            <TimeInput value={field.value ?? null} onChange={field.onChange} />
+                          ) : (
+                            <Input type="number" step="0.01" value={field.value ?? ''} onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))} />
+                          )}
                         </FormControl>
                         <FormMessage />
                       </FormItem>

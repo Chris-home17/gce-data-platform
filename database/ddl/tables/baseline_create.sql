@@ -4339,7 +4339,7 @@ BEGIN
         -- Data shape
         DataType        NVARCHAR(20)        NOT NULL
             CONSTRAINT CK_KpiDef_DataType
-                CHECK (DataType IN ('Numeric','Percentage','Boolean','Text','Currency','DropDown')),
+                CHECK (DataType IN ('Numeric','Percentage','Boolean','Text','Currency','DropDown','Time')),
         AllowMultiValue BIT                 NOT NULL CONSTRAINT DF_KpiDef_AllowMultiValue DEFAULT (0),
         -- How values are collected
         CollectionType  NVARCHAR(20)        NOT NULL

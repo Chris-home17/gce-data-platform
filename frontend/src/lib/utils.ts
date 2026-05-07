@@ -45,3 +45,53 @@ export function formatDateTime(iso: string | null | undefined): string {
 export function formatPercent(n: number): string {
   return `${n.toFixed(1)}%`
 }
+
+/**
+ * Time KPIs (DataType === 'Time') store total seconds in the same numeric
+ * column used by every other numeric KPI. The UI is responsible for parsing
+ * HH:MM:SS strings on input and formatting seconds back on display.
+ *
+ * Accepted input forms (whitespace ignored, segments are decimal):
+ *   "1:30:00"   → 5400        (H:M:S)
+ *   "12:30"     → 750         (M:S)
+ *   "45"        → 45          (S, plain seconds)
+ *   "1.5"       → 1.5         (sub-second decimals are preserved)
+ * Returns null if the input cannot be parsed.
+ */
+export function parseTimeToSeconds(input: string | null | undefined): number | null {
+  if (input == null) return null
+  const trimmed = String(input).trim()
+  if (!trimmed) return null
+
+  const parts = trimmed.split(':').map((p) => p.trim())
+  if (parts.length > 3 || parts.some((p) => p === '')) return null
+
+  const nums = parts.map((p) => Number(p))
+  if (nums.some((n) => !Number.isFinite(n) || n < 0)) return null
+  // The leading segment may exceed the usual ranges (e.g. 99:00:00),
+  // but minutes/seconds in non-leading positions must be < 60.
+  for (let i = 1; i < nums.length; i++) {
+    if (nums[i] >= 60) return null
+  }
+
+  if (nums.length === 3) return nums[0] * 3600 + nums[1] * 60 + nums[2]
+  if (nums.length === 2) return nums[0] * 60 + nums[1]
+  return nums[0]
+}
+
+/**
+ * Formats a number of seconds as `HH:MM:SS` (or `H:MM:SS` once the hours
+ * spill over two digits). Negative or non-finite values render as '—'.
+ * Decimals < 1s are rounded to the nearest second for display.
+ */
+export function formatSecondsAsTime(totalSeconds: number | null | undefined): string {
+  if (totalSeconds == null || !Number.isFinite(totalSeconds) || totalSeconds < 0) return '—'
+  const whole = Math.round(totalSeconds)
+  const h = Math.floor(whole / 3600)
+  const m = Math.floor((whole % 3600) / 60)
+  const s = whole % 60
+  const hh = h < 10 ? `0${h}` : String(h)
+  const mm = m < 10 ? `0${m}` : String(m)
+  const ss = s < 10 ? `0${s}` : String(s)
+  return `${hh}:${mm}:${ss}`
+}

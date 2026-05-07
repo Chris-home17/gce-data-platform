@@ -14,7 +14,8 @@ import {
   Sparkles,
   X,
 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, parseTimeToSeconds } from '@/lib/utils'
+import { TimeInput } from '@/components/shared/time-input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -133,7 +134,7 @@ function parseOptionalNumber(s: string): number | null {
 }
 
 function getTailoringErrors(kpi: EffectiveKpi, values: KpiTailoringValues): string[] {
-  if (!['Numeric', 'Percentage', 'Currency'].includes(kpi.dataType ?? '')) return []
+  if (!['Numeric', 'Percentage', 'Currency', 'Time'].includes(kpi.dataType ?? '')) return []
   const errors: string[] = []
   if (!values.targetValue) errors.push('targetValue')
   if (!values.thresholdGreen) errors.push('thresholdGreen')
@@ -784,7 +785,8 @@ interface KpiTailoringRowProps {
 function KpiTailoringRow({ kpi, values, onChange, fieldErrors, showErrors }: KpiTailoringRowProps) {
   const [expanded, setExpanded] = useState(false)
   const isDirty = isTailoringDirty(values)
-  const supportsThresholds = ['Numeric', 'Percentage', 'Currency'].includes(kpi.dataType ?? '')
+  const supportsThresholds = ['Numeric', 'Percentage', 'Currency', 'Time'].includes(kpi.dataType ?? '')
+  const isTimeKpi = kpi.dataType === 'Time'
   const hasErrors = showErrors && fieldErrors.length > 0
 
   useEffect(() => {
@@ -857,14 +859,23 @@ function KpiTailoringRow({ kpi, values, onChange, fieldErrors, showErrors }: Kpi
                   <Label className="text-xs">
                     Target value <span className="text-destructive">*</span>
                   </Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    className={cn("h-9", err('targetValue') && "border-destructive focus-visible:ring-destructive")}
-                    value={values.targetValue}
-                    onChange={(e) => onChange({ targetValue: e.target.value })}
-                    placeholder="Required"
-                  />
+                  {isTimeKpi ? (
+                    <TimeInput
+                      className="h-9"
+                      hasError={err('targetValue')}
+                      value={values.targetValue ? parseTimeToSeconds(values.targetValue) : null}
+                      onChange={(secs) => onChange({ targetValue: secs == null ? '' : String(secs) })}
+                    />
+                  ) : (
+                    <Input
+                      type="number"
+                      step="0.01"
+                      className={cn("h-9", err('targetValue') && "border-destructive focus-visible:ring-destructive")}
+                      value={values.targetValue}
+                      onChange={(e) => onChange({ targetValue: e.target.value })}
+                      placeholder="Required"
+                    />
+                  )}
                   {err('targetValue') && <p className="text-xs text-destructive">Required</p>}
                 </div>
                 <div className="space-y-1.5">
@@ -890,14 +901,23 @@ function KpiTailoringRow({ kpi, values, onChange, fieldErrors, showErrors }: Kpi
                     <Label className="text-xs capitalize">
                       {field.replace('threshold', '')} <span className="text-destructive">*</span>
                     </Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      className={cn("h-9", err(field) && "border-destructive focus-visible:ring-destructive")}
-                      value={values[field]}
-                      onChange={(e) => onChange({ [field]: e.target.value })}
-                      placeholder="Required"
-                    />
+                    {isTimeKpi ? (
+                      <TimeInput
+                        className="h-9"
+                        hasError={err(field)}
+                        value={values[field] ? parseTimeToSeconds(values[field]) : null}
+                        onChange={(secs) => onChange({ [field]: secs == null ? '' : String(secs) })}
+                      />
+                    ) : (
+                      <Input
+                        type="number"
+                        step="0.01"
+                        className={cn("h-9", err(field) && "border-destructive focus-visible:ring-destructive")}
+                        value={values[field]}
+                        onChange={(e) => onChange({ [field]: e.target.value })}
+                        placeholder="Required"
+                      />
+                    )}
                     {err(field) && <p className="text-xs text-destructive">Required</p>}
                   </div>
                 ))}

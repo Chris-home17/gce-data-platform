@@ -60,6 +60,9 @@
     <!-- SplitKpiPermissions: replace kpi.manage with kpi.admin + kpi.assign -->
     <EmbeddedResource Include="Migrations\Scripts\SplitKpiPermissions.Up.sql" />
     <EmbeddedResource Include="Migrations\Scripts\SplitKpiPermissions.Down.sql" />
+    <!-- AddTimeKpiDataType: extend KPI.Definition.DataType to allow 'Time' -->
+    <EmbeddedResource Include="Migrations\Scripts\AddTimeKpiDataType.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\AddTimeKpiDataType.Down.sql" />
   </ItemGroup>
 
 </Project>

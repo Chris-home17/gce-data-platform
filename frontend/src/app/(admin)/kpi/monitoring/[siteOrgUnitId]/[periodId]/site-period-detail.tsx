@@ -20,7 +20,7 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { api } from '@/lib/api'
-import { cn, formatPercent } from '@/lib/utils'
+import { cn, formatPercent, formatSecondsAsTime } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -59,6 +59,7 @@ function displayValue(row: SiteSubmissionDetail): string {
   if (!row.isSubmitted) return '—'
   if (row.dataType === 'Boolean') return row.submissionBoolean === true ? 'Yes' : row.submissionBoolean === false ? 'No' : '—'
   if (row.dataType === 'Text' || row.dataType === 'DropDown') return row.submissionText ?? '—'
+  if (row.dataType === 'Time') return row.submissionValue != null ? formatSecondsAsTime(row.submissionValue) : '—'
   return row.submissionValue != null ? String(row.submissionValue) : '—'
 }
 

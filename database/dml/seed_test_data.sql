@@ -819,6 +819,10 @@ EXEC App.usp_UpsertKpiDefinition @KPICode = 'C-001', @KPIName = 'Regulatory Audi
 EXEC App.usp_UpsertKpiDefinition @KPICode = 'C-002', @KPIName = 'Security Incidents Reported', @KPIDescription = N'Number of security-related incidents (theft, unauthorised access, data breach) formally reported in the period.', @Category = 'Compliance', @Unit = 'count', @DataType = 'Numeric', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
 EXEC App.usp_UpsertKpiDefinition @KPICode = 'C-003', @KPIName = 'Certification Compliance Rate', @KPIDescription = N'Percentage of required operational certifications (ISO, TAPA, GDP) that are current and valid.', @Category = 'Compliance', @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
 
+-- DataType = 'Time': SubmissionValue and Threshold* are stored as total seconds;
+-- the UI parses HH:MM:SS on input and formats it back on display.
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'Q-005', @KPIName = 'Average Customer Response Time', @KPIDescription = N'Average elapsed time from customer enquiry receipt to first substantive response, expressed as HH:MM:SS.', @Category = 'Quality', @Unit = 'HH:MM:SS', @DataType = 'Time', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
+
 DECLARE @QtrPeriod0101 INT;       -- Jan 2026 on quarterly schedule
 DECLARE @MthPeriod0202 INT;       -- Feb 2026 on monthly schedule
 DECLARE @BiMthPeriod0202 INT;     -- Feb 2026 on bi-monthly schedule
@@ -1066,6 +1070,22 @@ EXEC App.usp_UpsertKpiAssignmentTemplate
     @SubmitterGuidance = N'Percentage of required certifications that remain current and valid.',
     @AssignmentTemplateID = @KpiAssignmentTemplateId OUTPUT;
 
+-- Time-typed KPI: thresholds are seconds (5 min green, 10 min amber).
+-- DHL account-wide assignment so multiple sites get an instance per period.
+EXEC App.usp_UpsertKpiAssignmentTemplate
+    @KPICode = 'Q-005',
+    @PeriodScheduleID = @MonthlyScheduleId,
+    @AccountCode = 'DHL',
+    @OrgUnitCode = NULL,
+    @IsRequired = 1,
+    @TargetValue = 240,    -- 04:00 target
+    @ThresholdGreen = 300, -- 05:00 — within green
+    @ThresholdAmber = 600, -- 10:00 — past this is red
+    @ThresholdRed = NULL,
+    @ThresholdDirection = 'Lower',
+    @SubmitterGuidance = N'Enter the average first-response time as HH:MM:SS.',
+    @AssignmentTemplateID = @KpiAssignmentTemplateId OUTPUT;
+
 -- Group-scoped templates: DHL site MX-01 has both "Technology" and "Operational" KPI owners.
 -- Two templates for the same KPI+site+schedule are allowed because they differ by AssignmentGroupName.
 -- Technology group owns on-time delivery and quality metrics.
@@ -1130,7 +1150,11 @@ VALUES
     (2026, 4, 'UPS',   'Q-001', 'MX-02', 'sofia.fernandez@fabrikam.com', 96.4000, NULL, N'Mexico site submitted with one late carrier exception.', 1),
     (2026, 4, 'FEDEX', 'F-001', NULL,    'victor.lee@fabrikam.com', 3.4700, NULL, N'FedEx Q2 finance review drafted for sign-off.', 0),
     (2026, 4, 'AMZN',  'H-001', NULL,    'priya.bose@fabrikam.com', 4.8000, NULL, N'April attrition slightly elevated after seasonal ramp-down.', 0),
-    (2026, 4, 'FEDEX', 'C-001', NULL,    'victor.lee@fabrikam.com', 97.2000, NULL, N'FedEx April compliance cycle submitted.', 0);
+    (2026, 4, 'FEDEX', 'C-001', NULL,    'victor.lee@fabrikam.com', 97.2000, NULL, N'FedEx April compliance cycle submitted.', 0),
+    -- Q-005 (Time, seconds): 270 = 00:04:30 (Green), 540 = 00:09:00 (Amber), 720 = 00:12:00 (Red).
+    (2026, 2, 'DHL',   'Q-005', NULL,    'allison.tate@fabrikam.com', 270.0000, NULL, N'February response time held below the 5-minute target.', 1),
+    (2026, 3, 'DHL',   'Q-005', NULL,    'allison.tate@fabrikam.com', 540.0000, NULL, N'March response time slipped into the amber band.', 1),
+    (2026, 4, 'DHL',   'Q-005', NULL,    'allison.tate@fabrikam.com', 720.0000, NULL, N'April response time breached the 10-minute amber line.', 0);
 
 DECLARE @SeedSubmissionId INT;
 DECLARE @SeedPeriodYear SMALLINT;

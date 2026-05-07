@@ -746,6 +746,7 @@ public record AccountRolePolicyRoleDto(
 
 public record SubmitKpiRequest(
     Guid     AssignmentExternalId,
+    // For DataType = 'Time', SubmissionValue carries total seconds (HH:MM:SS is parsed client-side).
     decimal? SubmissionValue,
     string?  SubmissionText,    // also used for DropDown selection(s)
     bool?    SubmissionBoolean, // used when DataType = 'Boolean'

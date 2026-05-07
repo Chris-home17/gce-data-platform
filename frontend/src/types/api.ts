@@ -569,7 +569,7 @@ export interface KpiDefinition {
   kpiDescription: string | null
   category: string
   unit: string
-  dataType: 'Numeric' | 'Percentage' | 'Boolean' | 'Text' | 'Currency' | 'DropDown' | string
+  dataType: 'Numeric' | 'Percentage' | 'Boolean' | 'Text' | 'Currency' | 'DropDown' | 'Time' | string
   allowMultiValue: boolean
   collectionType: string
   thresholdDirection: 'Higher' | 'Lower' | null
@@ -760,7 +760,7 @@ export interface CreateKpiDefinitionInput {
   kpiDescription?: string
   category?: string
   unit?: string
-  dataType: 'Numeric' | 'Percentage' | 'Boolean' | 'Text' | 'Currency' | 'DropDown'
+  dataType: 'Numeric' | 'Percentage' | 'Boolean' | 'Text' | 'Currency' | 'DropDown' | 'Time'
   allowMultiValue?: boolean
   collectionType: 'Manual' | 'Automated' | 'BulkUpload'
   thresholdDirection?: 'Higher' | 'Lower' | null
@@ -773,7 +773,7 @@ export interface UpdateKpiDefinitionInput {
   kpiDescription?: string
   category?: string
   unit?: string
-  dataType: 'Numeric' | 'Percentage' | 'Boolean' | 'Text' | 'Currency' | 'DropDown'
+  dataType: 'Numeric' | 'Percentage' | 'Boolean' | 'Text' | 'Currency' | 'DropDown' | 'Time'
   allowMultiValue?: boolean
   collectionType: 'Manual' | 'Automated' | 'BulkUpload'
   thresholdDirection?: 'Higher' | 'Lower' | null
@@ -938,7 +938,7 @@ export interface AssignmentWithSubmission {
   effectiveKpiName: string
   effectiveKpiDescription: string | null
   category: string | null
-  dataType: 'Numeric' | 'Percentage' | 'Currency' | 'Boolean' | 'Text' | 'DropDown' | string
+  dataType: 'Numeric' | 'Percentage' | 'Currency' | 'Boolean' | 'Text' | 'DropDown' | 'Time' | string
   allowMultiValue: boolean
   /** Pipe-delimited effective option list for DropDown KPIs */
   dropDownOptionsRaw: string | null

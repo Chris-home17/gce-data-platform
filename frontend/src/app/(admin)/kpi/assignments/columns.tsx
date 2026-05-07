@@ -3,6 +3,7 @@ import { StatusBadge } from '@/components/shared/status-badge'
 import { RowActions } from '@/components/shared/row-actions'
 import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
+import { formatSecondsAsTime } from '@/lib/utils'
 import type { KpiAssignment } from '@/types/api'
 
 export const assignmentColumns: ColumnDef<KpiAssignment, unknown>[] = [
@@ -73,7 +74,7 @@ export const assignmentColumns: ColumnDef<KpiAssignment, unknown>[] = [
     header: 'Green / Amber',
     cell: ({ row }) => {
       const { dataType, thresholdGreen, thresholdAmber, effectiveThresholdDirection } = row.original
-      const supportsThresholds = ['Numeric', 'Percentage', 'Currency'].includes(dataType)
+      const supportsThresholds = ['Numeric', 'Percentage', 'Currency', 'Time'].includes(dataType)
       if (!supportsThresholds) {
         return <span className="text-muted-foreground text-xs">N/A</span>
       }
@@ -81,9 +82,10 @@ export const assignmentColumns: ColumnDef<KpiAssignment, unknown>[] = [
         return <span className="text-muted-foreground text-sm">—</span>
       }
       const dir = effectiveThresholdDirection === 'Higher' ? '↑' : effectiveThresholdDirection === 'Lower' ? '↓' : ''
+      const fmt = (n: number | null) => (n == null ? '—' : dataType === 'Time' ? formatSecondsAsTime(n) : String(n))
       return (
         <span className="tabular-nums text-sm">
-          {dir} {thresholdGreen ?? '—'} / {thresholdAmber ?? '—'}
+          {dir} {fmt(thresholdGreen)} / {fmt(thresholdAmber)}
         </span>
       )
     },

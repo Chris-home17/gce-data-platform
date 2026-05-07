@@ -20,7 +20,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { TimeInput } from '@/components/shared/time-input'
 import { api } from '@/lib/api'
+import { formatSecondsAsTime } from '@/lib/utils'
 import type { AssignmentWithSubmission, SubmissionTokenContext } from '@/types/api'
 
 const KPI_MONITORING_REFRESH_EVENT = 'gce:kpi-monitoring-refresh'
@@ -214,7 +216,8 @@ function KpiRow({ assignment, index, onSaved }: KpiRowProps) {
   const isText     = assignment.dataType === 'Text'
   const isBoolean  = assignment.dataType === 'Boolean'
   const isDropDown = assignment.dataType === 'DropDown'
-  const isNumeric  = !isText && !isBoolean && !isDropDown
+  const isTime     = assignment.dataType === 'Time'
+  const isNumeric  = !isText && !isBoolean && !isDropDown && !isTime
   const isLocked   = !!assignment.lockState && assignment.lockState !== 'Unlocked'
 
   const dropDownOptions = parseOptions(assignment.dropDownOptionsRaw)
@@ -222,7 +225,7 @@ function KpiRow({ assignment, index, onSaved }: KpiRowProps) {
   const [value, setValue] = useState<string>(
     isText
       ? (assignment.submissionText ?? '')
-      : isNumeric
+      : (isNumeric || isTime)
         ? (assignment.submissionValue != null ? String(assignment.submissionValue) : '')
         : isDropDown
           ? (assignment.submissionText ?? '')
@@ -278,7 +281,7 @@ function KpiRow({ assignment, index, onSaved }: KpiRowProps) {
 
       return api.kpi.submissions.submit({
         assignmentExternalId: assignment.externalId,
-        submissionValue:      isNumeric ? (value ? Number(value) : undefined) : undefined,
+        submissionValue:      (isNumeric || isTime) ? (value ? Number(value) : undefined) : undefined,
         submissionText,
         submissionBoolean:    isBoolean ? (boolValue ?? undefined) : undefined,
         submissionNotes:      notes || undefined,
@@ -370,22 +373,22 @@ function KpiRow({ assignment, index, onSaved }: KpiRowProps) {
           </span>
           {thresholds.green != null && (
             <span className="threshold-pip" style={{ background: '#D1FAE5', color: '#065F46' }}>
-              ● {thresholds.green}
+              ● {isTime ? formatSecondsAsTime(thresholds.green) : thresholds.green}
             </span>
           )}
           {thresholds.amber != null && (
             <span className="threshold-pip" style={{ background: '#FEF3C7', color: '#92400E' }}>
-              ● {thresholds.amber}
+              ● {isTime ? formatSecondsAsTime(thresholds.amber) : thresholds.amber}
             </span>
           )}
           {thresholds.red != null && (
             <span className="threshold-pip" style={{ background: '#FEE2E2', color: '#991B1B' }}>
-              ● {thresholds.red}
+              ● {isTime ? formatSecondsAsTime(thresholds.red) : thresholds.red}
             </span>
           )}
           {assignment.targetValue != null && (
             <span className="threshold-pip" style={{ background: '#E0E7FF', color: '#3730A3' }}>
-              ◎ {assignment.targetValue}
+              ◎ {isTime ? formatSecondsAsTime(assignment.targetValue) : assignment.targetValue}
             </span>
           )}
         </div>
@@ -407,7 +410,9 @@ function KpiRow({ assignment, index, onSaved }: KpiRowProps) {
               ? (assignment.submissionText ?? '—')
               : isText
                 ? (assignment.submissionText ?? '—')
-                : (assignment.submissionValue != null ? String(assignment.submissionValue) : '—')}
+                : isTime
+                  ? (assignment.submissionValue != null ? formatSecondsAsTime(assignment.submissionValue) : '—')
+                  : (assignment.submissionValue != null ? String(assignment.submissionValue) : '—')}
           {assignment.submissionNotes && (
             <p className="text-xs text-gray-400 mt-1 not-italic font-sans">
               {assignment.submissionNotes}
@@ -523,7 +528,7 @@ function KpiRow({ assignment, index, onSaved }: KpiRowProps) {
               </div>
             </div>
           ) : (
-            /* Numeric or Text input */
+            /* Numeric, Time, or Text input */
             <div className="flex gap-2">
               {isText ? (
                 <Textarea
@@ -531,6 +536,13 @@ function KpiRow({ assignment, index, onSaved }: KpiRowProps) {
                   onChange={(e) => handleChange(e.target.value)}
                   placeholder="Enter value…"
                   className="text-sm resize-none h-16 flex-1"
+                  disabled={mutation.isPending}
+                />
+              ) : isTime ? (
+                <TimeInput
+                  value={value ? Number(value) : null}
+                  onChange={(secs) => handleChange(secs == null ? '' : String(secs))}
+                  className="text-sm flex-1"
                   disabled={mutation.isPending}
                 />
               ) : (
