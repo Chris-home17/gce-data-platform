@@ -4771,6 +4771,16 @@ BEGIN
         SubmissionNotes         NVARCHAR(500)       NULL,
         -- Snapshot of KPI.Definition at submission time so library edits never alter history
         DefinitionSnapshot      NVARCHAR(MAX)       NULL,
+        -- Threshold snapshot at first-submit time. RAG views read these for submitted rows
+        -- so editing the assignment's thresholds afterwards never re-scores history.
+        -- Direction stores the EFFECTIVE direction (assignment override > definition default).
+        SubmittedTargetValue        DECIMAL(18,4)   NULL,
+        SubmittedThresholdGreen     DECIMAL(18,4)   NULL,
+        SubmittedThresholdAmber     DECIMAL(18,4)   NULL,
+        SubmittedThresholdRed       DECIMAL(18,4)   NULL,
+        SubmittedThresholdDirection NVARCHAR(10)    NULL
+            CONSTRAINT CK_KpiSub_SubmittedThresholdDirection
+                CHECK (SubmittedThresholdDirection IN ('Higher','Lower') OR SubmittedThresholdDirection IS NULL),
         -- Source
         SourceType              NVARCHAR(20)        NOT NULL
             CONSTRAINT CK_KpiSub_SourceType
@@ -5664,12 +5674,13 @@ AS
         site.CountryCode,
         acct.AccountCode,
         acct.AccountName,
-        -- Thresholds (effective: assignment override > definition default)
-        a.TargetValue,
-        a.ThresholdGreen,
-        a.ThresholdAmber,
-        a.ThresholdRed,
-        COALESCE(a.ThresholdDirection, d.ThresholdDirection) AS EffectiveThresholdDirection,
+        -- Effective thresholds: snapshot for submitted rows, live for the rest.
+        -- Editing the assignment after submission must NOT re-score history.
+        COALESCE(sub.SubmittedTargetValue,    a.TargetValue)    AS TargetValue,
+        COALESCE(sub.SubmittedThresholdGreen, a.ThresholdGreen) AS ThresholdGreen,
+        COALESCE(sub.SubmittedThresholdAmber, a.ThresholdAmber) AS ThresholdAmber,
+        COALESCE(sub.SubmittedThresholdRed,   a.ThresholdRed)   AS ThresholdRed,
+        COALESCE(sub.SubmittedThresholdDirection, a.ThresholdDirection, d.ThresholdDirection) AS EffectiveThresholdDirection,
         -- Submission values
         sub.SubmissionValue,
         sub.SubmissionText,
@@ -5688,22 +5699,23 @@ AS
         sub.ValidationNotes,
         -- RAG status (computed; NULL if no thresholds set or non-numeric)
         -- Time is numeric under the hood (seconds), so it gates the same way.
+        -- For submitted rows the thresholds resolve from the per-submission snapshot.
         CASE
             WHEN d.DataType NOT IN ('Numeric','Percentage','Currency','Time') THEN NULL
             WHEN sub.SubmissionValue IS NULL                                  THEN NULL
-            WHEN a.ThresholdGreen IS NULL                                     THEN NULL
-            WHEN COALESCE(a.ThresholdDirection, d.ThresholdDirection) = 'Higher'
+            WHEN COALESCE(sub.SubmittedThresholdGreen, a.ThresholdGreen) IS NULL THEN NULL
+            WHEN COALESCE(sub.SubmittedThresholdDirection, a.ThresholdDirection, d.ThresholdDirection) = 'Higher'
             THEN
                 CASE
-                    WHEN sub.SubmissionValue >= a.ThresholdGreen THEN 'Green'
-                    WHEN sub.SubmissionValue >= a.ThresholdAmber THEN 'Amber'
+                    WHEN sub.SubmissionValue >= COALESCE(sub.SubmittedThresholdGreen, a.ThresholdGreen) THEN 'Green'
+                    WHEN sub.SubmissionValue >= COALESCE(sub.SubmittedThresholdAmber, a.ThresholdAmber) THEN 'Amber'
                     ELSE 'Red'
                 END
-            WHEN COALESCE(a.ThresholdDirection, d.ThresholdDirection) = 'Lower'
+            WHEN COALESCE(sub.SubmittedThresholdDirection, a.ThresholdDirection, d.ThresholdDirection) = 'Lower'
             THEN
                 CASE
-                    WHEN sub.SubmissionValue <= a.ThresholdGreen THEN 'Green'
-                    WHEN sub.SubmissionValue <= a.ThresholdAmber THEN 'Amber'
+                    WHEN sub.SubmissionValue <= COALESCE(sub.SubmittedThresholdGreen, a.ThresholdGreen) THEN 'Green'
+                    WHEN sub.SubmissionValue <= COALESCE(sub.SubmittedThresholdAmber, a.ThresholdAmber) THEN 'Amber'
                     ELSE 'Red'
                 END
             ELSE NULL
@@ -6336,6 +6348,34 @@ BEGIN
 END;
 GO
 
+-- Propagates a template's thresholds + target + custom name/description to every
+-- assignment it owns that has not been submitted yet. Called after editing a
+-- template so future periods (and currently-open, unsubmitted ones) pick up the
+-- new values; submitted rows keep their per-submission snapshot regardless.
+CREATE OR ALTER PROCEDURE App.usp_CascadeAssignmentTemplateThresholds
+    @AssignmentTemplateID INT,
+    @ActorUPN             NVARCHAR(320) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    UPDATE a
+    SET IsRequired         = t.IsRequired,
+        TargetValue        = t.TargetValue,
+        ThresholdGreen     = t.ThresholdGreen,
+        ThresholdAmber     = t.ThresholdAmber,
+        ThresholdRed       = t.ThresholdRed,
+        ThresholdDirection = t.ThresholdDirection,
+        SubmitterGuidance  = t.SubmitterGuidance,
+        ModifiedOnUtc      = SYSUTCDATETIME(),
+        ModifiedBy         = COALESCE(@ActorUPN, SESSION_USER)
+    FROM KPI.Assignment         AS a
+    JOIN KPI.AssignmentTemplate AS t ON t.AssignmentTemplateID = a.AssignmentTemplateID
+    WHERE t.AssignmentTemplateID = @AssignmentTemplateID
+      AND NOT EXISTS (SELECT 1 FROM KPI.Submission s WHERE s.AssignmentID = a.AssignmentID);
+END;
+GO
+
 CREATE OR ALTER PROCEDURE App.usp_MaterializeKpiAssignmentTemplates
     @AssignmentTemplateID   INT           = NULL,
     @PeriodScheduleIDFilter INT           = NULL,
@@ -6750,6 +6790,26 @@ BEGIN
     DECLARE @LockedAt           DATETIME2 = CASE WHEN @NewLockState <> 'Unlocked' THEN SYSUTCDATETIME() ELSE NULL END;
     DECLARE @LockedByPrincipalId INT      = CASE WHEN @NewLockState <> 'Unlocked' THEN @SubmitterPrincipalId ELSE NULL END;
 
+    -- Snapshot the assignment's thresholds (and target) at first-submit time.
+    -- The RAG views consult these for submitted rows so editing the assignment
+    -- later never re-scores history. Direction is resolved with assignment-override
+    -- precedence over the definition default.
+    DECLARE @SnapTargetValue        DECIMAL(18,4);
+    DECLARE @SnapThresholdGreen     DECIMAL(18,4);
+    DECLARE @SnapThresholdAmber     DECIMAL(18,4);
+    DECLARE @SnapThresholdRed       DECIMAL(18,4);
+    DECLARE @SnapThresholdDirection NVARCHAR(10);
+
+    SELECT
+        @SnapTargetValue        = a.TargetValue,
+        @SnapThresholdGreen     = a.ThresholdGreen,
+        @SnapThresholdAmber     = a.ThresholdAmber,
+        @SnapThresholdRed       = a.ThresholdRed,
+        @SnapThresholdDirection = COALESCE(a.ThresholdDirection, d.ThresholdDirection)
+    FROM KPI.Assignment AS a
+    JOIN KPI.Definition AS d ON d.KPIID = a.KPIID
+    WHERE a.AssignmentID = @AssignmentID;
+
     IF @ExistingSubmissionID IS NULL
     BEGIN
         -- First submission for this assignment
@@ -6757,12 +6817,16 @@ BEGIN
             (AssignmentID, SubmittedByPrincipalId, SubmittedAt,
              SubmissionValue, SubmissionText, SubmissionBoolean, SubmissionNotes,
              SourceType, LockState, LockedAt, LockedByPrincipalId,
-             DefinitionSnapshot)
+             DefinitionSnapshot,
+             SubmittedTargetValue, SubmittedThresholdGreen, SubmittedThresholdAmber,
+             SubmittedThresholdRed, SubmittedThresholdDirection)
         VALUES
             (@AssignmentID, @SubmitterPrincipalId, SYSUTCDATETIME(),
              @SubmissionValue, @SubmissionText, @SubmissionBoolean, @SubmissionNotes,
              @SourceType, @NewLockState, @LockedAt, @LockedByPrincipalId,
-             @DefinitionSnapshot);
+             @DefinitionSnapshot,
+             @SnapTargetValue, @SnapThresholdGreen, @SnapThresholdAmber,
+             @SnapThresholdRed, @SnapThresholdDirection);
 
         SET @SubmissionID = SCOPE_IDENTITY();
 
@@ -7270,11 +7334,12 @@ AS
         d.Category,
         d.DataType,
         CAST(asgn.IsRequired AS bit)                             AS IsRequired,
-        asgn.TargetValue,
-        asgn.ThresholdGreen,
-        asgn.ThresholdAmber,
-        asgn.ThresholdRed,
-        COALESCE(asgn.ThresholdDirection, d.ThresholdDirection)  AS EffectiveThresholdDirection,
+        -- Effective thresholds: snapshot for submitted rows, live for the rest.
+        COALESCE(sub.SubmittedTargetValue,        asgn.TargetValue)    AS TargetValue,
+        COALESCE(sub.SubmittedThresholdGreen,     asgn.ThresholdGreen) AS ThresholdGreen,
+        COALESCE(sub.SubmittedThresholdAmber,     asgn.ThresholdAmber) AS ThresholdAmber,
+        COALESCE(sub.SubmittedThresholdRed,       asgn.ThresholdRed)   AS ThresholdRed,
+        COALESCE(sub.SubmittedThresholdDirection, asgn.ThresholdDirection, d.ThresholdDirection) AS EffectiveThresholdDirection,
         sub.SubmissionID                                         AS SubmissionId,
         sub.SubmissionValue,
         sub.SubmissionText,
@@ -7285,20 +7350,21 @@ AS
         sub.SubmittedAt,
         CAST(CASE WHEN sub.SubmissionID IS NOT NULL THEN 1 ELSE 0 END AS bit) AS IsSubmitted,
         -- Time is numeric under the hood (seconds), so it gates the same way.
+        -- Submitted rows score against the per-submission snapshot to keep history frozen.
         CASE
             WHEN d.DataType NOT IN ('Numeric','Percentage','Currency','Time') THEN NULL
             WHEN sub.SubmissionValue IS NULL                                  THEN NULL
-            WHEN asgn.ThresholdGreen IS NULL                                  THEN NULL
-            WHEN COALESCE(asgn.ThresholdDirection, d.ThresholdDirection) = 'Higher'
+            WHEN COALESCE(sub.SubmittedThresholdGreen, asgn.ThresholdGreen) IS NULL THEN NULL
+            WHEN COALESCE(sub.SubmittedThresholdDirection, asgn.ThresholdDirection, d.ThresholdDirection) = 'Higher'
             THEN CASE
-                WHEN sub.SubmissionValue >= asgn.ThresholdGreen THEN 'Green'
-                WHEN sub.SubmissionValue >= asgn.ThresholdAmber THEN 'Amber'
+                WHEN sub.SubmissionValue >= COALESCE(sub.SubmittedThresholdGreen, asgn.ThresholdGreen) THEN 'Green'
+                WHEN sub.SubmissionValue >= COALESCE(sub.SubmittedThresholdAmber, asgn.ThresholdAmber) THEN 'Amber'
                 ELSE 'Red'
             END
-            WHEN COALESCE(asgn.ThresholdDirection, d.ThresholdDirection) = 'Lower'
+            WHEN COALESCE(sub.SubmittedThresholdDirection, asgn.ThresholdDirection, d.ThresholdDirection) = 'Lower'
             THEN CASE
-                WHEN sub.SubmissionValue <= asgn.ThresholdGreen THEN 'Green'
-                WHEN sub.SubmissionValue <= asgn.ThresholdAmber THEN 'Amber'
+                WHEN sub.SubmissionValue <= COALESCE(sub.SubmittedThresholdGreen, asgn.ThresholdGreen) THEN 'Green'
+                WHEN sub.SubmissionValue <= COALESCE(sub.SubmittedThresholdAmber, asgn.ThresholdAmber) THEN 'Amber'
                 ELSE 'Red'
             END
             ELSE NULL
@@ -8121,12 +8187,12 @@ AS
         ou.OrgUnitName                                          AS SiteName,
         CAST(CASE WHEN asgn.OrgUnitId IS NULL THEN 1 ELSE 0 END AS BIT) AS IsAccountWide,
         asgn.IsRequired,
-        -- Thresholds
-        asgn.TargetValue,
-        asgn.ThresholdGreen,
-        asgn.ThresholdAmber,
-        asgn.ThresholdRed,
-        COALESCE(asgn.ThresholdDirection, d.ThresholdDirection) AS EffectiveThresholdDirection,
+        -- Effective thresholds: snapshot wins for submitted rows so historical RAG is frozen.
+        COALESCE(s.SubmittedTargetValue,        asgn.TargetValue)    AS TargetValue,
+        COALESCE(s.SubmittedThresholdGreen,     asgn.ThresholdGreen) AS ThresholdGreen,
+        COALESCE(s.SubmittedThresholdAmber,     asgn.ThresholdAmber) AS ThresholdAmber,
+        COALESCE(s.SubmittedThresholdRed,       asgn.ThresholdRed)   AS ThresholdRed,
+        COALESCE(s.SubmittedThresholdDirection, asgn.ThresholdDirection, d.ThresholdDirection) AS EffectiveThresholdDirection,
         -- Submission values
         s.SubmissionValue,
         s.SubmissionText,
@@ -8137,22 +8203,22 @@ AS
         s.IsValid,
         s.ValidationNotes,
         s.CreatedOnUtc                                          AS SubmissionCreatedAt,
-        -- RAG status
+        -- RAG status (snapshot-aware: submitted rows score against their per-submission snapshot)
         CASE
             WHEN s.SubmissionValue IS NULL
                 THEN 'NoData'
-            WHEN asgn.ThresholdGreen IS NULL
+            WHEN COALESCE(s.SubmittedThresholdGreen, asgn.ThresholdGreen) IS NULL
                 THEN 'NoThreshold'
-            WHEN COALESCE(asgn.ThresholdDirection, d.ThresholdDirection) = 'Higher'
+            WHEN COALESCE(s.SubmittedThresholdDirection, asgn.ThresholdDirection, d.ThresholdDirection) = 'Higher'
                 THEN CASE
-                    WHEN s.SubmissionValue >= asgn.ThresholdGreen                                      THEN 'Green'
-                    WHEN asgn.ThresholdAmber IS NOT NULL AND s.SubmissionValue >= asgn.ThresholdAmber  THEN 'Amber'
+                    WHEN s.SubmissionValue >= COALESCE(s.SubmittedThresholdGreen, asgn.ThresholdGreen)                                                                        THEN 'Green'
+                    WHEN COALESCE(s.SubmittedThresholdAmber, asgn.ThresholdAmber) IS NOT NULL AND s.SubmissionValue >= COALESCE(s.SubmittedThresholdAmber, asgn.ThresholdAmber) THEN 'Amber'
                     ELSE 'Red'
                 END
-            WHEN COALESCE(asgn.ThresholdDirection, d.ThresholdDirection) = 'Lower'
+            WHEN COALESCE(s.SubmittedThresholdDirection, asgn.ThresholdDirection, d.ThresholdDirection) = 'Lower'
                 THEN CASE
-                    WHEN s.SubmissionValue <= asgn.ThresholdGreen                                      THEN 'Green'
-                    WHEN asgn.ThresholdAmber IS NOT NULL AND s.SubmissionValue <= asgn.ThresholdAmber  THEN 'Amber'
+                    WHEN s.SubmissionValue <= COALESCE(s.SubmittedThresholdGreen, asgn.ThresholdGreen)                                                                        THEN 'Green'
+                    WHEN COALESCE(s.SubmittedThresholdAmber, asgn.ThresholdAmber) IS NOT NULL AND s.SubmissionValue <= COALESCE(s.SubmittedThresholdAmber, asgn.ThresholdAmber) THEN 'Amber'
                     ELSE 'Red'
                 END
             ELSE 'NoThreshold'
@@ -8161,18 +8227,18 @@ AS
         CASE
             WHEN s.SubmissionValue IS NULL
                 THEN 4
-            WHEN asgn.ThresholdGreen IS NULL
+            WHEN COALESCE(s.SubmittedThresholdGreen, asgn.ThresholdGreen) IS NULL
                 THEN 5
-            WHEN COALESCE(asgn.ThresholdDirection, d.ThresholdDirection) = 'Higher'
+            WHEN COALESCE(s.SubmittedThresholdDirection, asgn.ThresholdDirection, d.ThresholdDirection) = 'Higher'
                 THEN CASE
-                    WHEN s.SubmissionValue >= asgn.ThresholdGreen                                      THEN 3
-                    WHEN asgn.ThresholdAmber IS NOT NULL AND s.SubmissionValue >= asgn.ThresholdAmber  THEN 2
+                    WHEN s.SubmissionValue >= COALESCE(s.SubmittedThresholdGreen, asgn.ThresholdGreen)                                                                        THEN 3
+                    WHEN COALESCE(s.SubmittedThresholdAmber, asgn.ThresholdAmber) IS NOT NULL AND s.SubmissionValue >= COALESCE(s.SubmittedThresholdAmber, asgn.ThresholdAmber) THEN 2
                     ELSE 1
                 END
-            WHEN COALESCE(asgn.ThresholdDirection, d.ThresholdDirection) = 'Lower'
+            WHEN COALESCE(s.SubmittedThresholdDirection, asgn.ThresholdDirection, d.ThresholdDirection) = 'Lower'
                 THEN CASE
-                    WHEN s.SubmissionValue <= asgn.ThresholdGreen                                      THEN 3
-                    WHEN asgn.ThresholdAmber IS NOT NULL AND s.SubmissionValue <= asgn.ThresholdAmber  THEN 2
+                    WHEN s.SubmissionValue <= COALESCE(s.SubmittedThresholdGreen, asgn.ThresholdGreen)                                                                        THEN 3
+                    WHEN COALESCE(s.SubmittedThresholdAmber, asgn.ThresholdAmber) IS NOT NULL AND s.SubmissionValue <= COALESCE(s.SubmittedThresholdAmber, asgn.ThresholdAmber) THEN 2
                     ELSE 1
                 END
             ELSE 5
@@ -8220,11 +8286,12 @@ AS
         ou.OrgUnitName                                          AS SiteName,
         CAST(CASE WHEN asgn.OrgUnitId IS NULL THEN 1 ELSE 0 END AS BIT) AS IsAccountWide,
         asgn.IsRequired,
-        asgn.TargetValue,
-        asgn.ThresholdGreen,
-        asgn.ThresholdAmber,
-        asgn.ThresholdRed,
-        COALESCE(asgn.ThresholdDirection, d.ThresholdDirection) AS EffectiveThresholdDirection,
+        -- Effective thresholds: snapshot wins for submitted rows, live for the rest.
+        COALESCE(s.SubmittedTargetValue,        asgn.TargetValue)    AS TargetValue,
+        COALESCE(s.SubmittedThresholdGreen,     asgn.ThresholdGreen) AS ThresholdGreen,
+        COALESCE(s.SubmittedThresholdAmber,     asgn.ThresholdAmber) AS ThresholdAmber,
+        COALESCE(s.SubmittedThresholdRed,       asgn.ThresholdRed)   AS ThresholdRed,
+        COALESCE(s.SubmittedThresholdDirection, asgn.ThresholdDirection, d.ThresholdDirection) AS EffectiveThresholdDirection,
         -- Submission (NULL columns = not yet submitted)
         s.ExternalId                                            AS SubmissionKey,
         s.SubmissionValue,
@@ -8237,22 +8304,22 @@ AS
         CAST(CASE WHEN s.SubmissionID IS NOT NULL THEN 1 ELSE 0 END AS BIT)             AS IsSubmitted,
         CAST(CASE WHEN s.LockState NOT IN ('Unlocked') AND s.SubmissionID IS NOT NULL
                   THEN 1 ELSE 0 END AS BIT)                                             AS IsLocked,
-        -- RAG status (same logic as vw_PBIKPIFact; NULL value → NoData)
+        -- RAG status (snapshot-aware; same logic as vw_PBIKPIFact)
         CASE
             WHEN s.SubmissionValue IS NULL
                 THEN 'NoData'
-            WHEN asgn.ThresholdGreen IS NULL
+            WHEN COALESCE(s.SubmittedThresholdGreen, asgn.ThresholdGreen) IS NULL
                 THEN 'NoThreshold'
-            WHEN COALESCE(asgn.ThresholdDirection, d.ThresholdDirection) = 'Higher'
+            WHEN COALESCE(s.SubmittedThresholdDirection, asgn.ThresholdDirection, d.ThresholdDirection) = 'Higher'
                 THEN CASE
-                    WHEN s.SubmissionValue >= asgn.ThresholdGreen                                      THEN 'Green'
-                    WHEN asgn.ThresholdAmber IS NOT NULL AND s.SubmissionValue >= asgn.ThresholdAmber  THEN 'Amber'
+                    WHEN s.SubmissionValue >= COALESCE(s.SubmittedThresholdGreen, asgn.ThresholdGreen)                                                                        THEN 'Green'
+                    WHEN COALESCE(s.SubmittedThresholdAmber, asgn.ThresholdAmber) IS NOT NULL AND s.SubmissionValue >= COALESCE(s.SubmittedThresholdAmber, asgn.ThresholdAmber) THEN 'Amber'
                     ELSE 'Red'
                 END
-            WHEN COALESCE(asgn.ThresholdDirection, d.ThresholdDirection) = 'Lower'
+            WHEN COALESCE(s.SubmittedThresholdDirection, asgn.ThresholdDirection, d.ThresholdDirection) = 'Lower'
                 THEN CASE
-                    WHEN s.SubmissionValue <= asgn.ThresholdGreen                                      THEN 'Green'
-                    WHEN asgn.ThresholdAmber IS NOT NULL AND s.SubmissionValue <= asgn.ThresholdAmber  THEN 'Amber'
+                    WHEN s.SubmissionValue <= COALESCE(s.SubmittedThresholdGreen, asgn.ThresholdGreen)                                                                        THEN 'Green'
+                    WHEN COALESCE(s.SubmittedThresholdAmber, asgn.ThresholdAmber) IS NOT NULL AND s.SubmissionValue <= COALESCE(s.SubmittedThresholdAmber, asgn.ThresholdAmber) THEN 'Amber'
                     ELSE 'Red'
                 END
             ELSE 'NoThreshold'
@@ -8260,18 +8327,18 @@ AS
         CASE
             WHEN s.SubmissionValue IS NULL
                 THEN 4
-            WHEN asgn.ThresholdGreen IS NULL
+            WHEN COALESCE(s.SubmittedThresholdGreen, asgn.ThresholdGreen) IS NULL
                 THEN 5
-            WHEN COALESCE(asgn.ThresholdDirection, d.ThresholdDirection) = 'Higher'
+            WHEN COALESCE(s.SubmittedThresholdDirection, asgn.ThresholdDirection, d.ThresholdDirection) = 'Higher'
                 THEN CASE
-                    WHEN s.SubmissionValue >= asgn.ThresholdGreen                                      THEN 3
-                    WHEN asgn.ThresholdAmber IS NOT NULL AND s.SubmissionValue >= asgn.ThresholdAmber  THEN 2
+                    WHEN s.SubmissionValue >= COALESCE(s.SubmittedThresholdGreen, asgn.ThresholdGreen)                                                                        THEN 3
+                    WHEN COALESCE(s.SubmittedThresholdAmber, asgn.ThresholdAmber) IS NOT NULL AND s.SubmissionValue >= COALESCE(s.SubmittedThresholdAmber, asgn.ThresholdAmber) THEN 2
                     ELSE 1
                 END
-            WHEN COALESCE(asgn.ThresholdDirection, d.ThresholdDirection) = 'Lower'
+            WHEN COALESCE(s.SubmittedThresholdDirection, asgn.ThresholdDirection, d.ThresholdDirection) = 'Lower'
                 THEN CASE
-                    WHEN s.SubmissionValue <= asgn.ThresholdGreen                                      THEN 3
-                    WHEN asgn.ThresholdAmber IS NOT NULL AND s.SubmissionValue <= asgn.ThresholdAmber  THEN 2
+                    WHEN s.SubmissionValue <= COALESCE(s.SubmittedThresholdGreen, asgn.ThresholdGreen)                                                                        THEN 3
+                    WHEN COALESCE(s.SubmittedThresholdAmber, asgn.ThresholdAmber) IS NOT NULL AND s.SubmissionValue <= COALESCE(s.SubmittedThresholdAmber, asgn.ThresholdAmber) THEN 2
                     ELSE 1
                 END
             ELSE 5

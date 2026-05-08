@@ -68,6 +68,9 @@
     <!-- IncludeTimeInRagViews: surface RAG dot for Time KPIs in monitoring views -->
     <EmbeddedResource Include="Migrations\Scripts\IncludeTimeInRagViews.Up.sql" />
     <EmbeddedResource Include="Migrations\Scripts\IncludeTimeInRagViews.Down.sql" />
+    <!-- SnapshotThresholdsOnSubmission: freeze RAG history when assignment thresholds are edited later -->
+    <EmbeddedResource Include="Migrations\Scripts\SnapshotThresholdsOnSubmission.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\SnapshotThresholdsOnSubmission.Down.sql" />
   </ItemGroup>
 
 </Project>

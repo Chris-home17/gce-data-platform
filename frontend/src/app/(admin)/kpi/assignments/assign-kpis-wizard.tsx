@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import { cn, parseTimeToSeconds } from '@/lib/utils'
 import { TimeInput } from '@/components/shared/time-input'
+import { ThresholdHelp } from '@/components/shared/threshold-help'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -854,6 +855,10 @@ function KpiTailoringRow({ kpi, values, onChange, fieldErrors, showErrors }: Kpi
             </p>
           ) : (
             <>
+              <ThresholdHelp
+                direction={values.thresholdDirection === 'none' ? null : values.thresholdDirection}
+                isTime={isTimeKpi}
+              />
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs">

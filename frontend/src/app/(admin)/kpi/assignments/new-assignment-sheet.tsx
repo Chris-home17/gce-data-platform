@@ -37,6 +37,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { TimeInput } from '@/components/shared/time-input'
+import { ThresholdHelp } from '@/components/shared/threshold-help'
 import { api } from '@/lib/api'
 
 const schema = z.object({
@@ -444,6 +445,11 @@ export function NewAssignmentSheet() {
               </p>
             ) : (
               <>
+                <ThresholdHelp
+                  direction={(form.watch('thresholdDirection') ?? 'none') === 'none' ? null : (form.watch('thresholdDirection') as 'Higher' | 'Lower')}
+                  isTime={isTimeKpi}
+                />
+
                 <div className="grid grid-cols-2 gap-3">
                   <FormField
                     control={form.control}

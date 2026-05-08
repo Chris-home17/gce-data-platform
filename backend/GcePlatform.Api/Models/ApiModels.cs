@@ -423,6 +423,22 @@ public record CreateKpiAssignmentTemplateRequest(
     string?  AssignmentGroupName
 );
 
+// KPI / schedule / account / scope / group name are immutable post-create — they
+// form the natural key used by usp_UpsertKpiAssignmentTemplate to locate the row.
+// Submitted rows keep their snapshot; the cascade proc propagates the new
+// values to unsubmitted assignments.
+public record UpdateKpiAssignmentTemplateRequest(
+    bool     IsRequired,
+    decimal? TargetValue,
+    decimal? ThresholdGreen,
+    decimal? ThresholdAmber,
+    decimal? ThresholdRed,
+    string?  ThresholdDirection,
+    string?  SubmitterGuidance,
+    string?  CustomKpiName,
+    string?  CustomKpiDescription
+);
+
 public record BatchKpiAssignmentTemplateItem(
     string   KpiCode,
     int?     KpiPackageId,

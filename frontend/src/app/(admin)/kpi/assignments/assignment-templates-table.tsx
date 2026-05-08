@@ -1,9 +1,9 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { ColumnDef } from '@tanstack/react-table'
-import { MoreHorizontal, RefreshCcw } from 'lucide-react'
+import { MoreHorizontal, Pencil, RefreshCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { DataTable } from '@/components/shared/data-table'
 import { StatusBadge } from '@/components/shared/status-badge'
@@ -19,8 +19,9 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { api } from '@/lib/api'
 import type { KpiAssignmentTemplate } from '@/types/api'
+import { EditAssignmentTemplateSheet } from './edit-assignment-template-sheet'
 
-function TemplateActions({ template }: { template: KpiAssignmentTemplate }) {
+function TemplateActions({ template, onEdit }: { template: KpiAssignmentTemplate; onEdit: () => void }) {
   const queryClient = useQueryClient()
 
   const materializeMutation = useMutation({
@@ -58,6 +59,10 @@ function TemplateActions({ template }: { template: KpiAssignmentTemplate }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit() }}>
+          <Pencil className="mr-2 h-4 w-4" />
+          Edit
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={(e) => { e.stopPropagation(); materializeMutation.mutate() }}>
           <RefreshCcw className="mr-2 h-4 w-4" />
           Materialize now
@@ -91,6 +96,7 @@ export function AssignmentTemplatesTable({
   isError: boolean
   error: Error | null
 }) {
+  const [editingTemplate, setEditingTemplate] = useState<KpiAssignmentTemplate | null>(null)
 
   const columns = useMemo<ColumnDef<KpiAssignmentTemplate, unknown>[]>(() => [
     {
@@ -179,7 +185,12 @@ export function AssignmentTemplatesTable({
     {
       id: 'actions',
       header: '',
-      cell: ({ row }) => <TemplateActions template={row.original} />,
+      cell: ({ row }) => (
+        <TemplateActions
+          template={row.original}
+          onEdit={() => setEditingTemplate(row.original)}
+        />
+      ),
       meta: { className: 'w-[40px]' },
     },
   ], [])
@@ -190,5 +201,14 @@ export function AssignmentTemplatesTable({
     )
   }
 
-  return <DataTable columns={columns} data={data} isLoading={isLoading} pageSize={8} />
+  return (
+    <>
+      <DataTable columns={columns} data={data} isLoading={isLoading} pageSize={8} />
+      <EditAssignmentTemplateSheet
+        template={editingTemplate}
+        open={!!editingTemplate}
+        onClose={() => setEditingTemplate(null)}
+      />
+    </>
+  )
 }

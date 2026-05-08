@@ -915,6 +915,20 @@ export interface CreateKpiAssignmentTemplateInput {
   assignmentGroupName?: string | null
 }
 
+/** PATCH payload for an existing template. KPI / schedule / account / scope /
+ * group name form the natural key and are not editable. */
+export interface UpdateKpiAssignmentTemplateInput {
+  isRequired: boolean
+  targetValue?: number | null
+  thresholdGreen?: number | null
+  thresholdAmber?: number | null
+  thresholdRed?: number | null
+  thresholdDirection?: 'Higher' | 'Lower' | null
+  submitterGuidance?: string
+  customKpiName?: string | null
+  customKpiDescription?: string | null
+}
+
 // ---------------------------------------------------------------------------
 // KPI Submission types
 // ---------------------------------------------------------------------------

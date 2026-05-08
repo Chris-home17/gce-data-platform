@@ -29,6 +29,7 @@ import type {
   SetPlatformRolePermissionsInput,
   CreateKpiAssignmentInput,
   CreateKpiAssignmentTemplateInput,
+  UpdateKpiAssignmentTemplateInput,
   CreateKpiDefinitionInput,
   UpdateKpiDefinitionInput,
   CreateKpiPeriodInput,
@@ -492,6 +493,9 @@ export const api = {
         },
         create(data: CreateKpiAssignmentTemplateInput): Promise<KpiAssignmentTemplate> {
           return apiFetch('/kpi/assignment-templates', { method: 'POST', body: JSON.stringify(data) })
+        },
+        update(id: number, data: UpdateKpiAssignmentTemplateInput): Promise<KpiAssignmentTemplate> {
+          return apiFetch(`/kpi/assignment-templates/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
         },
         batchCreate(data: BatchCreateKpiAssignmentTemplatesInput): Promise<BatchCreateKpiAssignmentTemplatesResponse> {
           return apiFetch('/kpi/assignment-templates/batch', { method: 'POST', body: JSON.stringify(data) })

@@ -188,6 +188,96 @@ public static class KpiAssignmentEndpoints
             return Results.Created($"/kpi/assignment-templates/{newId}", created);
         }).RequireAuthorization();
 
+        // PATCH /kpi/assignment-templates/{id}
+        // KPI / schedule / account / scope / group name are part of the natural key
+        // (immutable). Mutable fields update the template, then we cascade to every
+        // unsubmitted assignment that references it. Submitted rows already carry
+        // their per-submission threshold snapshot, so RAG history stays frozen.
+        app.MapMethods("/kpi/assignment-templates/{id:int}", new[] { "PATCH" },
+            async (ClaimsPrincipal user, int id, UpdateKpiAssignmentTemplateRequest request, DbConnectionFactory db, PlatformAuthService platformAuth) =>
+        {
+            using var conn = db.CreateConnection();
+
+            if (!await platformAuth.HasAnyPermissionAsync(user, conn, Permissions.KpiAssign, Permissions.KpiAdmin))
+                return Results.Forbid();
+
+            // Resolve the immutable natural-key fields the upsert proc needs.
+            // The view exposes the org-unit code as SiteCode and doesn't carry
+            // OrgUnitType — templates always target Sites, so we hardcode it.
+            var current = await conn.QuerySingleOrDefaultAsync<(string KpiCode, int PeriodScheduleId, string AccountCode, string? SiteCode, string? AssignmentGroupName)>(@"
+                SELECT t.KpiCode, t.PeriodScheduleId, t.AccountCode, t.SiteCode, t.AssignmentGroupName
+                FROM App.vKpiAssignmentTemplates AS t
+                WHERE t.AssignmentTemplateId = @Id",
+                new { Id = id });
+
+            if (current.KpiCode is null)
+                return Results.NotFound(new ApiError("TEMPLATE_NOT_FOUND", $"Assignment template {id} not found."));
+
+            var p = new DynamicParameters();
+            p.Add("@KpiCode", current.KpiCode);
+            p.Add("@PeriodScheduleID", current.PeriodScheduleId);
+            p.Add("@AccountCode", current.AccountCode);
+            p.Add("@OrgUnitCode", current.SiteCode);
+            p.Add("@OrgUnitType", "Site");
+            p.Add("@IsRequired", request.IsRequired);
+            p.Add("@TargetValue", request.TargetValue);
+            p.Add("@ThresholdGreen", request.ThresholdGreen);
+            p.Add("@ThresholdAmber", request.ThresholdAmber);
+            p.Add("@ThresholdRed", request.ThresholdRed);
+            p.Add("@ThresholdDirection", request.ThresholdDirection);
+            p.Add("@SubmitterGuidance", request.SubmitterGuidance);
+            p.Add("@CustomKpiName", request.CustomKpiName);
+            p.Add("@CustomKpiDescription", request.CustomKpiDescription);
+            p.Add("@AssignmentGroupName", current.AssignmentGroupName);
+            p.Add("@AssignmentTemplateID", dbType: System.Data.DbType.Int32,
+                  direction: System.Data.ParameterDirection.Output);
+
+            await conn.ExecuteAsync("App.usp_UpsertKpiAssignmentTemplate", p,
+                commandType: System.Data.CommandType.StoredProcedure);
+
+            await conn.ExecuteAsync("App.usp_CascadeAssignmentTemplateThresholds",
+                new { AssignmentTemplateID = id },
+                commandType: System.Data.CommandType.StoredProcedure);
+
+            var updated = await conn.QuerySingleAsync<KpiAssignmentTemplateDto>(@"
+                SELECT
+                    AssignmentTemplateId,
+                    ExternalId,
+                    KpiCode,
+                    KpiName,
+                    CustomKpiName,
+                    CustomKpiDescription,
+                    EffectiveKpiName,
+                    EffectiveKpiDescription,
+                    Category,
+                    PeriodScheduleId,
+                    ScheduleName,
+                    FrequencyType,
+                    FrequencyInterval,
+                    AccountCode,
+                    AccountName,
+                    SiteCode,
+                    SiteName,
+                    CAST(IsAccountWide AS bit) AS IsAccountWide,
+                    DataType,
+                    IsRequired,
+                    TargetValue,
+                    ThresholdGreen,
+                    ThresholdAmber,
+                    ThresholdRed,
+                    EffectiveThresholdDirection,
+                    IsActive,
+                    GeneratedAssignmentCount,
+                    KpiPackageId,
+                    KpiPackageName,
+                    AssignmentGroupName
+                FROM App.vKpiAssignmentTemplates
+                WHERE AssignmentTemplateId = @Id",
+                new { Id = id });
+
+            return Results.Ok(updated);
+        }).RequireAuthorization();
+
         app.MapPost("/kpi/assignment-templates/batch",
             async (ClaimsPrincipal user, BatchCreateKpiAssignmentTemplatesRequest request, DbConnectionFactory db, PlatformAuthService platformAuth) =>
         {
