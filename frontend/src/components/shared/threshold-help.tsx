@@ -11,12 +11,7 @@ export interface ThresholdHelpProps {
 // that touches them (new assignment, edit assignment, multi-KPI wizard) because
 // users — including the one who designed this model — keep getting the bands
 // inverted. Keep the copy concrete: name the band, name the comparison.
-export function ThresholdHelp({ direction, isTime = false }: ThresholdHelpProps) {
-  const ex = (label: string, op: '<=' | '>=', segment: string) =>
-    isTime
-      ? `${label} when value ${op} ${segment} threshold`
-      : `${label} when value ${op} ${segment} threshold`
-
+export function ThresholdHelp({ direction, isTime: _isTime = false }: ThresholdHelpProps) {
   let body: React.ReactNode
 
   if (direction === 'Lower') {
@@ -51,8 +46,8 @@ export function ThresholdHelp({ direction, isTime = false }: ThresholdHelpProps)
     body = (
       <p>
         Pick a <strong>Direction</strong> above to see how Green / Amber / Red bands are computed.
-        For "Lower is better" KPIs (response time, defect count) Green is the lowest band; for
-        "Higher is better" KPIs (completion rate) Green is the highest.
+        For &ldquo;Lower is better&rdquo; KPIs (response time, defect count) Green is the lowest band; for
+        &ldquo;Higher is better&rdquo; KPIs (completion rate) Green is the highest.
       </p>
     )
   }
