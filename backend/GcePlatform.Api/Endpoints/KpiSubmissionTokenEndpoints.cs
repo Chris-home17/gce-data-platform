@@ -116,7 +116,9 @@ public static class KpiSubmissionTokenEndpoints
                     SubmissionBoolean,
                     SubmissionNotes,
                     LockState,
-                    IsSubmitted
+                    IsSubmitted,
+                    KpiWeight,
+                    MaxScore
                 FROM App.vSubmissionTokenAssignments
                 WHERE TokenId = @TokenId
                 ORDER BY Category, KpiName",

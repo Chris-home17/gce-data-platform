@@ -3,10 +3,16 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import { AlertCircle, CheckCircle2, Lock, AlertTriangle, MoreHorizontal, Link2 } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Lock, AlertTriangle, MoreHorizontal, Link2, Gauge } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { cn, formatPercent } from '@/lib/utils'
+import { CategoryScoreBar } from '@/components/shared/category-score-bar'
+
+// Phase 2 of the KPI scoring layer is gated behind this build-time flag so a
+// partial deploy doesn't surface empty/zero composite scores. Set
+// NEXT_PUBLIC_KPI_SCORING_ENABLED=true in env to opt in.
+const SCORING_ENABLED = process.env.NEXT_PUBLIC_KPI_SCORING_ENABLED === 'true'
 import {
   Select,
   SelectContent,
@@ -222,6 +228,17 @@ const monitoringColumns: ColumnDef<SiteCompletion, unknown>[] = [
     cell: ({ row }) => <CompletionBar pct={row.original.completionPct} />,
     meta: { className: 'min-w-[160px]' },
   },
+  ...(SCORING_ENABLED ? [{
+    accessorKey: 'compositeScore' as const,
+    header: 'Score',
+    cell: ({ row }: { row: { original: SiteCompletion } }) => {
+      const s = row.original.compositeScore
+      if (s === null || s === undefined) return <span className="text-xs text-muted-foreground">—</span>
+      const colour = s >= 80 ? 'text-success' : s >= 50 ? 'text-warning' : 'text-danger'
+      return <span className={cn('tabular-nums text-sm font-medium', colour)}>{s.toFixed(0)}</span>
+    },
+    meta: { className: 'w-20 text-right', headerClassName: 'text-right' },
+  } as ColumnDef<SiteCompletion, unknown>] : []),
   {
     id: 'reminder',
     header: 'Reminder',
@@ -369,16 +386,31 @@ export function MonitoringView() {
     : sidebarAccount
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['kpi', 'monitoring', selectedPeriod?.periodId ?? 'none', selectedAccount?.accountId ?? 'all'],
+    queryKey: ['kpi', 'monitoring', selectedPeriod?.periodId ?? 'none', selectedAccount?.accountId ?? 'all', SCORING_ENABLED],
     queryFn: () =>
       selectedPeriod
         ? api.kpi.monitoring.list({
             periodId: selectedPeriod.periodId,
             accountId: selectedAccount?.accountId,
+            withScores: SCORING_ENABLED,
           })
         : Promise.resolve({ items: [], totalCount: 0 }),
     enabled: selectedPeriod !== null,
     refetchOnWindowFocus: true,
+  })
+
+  // Phase 2: per-category breakdown for the displayed period × account.
+  // Disabled (and not fetched) when the feature flag is off.
+  const { data: scoresData } = useQuery({
+    queryKey: ['kpi', 'site-scores', selectedPeriod?.periodId ?? 'none', selectedAccount?.accountId ?? 'all'],
+    queryFn: () =>
+      selectedPeriod
+        ? api.kpi.siteScores.list({
+            periodId: selectedPeriod.periodId,
+            accountId: selectedAccount?.accountId,
+          })
+        : Promise.resolve({ items: [], totalCount: 0 }),
+    enabled: SCORING_ENABLED && selectedPeriod !== null,
   })
 
   useEffect(() => {
@@ -441,8 +473,25 @@ export function MonitoringView() {
     const totalLocked = items.reduce((s, i) => s + i.totalLocked, 0)
     const totalMissing = items.reduce((s, i) => s + i.totalMissing, 0)
     const overallPct = totalRequired > 0 ? (totalSubmitted / totalRequired) * 100 : 0
-    return { totalRequired, totalSubmitted, totalLocked, totalMissing, overallPct, siteCount: items.length }
+
+    // Composite score across the visible site set: weighted average of the
+    // per-site composites (each site weighted equally — the per-KPI weights
+    // already collapsed into each site's CompositeScore).
+    const sitesWithScore = items.filter((i) => i.compositeScore !== null && i.compositeScore !== undefined)
+    const avgComposite = sitesWithScore.length > 0
+      ? sitesWithScore.reduce((s, i) => s + (i.compositeScore ?? 0), 0) / sitesWithScore.length
+      : null
+
+    return { totalRequired, totalSubmitted, totalLocked, totalMissing, overallPct, siteCount: items.length, avgComposite }
   }, [filteredItems])
+
+  // Filter the per-category score rows down to the visible sites so the
+  // breakdown panel reflects the active group/scope filters.
+  const visibleScoreRows = useMemo(() => {
+    if (!SCORING_ENABLED) return []
+    const visibleSiteIds = new Set(filteredItems.map((i) => i.siteOrgUnitId))
+    return (scoresData?.items ?? []).filter((r) => visibleSiteIds.has(r.siteOrgUnitId))
+  }, [scoresData, filteredItems])
 
   if (isError) {
     return (
@@ -554,7 +603,7 @@ export function MonitoringView() {
 
       {/* Stat cards */}
       {selectedPeriod && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className={cn('grid grid-cols-2 gap-3', SCORING_ENABLED ? 'sm:grid-cols-5' : 'sm:grid-cols-4')}>
           <StatCard
             title="Overall Completion"
             value={formatPercent(stats.overallPct)}
@@ -568,6 +617,23 @@ export function MonitoringView() {
                   : 'bg-danger-muted text-danger-muted-foreground'
             }
           />
+          {SCORING_ENABLED && (
+            <StatCard
+              title="Composite Score"
+              value={stats.avgComposite === null ? '—' : stats.avgComposite.toFixed(0)}
+              subtitle={stats.avgComposite === null ? 'no scoreable data' : 'avg across sites'}
+              icon={Gauge}
+              iconColor={
+                stats.avgComposite === null
+                  ? 'bg-muted text-muted-foreground'
+                  : stats.avgComposite >= 80
+                    ? 'bg-success-muted text-success-muted-foreground'
+                    : stats.avgComposite >= 50
+                      ? 'bg-warning-muted text-warning-muted-foreground'
+                      : 'bg-danger-muted text-danger-muted-foreground'
+              }
+            />
+          )}
           <StatCard
             title="Submitted"
             value={stats.totalSubmitted}
@@ -594,6 +660,14 @@ export function MonitoringView() {
             }
           />
         </div>
+      )}
+
+      {/* Per-category breakdown panel (Phase 2 of the KPI scoring layer) */}
+      {SCORING_ENABLED && selectedPeriod && visibleScoreRows.length > 0 && (
+        <section className="rounded-md border bg-card p-4">
+          <h2 className="mb-3 text-sm font-semibold">Score by category</h2>
+          <CategoryScoreBar rows={visibleScoreRows} />
+        </section>
       )}
 
       {/* Site table */}

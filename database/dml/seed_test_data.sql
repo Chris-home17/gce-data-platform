@@ -1115,6 +1115,111 @@ EXEC App.usp_UpsertKpiAssignmentTemplate
     @AssignmentGroupName = N'Operational',
     @AssignmentTemplateID = @KpiAssignmentTemplateId OUTPUT;
 
+-- ─── KPI scoring config (Phase 1) ────────────────────────────
+-- Demonstrates the scoring layer on existing seeded templates by re-calling
+-- the upsert (natural-key UPDATE) with KpiWeight + Band points. Materialised
+-- assignments will pick the values up the next time a period opens; the
+-- usp_CascadeAssignmentTemplateThresholds proc propagates immediately.
+
+-- Safety LTIR is high-impact for DHL — give it a heavier weight + custom band points.
+EXEC App.usp_UpsertKpiAssignmentTemplate
+    @KPICode = 'S-001',
+    @PeriodScheduleID = @MonthlyScheduleId,
+    @AccountCode = 'DHL',
+    @OrgUnitCode = NULL,
+    @KpiWeight = 2.0,
+    @ScoringMode = 'Linear',
+    @BandPointsGreen = 100,
+    @BandPointsAmber = 60,
+    @BandPointsRed = 0,
+    @PenaliseMissingOnScore = 1,
+    @AssignmentTemplateID = @KpiAssignmentTemplateId OUTPUT;
+
+-- DHL on-time delivery: standard band scoring with default weight.
+EXEC App.usp_UpsertKpiAssignmentTemplate
+    @KPICode = 'Q-001',
+    @PeriodScheduleID = @MonthlyScheduleId,
+    @AccountCode = 'DHL',
+    @OrgUnitCode = NULL,
+    @KpiWeight = 1.0,
+    @ScoringMode = 'Band',
+    @BandPointsGreen = 100,
+    @BandPointsAmber = 50,
+    @BandPointsRed = 10,
+    @AssignmentTemplateID = @KpiAssignmentTemplateId OUTPUT;
+
+-- DHL response time KPI (Time data type): linear interpolation between bands.
+EXEC App.usp_UpsertKpiAssignmentTemplate
+    @KPICode = 'Q-005',
+    @PeriodScheduleID = @MonthlyScheduleId,
+    @AccountCode = 'DHL',
+    @OrgUnitCode = NULL,
+    @KpiWeight = 1.5,
+    @ScoringMode = 'Linear',
+    @BandPointsGreen = 100,
+    @BandPointsAmber = 50,
+    @BandPointsRed = 0,
+    @AssignmentTemplateID = @KpiAssignmentTemplateId OUTPUT;
+
+-- ─── KPI.CategoryWeight seeds ────────────────────────────────
+-- Per-account category weights (normalised at compute time on the Monitoring page).
+-- Categories not listed default to weight 1.0 in App.vSiteCompositeScore once views ship.
+
+EXEC App.usp_UpsertCategoryWeights
+    @AccountCode = 'DHL',
+    @WeightsJson = N'[
+        {"category":"Safety","weight":0.30,"isActive":true},
+        {"category":"Quality","weight":0.25,"isActive":true},
+        {"category":"Productivity","weight":0.20,"isActive":true},
+        {"category":"Finance","weight":0.15,"isActive":true},
+        {"category":"Compliance","weight":0.05,"isActive":true},
+        {"category":"HR/People","weight":0.05,"isActive":true}
+    ]';
+
+EXEC App.usp_UpsertCategoryWeights
+    @AccountCode = 'UPS',
+    @WeightsJson = N'[
+        {"category":"Safety","weight":0.25,"isActive":true},
+        {"category":"Quality","weight":0.25,"isActive":true},
+        {"category":"Productivity","weight":0.30,"isActive":true},
+        {"category":"Finance","weight":0.10,"isActive":true},
+        {"category":"Compliance","weight":0.05,"isActive":true},
+        {"category":"HR/People","weight":0.05,"isActive":true}
+    ]';
+
+EXEC App.usp_UpsertCategoryWeights
+    @AccountCode = 'ACME',
+    @WeightsJson = N'[
+        {"category":"Safety","weight":0.40,"isActive":true},
+        {"category":"Quality","weight":0.20,"isActive":true},
+        {"category":"Finance","weight":0.20,"isActive":true},
+        {"category":"Compliance","weight":0.20,"isActive":true}
+    ]';
+
+EXEC App.usp_UpsertCategoryWeights
+    @AccountCode = 'FEDEX',
+    @WeightsJson = N'[
+        {"category":"Finance","weight":0.50,"isActive":true},
+        {"category":"Compliance","weight":0.50,"isActive":true}
+    ]';
+
+EXEC App.usp_UpsertCategoryWeights
+    @AccountCode = 'AMZN',
+    @WeightsJson = N'[
+        {"category":"HR/People","weight":1.00,"isActive":true}
+    ]';
+
+-- Templates above were created BEFORE the account-level CategoryWeight rows,
+-- so each one's CategoryWeightSnapshot defaulted to 1.0. Re-snap them all to
+-- the seeded weights so the verification scenarios start from realistic
+-- values. In production this is the same path admins follow when they edit
+-- weights and click "Re-apply to existing templates".
+EXEC App.usp_RefreshTemplateCategoryWeights @AccountCode = 'DHL';
+EXEC App.usp_RefreshTemplateCategoryWeights @AccountCode = 'UPS';
+EXEC App.usp_RefreshTemplateCategoryWeights @AccountCode = 'ACME';
+EXEC App.usp_RefreshTemplateCategoryWeights @AccountCode = 'FEDEX';
+EXEC App.usp_RefreshTemplateCategoryWeights @AccountCode = 'AMZN';
+
 -- Note: usp_MaterializeKpiAssignmentTemplates is called automatically inside
 -- usp_OpenPeriod for each schedule. No standalone call needed.
 

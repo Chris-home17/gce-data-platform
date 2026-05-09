@@ -71,6 +71,21 @@
     <!-- SnapshotThresholdsOnSubmission: freeze RAG history when assignment thresholds are edited later -->
     <EmbeddedResource Include="Migrations\Scripts\SnapshotThresholdsOnSubmission.Up.sql" />
     <EmbeddedResource Include="Migrations\Scripts\SnapshotThresholdsOnSubmission.Down.sql" />
+    <!-- KpiScoring: assignment-side scoring config + KPI.CategoryWeight (Phase 1 of the KPI scoring layer) -->
+    <EmbeddedResource Include="Migrations\Scripts\KpiScoring.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\KpiScoring.Down.sql" />
+    <!-- KpiScoringPhase2: submission snapshot columns + score views (Phase 2 of the KPI scoring layer) -->
+    <EmbeddedResource Include="Migrations\Scripts\KpiScoringPhase2.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\KpiScoringPhase2.Down.sql" />
+    <!-- KpiScoringPhase3: surface KpiWeight + MaxScore on the capture-token view (Phase 3) -->
+    <EmbeddedResource Include="Migrations\Scripts\KpiScoringPhase3.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\KpiScoringPhase3.Down.sql" />
+    <!-- KpiScoringTemplateOptions: option-points JSON on vKpiAssignmentTemplates + covering index on KPI.Submission -->
+    <EmbeddedResource Include="Migrations\Scripts\KpiScoringTemplateOptions.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\KpiScoringTemplateOptions.Down.sql" />
+    <!-- KpiScoringCategoryWeightTemplate: per-template CategoryWeightSnapshot + cascade proc -->
+    <EmbeddedResource Include="Migrations\Scripts\KpiScoringCategoryWeightTemplate.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\KpiScoringCategoryWeightTemplate.Down.sql" />
   </ItemGroup>
 
 </Project>

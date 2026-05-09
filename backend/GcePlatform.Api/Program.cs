@@ -110,6 +110,7 @@ try
     app.MapKpiMonitoringEndpoints();
     app.MapKpiSubmissionEndpoints();
     app.MapKpiSubmissionTokenEndpoints();
+    app.MapKpiScoringEndpoints();
     app.MapSourceMappingEndpoints();
     app.MapCoverageEndpoints();
     app.MapGrantEndpoints();

@@ -87,6 +87,11 @@ import type {
   CreateTagInput,
   UpdateTagInput,
   User,
+  CategoryWeight,
+  UpsertCategoryWeightsInput,
+  SiteCategoryScore,
+  RefreshTemplateCategoryWeightsInput,
+  RefreshTemplateCategoryWeightsResponse,
 } from '@/types/api'
 
 // ---------------------------------------------------------------------------
@@ -523,14 +528,25 @@ export const api = {
       },
     },
     monitoring: {
-      list(params?: { periodId?: number; accountId?: number; siteOrgUnitId?: number; groupName?: string | null }): Promise<ApiList<SiteCompletion>> {
+      list(params?: { periodId?: number; accountId?: number; siteOrgUnitId?: number; groupName?: string | null; withScores?: boolean }): Promise<ApiList<SiteCompletion>> {
         const qs = new URLSearchParams()
         if (params?.periodId) qs.set('periodId', String(params.periodId))
         if (params?.accountId) qs.set('accountId', String(params.accountId))
         if (params?.siteOrgUnitId) qs.set('siteOrgUnitId', String(params.siteOrgUnitId))
         if (params?.groupName != null) qs.set('groupName', params.groupName)
+        if (params?.withScores) qs.set('withScores', 'true')
         const query = qs.toString()
         return apiFetch(`/kpi/monitoring${query ? `?${query}` : ''}`)
+      },
+    },
+    siteScores: {
+      list(params?: { periodId?: number; accountId?: number; siteOrgUnitId?: number }): Promise<ApiList<SiteCategoryScore>> {
+        const qs = new URLSearchParams()
+        if (params?.periodId) qs.set('periodId', String(params.periodId))
+        if (params?.accountId) qs.set('accountId', String(params.accountId))
+        if (params?.siteOrgUnitId) qs.set('siteOrgUnitId', String(params.siteOrgUnitId))
+        const query = qs.toString()
+        return apiFetch(`/kpi/site-scores${query ? `?${query}` : ''}`)
       },
     },
     submissions: {
@@ -587,6 +603,17 @@ export const api = {
       },
       revoke(tokenId: string): Promise<void> {
         return apiFetch(`/kpi/submission-tokens/${tokenId}`, { method: 'DELETE' })
+      },
+    },
+    categoryWeights: {
+      list(accountCode: string): Promise<ApiList<CategoryWeight>> {
+        return apiFetch(`/kpi/category-weights?accountCode=${encodeURIComponent(accountCode)}`)
+      },
+      upsert(data: UpsertCategoryWeightsInput): Promise<ApiList<CategoryWeight>> {
+        return apiFetch('/kpi/category-weights', { method: 'PUT', body: JSON.stringify(data) })
+      },
+      refreshTemplates(data: RefreshTemplateCategoryWeightsInput): Promise<RefreshTemplateCategoryWeightsResponse> {
+        return apiFetch('/kpi/category-weights/refresh-templates', { method: 'POST', body: JSON.stringify(data) })
       },
     },
   },

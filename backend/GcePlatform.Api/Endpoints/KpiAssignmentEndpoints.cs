@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Dapper;
 using GcePlatform.Api.Data;
 using GcePlatform.Api.Helpers;
@@ -9,6 +10,51 @@ namespace GcePlatform.Api.Endpoints;
 
 public static class KpiAssignmentEndpoints
 {
+    // Shared column list for App.vKpiAssignmentTemplates — kept in one place so
+    // POST/PATCH/status re-fetches stay in lockstep with the list endpoint.
+    private const string TemplateColumns = @"
+        AssignmentTemplateId,
+        ExternalId,
+        KpiCode,
+        KpiName,
+        CustomKpiName,
+        CustomKpiDescription,
+        EffectiveKpiName,
+        EffectiveKpiDescription,
+        Category,
+        PeriodScheduleId,
+        ScheduleName,
+        FrequencyType,
+        FrequencyInterval,
+        AccountCode,
+        AccountName,
+        SiteCode,
+        SiteName,
+        CAST(IsAccountWide AS bit) AS IsAccountWide,
+        DataType,
+        IsRequired,
+        TargetValue,
+        ThresholdGreen,
+        ThresholdAmber,
+        ThresholdRed,
+        EffectiveThresholdDirection,
+        IsActive,
+        GeneratedAssignmentCount,
+        KpiPackageId,
+        KpiPackageName,
+        AssignmentGroupName,
+        KpiWeight,
+        ScoringMode,
+        BandPointsGreen,
+        BandPointsAmber,
+        BandPointsRed,
+        BooleanYesPoints,
+        BooleanNoPoints,
+        MultiSelectScoreRule,
+        CAST(PenaliseMissingOnScore AS bit) AS PenaliseMissingOnScore,
+        OptionPointsRaw,
+        CategoryWeightSnapshot";
+
     public static WebApplication MapKpiAssignmentEndpoints(this WebApplication app)
     {
         app.MapGet("/kpi/assignment-groups", async (ClaimsPrincipal user, int? accountId, DbConnectionFactory db, PlatformAuthService platformAuth) =>
@@ -79,7 +125,18 @@ public static class KpiAssignmentEndpoints
                 GeneratedAssignmentCount,
                 KpiPackageId,
                 KpiPackageName,
-                AssignmentGroupName";
+                AssignmentGroupName,
+                KpiWeight,
+                ScoringMode,
+                BandPointsGreen,
+                BandPointsAmber,
+                BandPointsRed,
+                BooleanYesPoints,
+                BooleanNoPoints,
+                MultiSelectScoreRule,
+                CAST(PenaliseMissingOnScore AS bit) AS PenaliseMissingOnScore,
+                OptionPointsRaw,
+                CategoryWeightSnapshot";
 
             IEnumerable<KpiAssignmentTemplateDto> items;
             if (await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))
@@ -134,6 +191,16 @@ public static class KpiAssignmentEndpoints
             p.Add("@CustomKpiName", request.CustomKpiName);
             p.Add("@CustomKpiDescription", request.CustomKpiDescription);
             p.Add("@AssignmentGroupName", request.AssignmentGroupName);
+            p.Add("@KpiWeight", request.KpiWeight);
+            p.Add("@ScoringMode", request.ScoringMode);
+            p.Add("@BandPointsGreen", request.BandPointsGreen);
+            p.Add("@BandPointsAmber", request.BandPointsAmber);
+            p.Add("@BandPointsRed", request.BandPointsRed);
+            p.Add("@BooleanYesPoints", request.BooleanYesPoints);
+            p.Add("@BooleanNoPoints", request.BooleanNoPoints);
+            p.Add("@MultiSelectScoreRule", request.MultiSelectScoreRule);
+            p.Add("@PenaliseMissingOnScore", request.PenaliseMissingOnScore);
+            p.Add("@OptionPoints", SerializeOptionPoints(request.OptionPoints));
             p.Add("@AssignmentTemplateID", dbType: System.Data.DbType.Int32,
                   direction: System.Data.ParameterDirection.Output);
 
@@ -150,37 +217,7 @@ public static class KpiAssignmentEndpoints
             }
 
             var created = await conn.QuerySingleAsync<KpiAssignmentTemplateDto>(@"
-                SELECT
-                    AssignmentTemplateId,
-                    ExternalId,
-                    KpiCode,
-                    KpiName,
-                    CustomKpiName,
-                    CustomKpiDescription,
-                    EffectiveKpiName,
-                    EffectiveKpiDescription,
-                    Category,
-                    PeriodScheduleId,
-                    ScheduleName,
-                    FrequencyType,
-                    FrequencyInterval,
-                    AccountCode,
-                    AccountName,
-                    SiteCode,
-                    SiteName,
-                    CAST(IsAccountWide AS bit) AS IsAccountWide,
-                    DataType,
-                    IsRequired,
-                    TargetValue,
-                    ThresholdGreen,
-                    ThresholdAmber,
-                    ThresholdRed,
-                    EffectiveThresholdDirection,
-                    IsActive,
-                    GeneratedAssignmentCount,
-                    KpiPackageId,
-                    KpiPackageName,
-                    AssignmentGroupName
+                SELECT " + TemplateColumns + @"
                 FROM App.vKpiAssignmentTemplates
                 WHERE AssignmentTemplateId = @Id",
                 new { Id = newId });
@@ -229,6 +266,16 @@ public static class KpiAssignmentEndpoints
             p.Add("@CustomKpiName", request.CustomKpiName);
             p.Add("@CustomKpiDescription", request.CustomKpiDescription);
             p.Add("@AssignmentGroupName", current.AssignmentGroupName);
+            p.Add("@KpiWeight", request.KpiWeight);
+            p.Add("@ScoringMode", request.ScoringMode);
+            p.Add("@BandPointsGreen", request.BandPointsGreen);
+            p.Add("@BandPointsAmber", request.BandPointsAmber);
+            p.Add("@BandPointsRed", request.BandPointsRed);
+            p.Add("@BooleanYesPoints", request.BooleanYesPoints);
+            p.Add("@BooleanNoPoints", request.BooleanNoPoints);
+            p.Add("@MultiSelectScoreRule", request.MultiSelectScoreRule);
+            p.Add("@PenaliseMissingOnScore", request.PenaliseMissingOnScore);
+            p.Add("@OptionPoints", SerializeOptionPoints(request.OptionPoints));
             p.Add("@AssignmentTemplateID", dbType: System.Data.DbType.Int32,
                   direction: System.Data.ParameterDirection.Output);
 
@@ -240,37 +287,7 @@ public static class KpiAssignmentEndpoints
                 commandType: System.Data.CommandType.StoredProcedure);
 
             var updated = await conn.QuerySingleAsync<KpiAssignmentTemplateDto>(@"
-                SELECT
-                    AssignmentTemplateId,
-                    ExternalId,
-                    KpiCode,
-                    KpiName,
-                    CustomKpiName,
-                    CustomKpiDescription,
-                    EffectiveKpiName,
-                    EffectiveKpiDescription,
-                    Category,
-                    PeriodScheduleId,
-                    ScheduleName,
-                    FrequencyType,
-                    FrequencyInterval,
-                    AccountCode,
-                    AccountName,
-                    SiteCode,
-                    SiteName,
-                    CAST(IsAccountWide AS bit) AS IsAccountWide,
-                    DataType,
-                    IsRequired,
-                    TargetValue,
-                    ThresholdGreen,
-                    ThresholdAmber,
-                    ThresholdRed,
-                    EffectiveThresholdDirection,
-                    IsActive,
-                    GeneratedAssignmentCount,
-                    KpiPackageId,
-                    KpiPackageName,
-                    AssignmentGroupName
+                SELECT " + TemplateColumns + @"
                 FROM App.vKpiAssignmentTemplates
                 WHERE AssignmentTemplateId = @Id",
                 new { Id = id });
@@ -340,6 +357,16 @@ public static class KpiAssignmentEndpoints
                         p.Add("@CustomKpiDescription", item.CustomKpiDescription);
                         p.Add("@KpiPackageId",         item.KpiPackageId);
                         p.Add("@AssignmentGroupName",  request.AssignmentGroupName);
+                        p.Add("@KpiWeight",            item.KpiWeight);
+                        p.Add("@ScoringMode",          item.ScoringMode);
+                        p.Add("@BandPointsGreen",      item.BandPointsGreen);
+                        p.Add("@BandPointsAmber",      item.BandPointsAmber);
+                        p.Add("@BandPointsRed",        item.BandPointsRed);
+                        p.Add("@BooleanYesPoints",     item.BooleanYesPoints);
+                        p.Add("@BooleanNoPoints",      item.BooleanNoPoints);
+                        p.Add("@MultiSelectScoreRule", item.MultiSelectScoreRule);
+                        p.Add("@PenaliseMissingOnScore", item.PenaliseMissingOnScore);
+                        p.Add("@OptionPoints", SerializeOptionPoints(item.OptionPoints));
                         p.Add("@AssignmentTemplateID", dbType: System.Data.DbType.Int32,
                               direction: System.Data.ParameterDirection.Output);
 
@@ -412,37 +439,7 @@ public static class KpiAssignmentEndpoints
             if (!await platformAuth.HasAnyPermissionAsync(user, conn, Permissions.KpiAssign, Permissions.KpiAdmin))
                 return Results.Forbid();
             var item = await conn.QuerySingleOrDefaultAsync<KpiAssignmentTemplateDto>(@"
-                SELECT
-                    AssignmentTemplateId,
-                    ExternalId,
-                    KpiCode,
-                    KpiName,
-                    CustomKpiName,
-                    CustomKpiDescription,
-                    EffectiveKpiName,
-                    EffectiveKpiDescription,
-                    Category,
-                    PeriodScheduleId,
-                    ScheduleName,
-                    FrequencyType,
-                    FrequencyInterval,
-                    AccountCode,
-                    AccountName,
-                    SiteCode,
-                    SiteName,
-                    CAST(IsAccountWide AS bit) AS IsAccountWide,
-                    DataType,
-                    IsRequired,
-                    TargetValue,
-                    ThresholdGreen,
-                    ThresholdAmber,
-                    ThresholdRed,
-                    EffectiveThresholdDirection,
-                    IsActive,
-                    GeneratedAssignmentCount,
-                    KpiPackageId,
-                    KpiPackageName,
-                    AssignmentGroupName
+                SELECT " + TemplateColumns + @"
                 FROM App.vKpiAssignmentTemplates
                 WHERE AssignmentTemplateId = @Id",
                 new { Id = id });
@@ -755,5 +752,23 @@ public static class KpiAssignmentEndpoints
         }).RequireAuthorization();
 
         return app;
+    }
+
+    /// <summary>
+    /// Serialise a list of DropDown option points into the JSON shape the
+    /// stored proc expects. Returns NULL when the caller didn't supply
+    /// options — the proc treats NULL as "leave existing options alone".
+    /// </summary>
+    private static string? SerializeOptionPoints(IEnumerable<DropDownOptionPointsDto>? options)
+    {
+        if (options is null) return null;
+        var list = options.ToList();
+        if (list.Count == 0) return "[]";
+        return JsonSerializer.Serialize(list.Select(o => new
+        {
+            value     = o.OptionValue,
+            points    = o.Points,
+            sortOrder = o.SortOrder,
+        }));
     }
 }

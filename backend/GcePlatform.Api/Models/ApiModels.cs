@@ -401,7 +401,28 @@ public record KpiAssignmentTemplateDto(
     // Package tracking — null for individually assigned templates
     int?      KpiPackageId,
     string?   KpiPackageName,
-    string?   AssignmentGroupName
+    string?   AssignmentGroupName,
+    // Scoring config (Phase 1, KPI scoring layer)
+    decimal   KpiWeight = 1m,
+    string    ScoringMode = "Band",
+    decimal   BandPointsGreen = 100m,
+    decimal   BandPointsAmber = 50m,
+    decimal   BandPointsRed = 0m,
+    decimal?  BooleanYesPoints = null,
+    decimal?  BooleanNoPoints = null,
+    string?   MultiSelectScoreRule = null,
+    bool      PenaliseMissingOnScore = true,
+    /// <summary>JSON [{value,points,sortOrder}] of the template's per-option points; null for non-DropDown templates.</summary>
+    string?   OptionPointsRaw = null,
+    /// <summary>Per-template snapshot of the account-level CategoryWeight at template-creation time.</summary>
+    decimal?  CategoryWeightSnapshot = null
+);
+
+// Per-option points + sort order for DropDown KPI assignments.
+public record DropDownOptionPointsDto(
+    string   OptionValue,
+    decimal  Points,
+    int?     SortOrder = null
 );
 
 public record CreateKpiAssignmentTemplateRequest(
@@ -420,7 +441,19 @@ public record CreateKpiAssignmentTemplateRequest(
     string?  CustomKpiName,
     string?  CustomKpiDescription,
     bool     MaterializeNow,
-    string?  AssignmentGroupName
+    string?  AssignmentGroupName,
+    // Scoring config (optional — server applies defaults when omitted)
+    decimal?  KpiWeight = null,
+    string?   ScoringMode = null,
+    decimal?  BandPointsGreen = null,
+    decimal?  BandPointsAmber = null,
+    decimal?  BandPointsRed = null,
+    decimal?  BooleanYesPoints = null,
+    decimal?  BooleanNoPoints = null,
+    string?   MultiSelectScoreRule = null,
+    bool?     PenaliseMissingOnScore = null,
+    // When non-null, replaces all dropdown option points for this template.
+    IEnumerable<DropDownOptionPointsDto>? OptionPoints = null
 );
 
 // KPI / schedule / account / scope / group name are immutable post-create — they
@@ -436,7 +469,17 @@ public record UpdateKpiAssignmentTemplateRequest(
     string?  ThresholdDirection,
     string?  SubmitterGuidance,
     string?  CustomKpiName,
-    string?  CustomKpiDescription
+    string?  CustomKpiDescription,
+    decimal?  KpiWeight = null,
+    string?   ScoringMode = null,
+    decimal?  BandPointsGreen = null,
+    decimal?  BandPointsAmber = null,
+    decimal?  BandPointsRed = null,
+    decimal?  BooleanYesPoints = null,
+    decimal?  BooleanNoPoints = null,
+    string?   MultiSelectScoreRule = null,
+    bool?     PenaliseMissingOnScore = null,
+    IEnumerable<DropDownOptionPointsDto>? OptionPoints = null
 );
 
 public record BatchKpiAssignmentTemplateItem(
@@ -450,7 +493,48 @@ public record BatchKpiAssignmentTemplateItem(
     string?  ThresholdDirection,
     string?  SubmitterGuidance,
     string?  CustomKpiName,
-    string?  CustomKpiDescription
+    string?  CustomKpiDescription,
+    decimal?  KpiWeight = null,
+    string?   ScoringMode = null,
+    decimal?  BandPointsGreen = null,
+    decimal?  BandPointsAmber = null,
+    decimal?  BandPointsRed = null,
+    decimal?  BooleanYesPoints = null,
+    decimal?  BooleanNoPoints = null,
+    string?   MultiSelectScoreRule = null,
+    bool?     PenaliseMissingOnScore = null,
+    /// <summary>Per-option points for DropDown KPIs. Replaces all rows on the template when non-null.</summary>
+    IEnumerable<DropDownOptionPointsDto>? OptionPoints = null
+);
+
+// ---------------------------------------------------------------------------
+// KPI Category Weights  (Phase 1, KPI scoring layer)
+// Per-account weight applied to each KPI Category when rolling up the
+// composite score on the Monitoring page (live in Phase 2).
+// ---------------------------------------------------------------------------
+
+public record CategoryWeightDto(
+    string   Category,
+    decimal  Weight,
+    bool     IsActive
+);
+
+public record UpsertCategoryWeightsRequest(
+    string                          AccountCode,
+    IEnumerable<CategoryWeightDto>  Weights
+);
+
+// Trigger an explicit re-snap of CategoryWeightSnapshot on every assignment
+// template under a given account (optionally narrowed to one Category) and
+// cascade to unsubmitted assignments. Submitted history is unaffected.
+public record RefreshTemplateCategoryWeightsRequest(
+    string  AccountCode,
+    string? Category = null
+);
+
+public record RefreshTemplateCategoryWeightsResponse(
+    int TemplatesUpdated,
+    int AssignmentsUpdated
 );
 
 public record BatchCreateKpiAssignmentTemplatesRequest(
@@ -509,7 +593,33 @@ public record SiteCompletionDto(
     decimal  CompletionPct,
     byte?    ReminderLevel,
     bool     ReminderResolved,
-    string?  GroupName
+    string?  GroupName,
+    /// <summary>
+    /// Site-level composite score 0–100 (Phase 2, KPI scoring layer). NULL means
+    /// the score column wasn't requested (?withScores omitted) or no scoreable
+    /// rows exist for this site in this period.
+    /// </summary>
+    decimal? CompositeScore = null
+);
+
+// ---------------------------------------------------------------------------
+// KPI Site Scores  (App.vSiteCompositeScore — Phase 2)
+// One row per (Site, Period, Category). CompositeScore is the site-level
+// composite weighted across active categories — same value on every row
+// in a (Site, Period) group; the frontend can dedupe on display.
+// ---------------------------------------------------------------------------
+
+public record SiteCategoryScoreDto(
+    int       AccountId,
+    int       SiteOrgUnitId,
+    int       PeriodId,
+    string    Category,
+    decimal?  CategoryScore,
+    decimal   CategoryWeight,
+    bool      CategoryActive,
+    int       ScoredCount,
+    int       TotalCount,
+    decimal?  CompositeScore
 );
 
 // ---------------------------------------------------------------------------
@@ -809,7 +919,11 @@ public record SiteSubmissionDetailDto(
     DateTime? SubmittedAt,
     bool      IsSubmitted,
     string?   RagStatus,
-    string?   AssignmentGroupName
+    string?   AssignmentGroupName,
+    /// <summary>Per-submission 0–100 score (Phase 2). NULL for excluded rows (Text type, missing+not-penalised, no scoreable inputs).</summary>
+    decimal?  Score = null,
+    /// <summary>Always 100.0 — exposed for "Score / Max" display.</summary>
+    decimal?  MaxScore = null
 );
 
 // ---------------------------------------------------------------------------
@@ -870,7 +984,11 @@ public record AssignmentWithSubmissionDto(
     bool?    SubmissionBoolean,
     string?  SubmissionNotes,
     string?  LockState,
-    bool     IsSubmitted
+    bool     IsSubmitted,
+    /// <summary>KPI weight applied to the score at composite roll-up (Phase 3, KPI scoring layer).</summary>
+    decimal  KpiWeight = 1m,
+    /// <summary>Always 100.0 — exposed for "Worth N points" display on the capture form.</summary>
+    decimal  MaxScore = 100m
 );
 
 public record SubmissionTokenContextDto(

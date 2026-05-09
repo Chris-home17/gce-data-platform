@@ -4556,6 +4556,21 @@ BEGIN
         AssignmentTemplateID INT                NULL,
         -- Optional group name (e.g. "Technology", "Operational"). NULL = ungrouped.
         AssignmentGroupName NVARCHAR(100)       NULL,
+        -- Scoring config (mirrored from AssignmentTemplate on materialise; see usp_AssignKpi)
+        KpiWeight              DECIMAL(9,4)     NOT NULL CONSTRAINT DF_KpiAsgn_KpiWeight DEFAULT (1.0000),
+        ScoringMode            NVARCHAR(10)     NOT NULL CONSTRAINT DF_KpiAsgn_ScoringMode DEFAULT ('Band')
+            CONSTRAINT CK_KpiAsgn_ScoringMode CHECK (ScoringMode IN ('Band','Linear')),
+        BandPointsGreen        DECIMAL(9,4)     NOT NULL CONSTRAINT DF_KpiAsgn_BandG DEFAULT (100),
+        BandPointsAmber        DECIMAL(9,4)     NOT NULL CONSTRAINT DF_KpiAsgn_BandA DEFAULT (50),
+        BandPointsRed          DECIMAL(9,4)     NOT NULL CONSTRAINT DF_KpiAsgn_BandR DEFAULT (0),
+        BooleanYesPoints       DECIMAL(9,4)     NULL,
+        BooleanNoPoints        DECIMAL(9,4)     NULL,
+        MultiSelectScoreRule   NVARCHAR(10)     NULL
+            CONSTRAINT CK_KpiAsgn_MSRule CHECK (MultiSelectScoreRule IN ('Sum','Avg','Max') OR MultiSelectScoreRule IS NULL),
+        PenaliseMissingOnScore BIT              NOT NULL CONSTRAINT DF_KpiAsgn_PenaliseMissing DEFAULT (1),
+        -- Snapshot of the account-level CategoryWeight at materialise time. Composite
+        -- score reads this directly; cascade proc only updates it for unsubmitted assignments.
+        CategoryWeightSnapshot DECIMAL(9,4)     NULL,
         -- Admin
         AssignedByPrincipalId INT               NULL,
         IsActive            BIT                 NOT NULL CONSTRAINT DF_KpiAsgn_IsActive   DEFAULT (1),
@@ -4630,6 +4645,24 @@ BEGIN
         CustomKpiDescription NVARCHAR(1000) NULL,
         -- Optional group name (e.g. "Technology", "Operational"). NULL = ungrouped.
         AssignmentGroupName  NVARCHAR(100) NULL,
+        -- Scoring config (Phase 1 of the KPI scoring layer)
+        KpiWeight              DECIMAL(9,4) NOT NULL
+            CONSTRAINT DF_KpiTpl_KpiWeight DEFAULT (1.0000),
+        ScoringMode            NVARCHAR(10) NOT NULL
+            CONSTRAINT DF_KpiTpl_ScoringMode DEFAULT ('Band')
+            CONSTRAINT CK_KpiTpl_ScoringMode CHECK (ScoringMode IN ('Band','Linear')),
+        BandPointsGreen        DECIMAL(9,4) NOT NULL CONSTRAINT DF_KpiTpl_BandG DEFAULT (100),
+        BandPointsAmber        DECIMAL(9,4) NOT NULL CONSTRAINT DF_KpiTpl_BandA DEFAULT (50),
+        BandPointsRed          DECIMAL(9,4) NOT NULL CONSTRAINT DF_KpiTpl_BandR DEFAULT (0),
+        BooleanYesPoints       DECIMAL(9,4) NULL,
+        BooleanNoPoints        DECIMAL(9,4) NULL,
+        MultiSelectScoreRule   NVARCHAR(10) NULL
+            CONSTRAINT CK_KpiTpl_MSRule CHECK (MultiSelectScoreRule IN ('Sum','Avg','Max') OR MultiSelectScoreRule IS NULL),
+        PenaliseMissingOnScore BIT NOT NULL
+            CONSTRAINT DF_KpiTpl_PenaliseMissing DEFAULT (1),
+        -- Snapshot of the account-level CategoryWeight at template-creation time.
+        -- usp_RefreshTemplateCategoryWeights re-snaps explicitly when admin asks.
+        CategoryWeightSnapshot DECIMAL(9,4) NULL,
         IsActive             BIT NOT NULL
             CONSTRAINT DF_KpiAssignmentTemplate_IsActive DEFAULT (1),
         CreatedOnUtc         DATETIME2(3) NOT NULL
@@ -4688,6 +4721,8 @@ BEGIN
         AssignmentTemplateID     INT               NOT NULL,
         OptionValue              NVARCHAR(200)     NOT NULL,
         SortOrder                INT               NOT NULL CONSTRAINT DF_KpiTplDDOpt_Sort DEFAULT (0),
+        -- Per-option score awarded when this option is selected (Phase 1, KPI scoring layer)
+        Points                   DECIMAL(9,4)      NOT NULL CONSTRAINT DF_KpiTplDDOpt_Points DEFAULT (0),
         CONSTRAINT FK_KpiTplDDOpt_Template FOREIGN KEY (AssignmentTemplateID)
             REFERENCES KPI.AssignmentTemplate (AssignmentTemplateID) ON DELETE CASCADE,
         CONSTRAINT UQ_KpiTplDDOpt_Value UNIQUE (AssignmentTemplateID, OptionValue)
@@ -4707,6 +4742,40 @@ IF NOT EXISTS (
     ALTER TABLE KPI.Assignment
         ADD CONSTRAINT FK_KpiAsgn_Template FOREIGN KEY (AssignmentTemplateID)
             REFERENCES KPI.AssignmentTemplate (AssignmentTemplateID);
+GO
+
+-- KPI.CategoryWeight: per-account weight applied to each KPI category when
+-- rolling up the composite score on the Monitoring page. Categories not
+-- listed for an account default to weight 1.0 at compute time.
+IF OBJECT_ID('KPI.CategoryWeight', 'U') IS NULL
+BEGIN
+    CREATE TABLE KPI.CategoryWeight
+    (
+        CategoryWeightId INT IDENTITY(1,1) NOT NULL
+            CONSTRAINT PK_KpiCategoryWeight PRIMARY KEY,
+        AccountId        INT NOT NULL,
+        Category         NVARCHAR(100) NOT NULL,
+        Weight           DECIMAL(9,4) NOT NULL
+            CONSTRAINT DF_KpiCatWeight_Weight DEFAULT (1.0),
+        IsActive         BIT NOT NULL
+            CONSTRAINT DF_KpiCatWeight_IsActive DEFAULT (1),
+        CreatedOnUtc     DATETIME2 NOT NULL
+            CONSTRAINT DF_KpiCatWeight_Created DEFAULT (SYSUTCDATETIME()),
+        ModifiedOnUtc    DATETIME2 NOT NULL
+            CONSTRAINT DF_KpiCatWeight_Modified DEFAULT (SYSUTCDATETIME()),
+        CreatedBy        NVARCHAR(128) NOT NULL
+            CONSTRAINT DF_KpiCatWeight_CreatedBy DEFAULT (SESSION_USER),
+        ModifiedBy       NVARCHAR(128) NOT NULL
+            CONSTRAINT DF_KpiCatWeight_ModifiedBy DEFAULT (SESSION_USER),
+        CONSTRAINT FK_KpiCatWeight_Account FOREIGN KEY (AccountId)
+            REFERENCES Dim.Account (AccountId),
+        CONSTRAINT UX_KpiCatWeight UNIQUE (AccountId, Category)
+    );
+
+    CREATE INDEX IX_KpiCatWeight_Account ON KPI.CategoryWeight (AccountId);
+
+    PRINT '  + KPI.CategoryWeight created';
+END;
 GO
 
 IF OBJECT_ID('KPI.EscalationContact', 'U') IS NULL
@@ -4781,6 +4850,23 @@ BEGIN
         SubmittedThresholdDirection NVARCHAR(10)    NULL
             CONSTRAINT CK_KpiSub_SubmittedThresholdDirection
                 CHECK (SubmittedThresholdDirection IN ('Higher','Lower') OR SubmittedThresholdDirection IS NULL),
+        -- Scoring snapshot (Phase 2 of the KPI scoring layer). All NULL on existing rows
+        -- backfilled from the assignment template at migration time; new submissions
+        -- snapshot these on first INSERT inside usp_SubmitKpi.
+        SubmittedKpiWeight              DECIMAL(9,4)  NULL,
+        SubmittedScoringMode            NVARCHAR(10)  NULL
+            CONSTRAINT CK_KpiSub_SubmittedScoringMode
+                CHECK (SubmittedScoringMode IN ('Band','Linear') OR SubmittedScoringMode IS NULL),
+        SubmittedBandPointsGreen        DECIMAL(9,4)  NULL,
+        SubmittedBandPointsAmber        DECIMAL(9,4)  NULL,
+        SubmittedBandPointsRed          DECIMAL(9,4)  NULL,
+        SubmittedBooleanYesPoints       DECIMAL(9,4)  NULL,
+        SubmittedBooleanNoPoints        DECIMAL(9,4)  NULL,
+        SubmittedMultiSelectScoreRule   NVARCHAR(10)  NULL
+            CONSTRAINT CK_KpiSub_SubmittedMSRule
+                CHECK (SubmittedMultiSelectScoreRule IN ('Sum','Avg','Max') OR SubmittedMultiSelectScoreRule IS NULL),
+        SubmittedDropDownOptionPoints   NVARCHAR(MAX) NULL,
+        SubmittedPenaliseMissingOnScore BIT           NULL,
         -- Source
         SourceType              NVARCHAR(20)        NOT NULL
             CONSTRAINT CK_KpiSub_SourceType
@@ -4820,6 +4906,20 @@ BEGIN
         WHERE SubmittedByPrincipalId IS NOT NULL;
     CREATE INDEX        IX_KpiSub_LockedBy_Principal ON KPI.Submission (LockedByPrincipalId)
         WHERE LockedByPrincipalId IS NOT NULL;
+
+    -- Covering index for App.vKpiSubmissionScores: keeps score derivation in-row.
+    CREATE INDEX IX_KpiSub_AssignmentScoring
+        ON KPI.Submission (AssignmentID)
+        INCLUDE (
+            SubmissionValue, SubmissionBoolean, SubmissionText,
+            SubmittedKpiWeight, SubmittedScoringMode,
+            SubmittedBandPointsGreen, SubmittedBandPointsAmber, SubmittedBandPointsRed,
+            SubmittedBooleanYesPoints, SubmittedBooleanNoPoints,
+            SubmittedMultiSelectScoreRule, SubmittedDropDownOptionPoints,
+            SubmittedPenaliseMissingOnScore,
+            SubmittedThresholdGreen, SubmittedThresholdAmber, SubmittedThresholdRed,
+            SubmittedThresholdDirection
+        );
 
     PRINT '  + KPI.Submission created';
 END;
@@ -5281,7 +5381,29 @@ AS
         ISNULL(instances.GeneratedAssignmentCount, 0) AS GeneratedAssignmentCount,
         t.KpiPackageId,
         pkg.PackageName AS KpiPackageName,
-        t.AssignmentGroupName
+        t.AssignmentGroupName,
+        -- Scoring config (Phase 1, KPI scoring layer)
+        t.KpiWeight,
+        t.ScoringMode,
+        t.BandPointsGreen,
+        t.BandPointsAmber,
+        t.BandPointsRed,
+        t.BooleanYesPoints,
+        t.BooleanNoPoints,
+        t.MultiSelectScoreRule,
+        t.PenaliseMissingOnScore,
+        t.CategoryWeightSnapshot,
+        -- JSON of {value, points, sortOrder} for the template's per-option points;
+        -- NULL when no rows exist in KPI.AssignmentTemplateDropDownOption.
+        (
+            SELECT opt.OptionValue AS [value],
+                   opt.Points      AS [points],
+                   opt.SortOrder   AS [sortOrder]
+            FROM KPI.AssignmentTemplateDropDownOption AS opt
+            WHERE opt.AssignmentTemplateID = t.AssignmentTemplateID
+            ORDER BY opt.SortOrder, opt.OptionValue
+            FOR JSON PATH
+        ) AS OptionPointsRaw
     FROM KPI.AssignmentTemplate AS t
     JOIN KPI.Definition         AS d    ON d.KPIID = t.KPIID
     LEFT JOIN KPI.PeriodSchedule AS sched ON sched.PeriodScheduleID = t.PeriodScheduleID
@@ -5922,39 +6044,57 @@ END;
 GO
 
 CREATE OR ALTER PROCEDURE App.usp_AssignKpi
-    @KPICode              NVARCHAR(50),
-    @AccountCode          NVARCHAR(50),
-    @OrgUnitCode          NVARCHAR(50)    = NULL,   -- NULL = account-wide
-    @OrgUnitType          NVARCHAR(20)    = 'Site',
-    @PeriodScheduleID     INT,
-    @PeriodYear           SMALLINT,
-    @PeriodMonth          TINYINT,
-    @AssignmentTemplateID INT             = NULL,
-    @IsRequired           BIT             = 1,
-    @TargetValue          DECIMAL(18,4)   = NULL,
-    @ThresholdGreen       DECIMAL(18,4)   = NULL,
-    @ThresholdAmber       DECIMAL(18,4)   = NULL,
-    @ThresholdRed         DECIMAL(18,4)   = NULL,
-    @ThresholdDirection   NVARCHAR(10)    = NULL,
-    @SubmitterGuidance    NVARCHAR(1000)  = NULL,
-    @AssignmentGroupName  NVARCHAR(100)   = NULL,
-    @ActorUPN             NVARCHAR(320)   = NULL,
-    @AssignmentID         INT OUTPUT
+    @KPICode                NVARCHAR(50),
+    @AccountCode            NVARCHAR(50),
+    @OrgUnitCode            NVARCHAR(50)    = NULL,   -- NULL = account-wide
+    @OrgUnitType            NVARCHAR(20)    = 'Site',
+    @PeriodScheduleID       INT,
+    @PeriodYear             SMALLINT,
+    @PeriodMonth            TINYINT,
+    @AssignmentTemplateID   INT             = NULL,
+    @IsRequired             BIT             = 1,
+    @TargetValue            DECIMAL(18,4)   = NULL,
+    @ThresholdGreen         DECIMAL(18,4)   = NULL,
+    @ThresholdAmber         DECIMAL(18,4)   = NULL,
+    @ThresholdRed           DECIMAL(18,4)   = NULL,
+    @ThresholdDirection     NVARCHAR(10)    = NULL,
+    @SubmitterGuidance      NVARCHAR(1000)  = NULL,
+    @AssignmentGroupName    NVARCHAR(100)   = NULL,
+    -- Scoring config (mirrored from AssignmentTemplate by usp_MaterializeKpiAssignmentTemplates)
+    @KpiWeight              DECIMAL(9,4)    = 1.0,
+    @ScoringMode            NVARCHAR(10)    = 'Band',
+    @BandPointsGreen        DECIMAL(9,4)    = 100,
+    @BandPointsAmber        DECIMAL(9,4)    = 50,
+    @BandPointsRed          DECIMAL(9,4)    = 0,
+    @BooleanYesPoints       DECIMAL(9,4)    = NULL,
+    @BooleanNoPoints        DECIMAL(9,4)    = NULL,
+    @MultiSelectScoreRule   NVARCHAR(10)    = NULL,
+    @PenaliseMissingOnScore BIT             = 1,
+    @CategoryWeightSnapshot DECIMAL(9,4)    = NULL,
+    @ActorUPN               NVARCHAR(320)   = NULL,
+    @AssignmentID           INT OUTPUT
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    -- Resolve KPI
     DECLARE @KPIID INT = (SELECT KPIID FROM KPI.Definition WHERE KPICode = @KPICode AND IsActive = 1);
     IF @KPIID IS NULL
         THROW 50110, 'KPI not found or inactive for provided KPICode.', 1;
 
-    -- Resolve Account
     DECLARE @AccountId INT = (SELECT AccountId FROM Dim.Account WHERE AccountCode = @AccountCode AND IsActive = 1);
     IF @AccountId IS NULL
         THROW 50111, 'Account not found or inactive.', 1;
 
-    -- Resolve OrgUnit (site) if provided
+    -- Default CategoryWeightSnapshot to live account weight if caller didn't pass one.
+    IF @CategoryWeightSnapshot IS NULL
+    BEGIN
+        SELECT @CategoryWeightSnapshot = ISNULL(cw.Weight, 1.0)
+        FROM KPI.Definition AS d
+        LEFT JOIN KPI.CategoryWeight AS cw
+            ON cw.AccountId = @AccountId AND cw.Category = d.Category
+        WHERE d.KPIID = @KPIID;
+    END
+
     DECLARE @OrgUnitId INT = NULL;
     IF @OrgUnitCode IS NOT NULL
     BEGIN
@@ -5969,7 +6109,6 @@ BEGIN
             THROW 50112, 'OrgUnit not found or inactive for provided AccountCode + OrgUnitCode.', 1;
     END
 
-    -- Resolve Period (scoped to schedule)
     DECLARE @PeriodID INT = (
         SELECT PeriodID FROM KPI.Period
         WHERE PeriodScheduleID = @PeriodScheduleID
@@ -5979,12 +6118,10 @@ BEGIN
     IF @PeriodID IS NULL
         THROW 50113, 'Period not found for this schedule/year/month. Create the period first using App.usp_UpsertKpiPeriod.', 1;
 
-    -- Resolve actor
     DECLARE @ActorPrincipalId INT = NULL;
     IF @ActorUPN IS NOT NULL
         SELECT @ActorPrincipalId = UserId FROM Sec.[User] WHERE UPN = @ActorUPN;
 
-    -- Look up existing assignment including group name (NULL-safe)
     IF @OrgUnitId IS NULL
     BEGIN
         SET @AssignmentID = (
@@ -6018,27 +6155,43 @@ BEGIN
         INSERT INTO KPI.Assignment
             (KPIID, AccountId, OrgUnitId, PeriodID, AssignmentTemplateID, IsRequired,
              TargetValue, ThresholdGreen, ThresholdAmber, ThresholdRed,
-             ThresholdDirection, SubmitterGuidance, AssignedByPrincipalId, AssignmentGroupName)
+             ThresholdDirection, SubmitterGuidance, AssignedByPrincipalId, AssignmentGroupName,
+             KpiWeight, ScoringMode, BandPointsGreen, BandPointsAmber, BandPointsRed,
+             BooleanYesPoints, BooleanNoPoints, MultiSelectScoreRule, PenaliseMissingOnScore,
+             CategoryWeightSnapshot)
         VALUES
             (@KPIID, @AccountId, @OrgUnitId, @PeriodID, @AssignmentTemplateID, @IsRequired,
              @TargetValue, @ThresholdGreen, @ThresholdAmber, @ThresholdRed,
-             @ThresholdDirection, @SubmitterGuidance, @ActorPrincipalId, @AssignmentGroupName);
+             @ThresholdDirection, @SubmitterGuidance, @ActorPrincipalId, @AssignmentGroupName,
+             @KpiWeight, @ScoringMode, @BandPointsGreen, @BandPointsAmber, @BandPointsRed,
+             @BooleanYesPoints, @BooleanNoPoints, @MultiSelectScoreRule, @PenaliseMissingOnScore,
+             @CategoryWeightSnapshot);
 
         SET @AssignmentID = SCOPE_IDENTITY();
     END
     ELSE
     BEGIN
         UPDATE KPI.Assignment
-        SET IsRequired          = @IsRequired,
-            TargetValue         = @TargetValue,
-            ThresholdGreen      = @ThresholdGreen,
-            ThresholdAmber      = @ThresholdAmber,
-            ThresholdRed        = @ThresholdRed,
-            ThresholdDirection  = @ThresholdDirection,
-            SubmitterGuidance   = @SubmitterGuidance,
-            IsActive            = 1,   -- reactivate if previously deactivated
-            ModifiedOnUtc       = SYSUTCDATETIME(),
-            ModifiedBy          = COALESCE(@ActorUPN, SESSION_USER)
+        SET IsRequired             = @IsRequired,
+            TargetValue            = @TargetValue,
+            ThresholdGreen         = @ThresholdGreen,
+            ThresholdAmber         = @ThresholdAmber,
+            ThresholdRed           = @ThresholdRed,
+            ThresholdDirection     = @ThresholdDirection,
+            SubmitterGuidance      = @SubmitterGuidance,
+            KpiWeight              = @KpiWeight,
+            ScoringMode            = @ScoringMode,
+            BandPointsGreen        = @BandPointsGreen,
+            BandPointsAmber        = @BandPointsAmber,
+            BandPointsRed          = @BandPointsRed,
+            BooleanYesPoints       = @BooleanYesPoints,
+            BooleanNoPoints        = @BooleanNoPoints,
+            MultiSelectScoreRule   = @MultiSelectScoreRule,
+            PenaliseMissingOnScore = @PenaliseMissingOnScore,
+            -- CategoryWeightSnapshot deliberately NOT touched on UPDATE (locked).
+            IsActive               = 1,   -- reactivate if previously deactivated
+            ModifiedOnUtc          = SYSUTCDATETIME(),
+            ModifiedBy             = COALESCE(@ActorUPN, SESSION_USER)
         WHERE AssignmentID = @AssignmentID;
     END
 END;
@@ -6200,28 +6353,42 @@ END;
 GO
 
 CREATE OR ALTER PROCEDURE App.usp_UpsertKpiAssignmentTemplate
-    @KPICode            NVARCHAR(50),
-    @PeriodScheduleID   INT,
-    @AccountCode        NVARCHAR(50),
-    @OrgUnitCode        NVARCHAR(50)    = NULL,
-    @OrgUnitType        NVARCHAR(20)    = 'Site',
-    @StartPeriodYear    SMALLINT        = NULL,
-    @StartPeriodMonth   TINYINT         = NULL,
-    @EndPeriodYear      SMALLINT        = NULL,
-    @EndPeriodMonth     TINYINT         = NULL,
-    @IsRequired         BIT             = 1,
-    @TargetValue        DECIMAL(18,4)   = NULL,
-    @ThresholdGreen     DECIMAL(18,4)   = NULL,
-    @ThresholdAmber     DECIMAL(18,4)   = NULL,
-    @ThresholdRed       DECIMAL(18,4)   = NULL,
-    @ThresholdDirection NVARCHAR(10)    = NULL,
-    @SubmitterGuidance    NVARCHAR(1000)  = NULL,
-    @CustomKpiName        NVARCHAR(200)   = NULL,
-    @CustomKpiDescription NVARCHAR(1000)  = NULL,
-    @KpiPackageId         INT             = NULL,
-    @AssignmentGroupName  NVARCHAR(100)   = NULL,
-    @ActorUPN             NVARCHAR(320)   = NULL,
-    @AssignmentTemplateID INT OUTPUT
+    @KPICode                NVARCHAR(50),
+    @PeriodScheduleID       INT,
+    @AccountCode            NVARCHAR(50),
+    @OrgUnitCode            NVARCHAR(50)    = NULL,
+    @OrgUnitType            NVARCHAR(20)    = 'Site',
+    @StartPeriodYear        SMALLINT        = NULL,
+    @StartPeriodMonth       TINYINT         = NULL,
+    @EndPeriodYear          SMALLINT        = NULL,
+    @EndPeriodMonth         TINYINT         = NULL,
+    @IsRequired             BIT             = 1,
+    @TargetValue            DECIMAL(18,4)   = NULL,
+    @ThresholdGreen         DECIMAL(18,4)   = NULL,
+    @ThresholdAmber         DECIMAL(18,4)   = NULL,
+    @ThresholdRed           DECIMAL(18,4)   = NULL,
+    @ThresholdDirection     NVARCHAR(10)    = NULL,
+    @SubmitterGuidance      NVARCHAR(1000)  = NULL,
+    @CustomKpiName          NVARCHAR(200)   = NULL,
+    @CustomKpiDescription   NVARCHAR(1000)  = NULL,
+    @KpiPackageId           INT             = NULL,
+    @AssignmentGroupName    NVARCHAR(100)   = NULL,
+    -- Scoring config. NULL = use existing value on UPDATE; defaults applied on INSERT.
+    @KpiWeight              DECIMAL(9,4)    = NULL,
+    @ScoringMode            NVARCHAR(10)    = NULL,
+    @BandPointsGreen        DECIMAL(9,4)    = NULL,
+    @BandPointsAmber        DECIMAL(9,4)    = NULL,
+    @BandPointsRed          DECIMAL(9,4)    = NULL,
+    @BooleanYesPoints       DECIMAL(9,4)    = NULL,
+    @BooleanNoPoints        DECIMAL(9,4)    = NULL,
+    @MultiSelectScoreRule   NVARCHAR(10)    = NULL,
+    @PenaliseMissingOnScore BIT             = NULL,
+    -- JSON array of dropdown option scoring rows. When non-NULL, replaces all rows
+    -- in KPI.AssignmentTemplateDropDownOption for this template.
+    -- Format: [{"value":"Yes","points":10,"sortOrder":1}, ...]
+    @OptionPoints           NVARCHAR(MAX)   = NULL,
+    @ActorUPN               NVARCHAR(320)   = NULL,
+    @AssignmentTemplateID   INT OUTPUT
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -6311,39 +6478,86 @@ BEGIN
 
     IF @AssignmentTemplateID IS NULL
     BEGIN
+        -- Snapshot current account-level CategoryWeight at template-creation time.
+        DECLARE @SnapCategoryWeight DECIMAL(9,4);
+        SELECT @SnapCategoryWeight = ISNULL(cw.Weight, 1.0)
+        FROM KPI.Definition AS d
+        LEFT JOIN KPI.CategoryWeight AS cw
+            ON cw.AccountId = @AccountId AND cw.Category = d.Category
+        WHERE d.KPIID = @KPIID;
+
         INSERT INTO KPI.AssignmentTemplate
             (KPIID, PeriodScheduleID, AccountId, OrgUnitId, StartPeriodYear, StartPeriodMonth, EndPeriodYear, EndPeriodMonth,
              IsRequired, TargetValue, ThresholdGreen, ThresholdAmber, ThresholdRed, ThresholdDirection, SubmitterGuidance,
-             CustomKpiName, CustomKpiDescription, KpiPackageId, AssignmentGroupName)
+             CustomKpiName, CustomKpiDescription, KpiPackageId, AssignmentGroupName,
+             KpiWeight, ScoringMode, BandPointsGreen, BandPointsAmber, BandPointsRed,
+             BooleanYesPoints, BooleanNoPoints, MultiSelectScoreRule, PenaliseMissingOnScore,
+             CategoryWeightSnapshot)
         VALUES
             (@KPIID, @PeriodScheduleID, @AccountId, @OrgUnitId, @StartPeriodYear, @StartPeriodMonth, @EndPeriodYear, @EndPeriodMonth,
              @IsRequired, @TargetValue, @ThresholdGreen, @ThresholdAmber, @ThresholdRed, @ThresholdDirection, @SubmitterGuidance,
-             @CustomKpiName, @CustomKpiDescription, @KpiPackageId, @AssignmentGroupName);
+             @CustomKpiName, @CustomKpiDescription, @KpiPackageId, @AssignmentGroupName,
+             COALESCE(@KpiWeight, 1.0),
+             COALESCE(@ScoringMode, 'Band'),
+             COALESCE(@BandPointsGreen, 100),
+             COALESCE(@BandPointsAmber, 50),
+             COALESCE(@BandPointsRed, 0),
+             @BooleanYesPoints,
+             @BooleanNoPoints,
+             @MultiSelectScoreRule,
+             COALESCE(@PenaliseMissingOnScore, @IsRequired),
+             @SnapCategoryWeight);
 
         SET @AssignmentTemplateID = SCOPE_IDENTITY();
     END
     ELSE
     BEGIN
         UPDATE KPI.AssignmentTemplate
-        SET PeriodScheduleID      = @PeriodScheduleID,
-            StartPeriodYear       = @StartPeriodYear,
-            StartPeriodMonth      = @StartPeriodMonth,
-            EndPeriodYear         = @EndPeriodYear,
-            EndPeriodMonth        = @EndPeriodMonth,
-            IsRequired            = @IsRequired,
-            TargetValue           = @TargetValue,
-            ThresholdGreen        = @ThresholdGreen,
-            ThresholdAmber        = @ThresholdAmber,
-            ThresholdRed          = @ThresholdRed,
-            ThresholdDirection    = @ThresholdDirection,
-            SubmitterGuidance     = @SubmitterGuidance,
-            CustomKpiName         = @CustomKpiName,
-            CustomKpiDescription  = @CustomKpiDescription,
-            KpiPackageId          = @KpiPackageId,
-            IsActive              = 1,
-            ModifiedOnUtc         = SYSUTCDATETIME(),
-            ModifiedBy            = COALESCE(@ActorUPN, SESSION_USER)
+        SET PeriodScheduleID       = @PeriodScheduleID,
+            StartPeriodYear        = @StartPeriodYear,
+            StartPeriodMonth       = @StartPeriodMonth,
+            EndPeriodYear          = @EndPeriodYear,
+            EndPeriodMonth         = @EndPeriodMonth,
+            IsRequired             = @IsRequired,
+            TargetValue            = @TargetValue,
+            ThresholdGreen         = @ThresholdGreen,
+            ThresholdAmber         = @ThresholdAmber,
+            ThresholdRed           = @ThresholdRed,
+            ThresholdDirection     = @ThresholdDirection,
+            SubmitterGuidance      = @SubmitterGuidance,
+            CustomKpiName          = @CustomKpiName,
+            CustomKpiDescription   = @CustomKpiDescription,
+            KpiPackageId           = @KpiPackageId,
+            KpiWeight              = COALESCE(@KpiWeight, KpiWeight),
+            ScoringMode            = COALESCE(@ScoringMode, ScoringMode),
+            BandPointsGreen        = COALESCE(@BandPointsGreen, BandPointsGreen),
+            BandPointsAmber        = COALESCE(@BandPointsAmber, BandPointsAmber),
+            BandPointsRed          = COALESCE(@BandPointsRed, BandPointsRed),
+            BooleanYesPoints       = @BooleanYesPoints,
+            BooleanNoPoints        = @BooleanNoPoints,
+            MultiSelectScoreRule   = @MultiSelectScoreRule,
+            PenaliseMissingOnScore = COALESCE(@PenaliseMissingOnScore, PenaliseMissingOnScore),
+            IsActive               = 1,
+            ModifiedOnUtc          = SYSUTCDATETIME(),
+            ModifiedBy             = COALESCE(@ActorUPN, SESSION_USER)
         WHERE AssignmentTemplateID = @AssignmentTemplateID;
+    END
+
+    -- Replace dropdown option points when JSON provided. NULL = leave alone.
+    IF @OptionPoints IS NOT NULL
+    BEGIN
+        DELETE FROM KPI.AssignmentTemplateDropDownOption
+        WHERE AssignmentTemplateID = @AssignmentTemplateID;
+
+        INSERT INTO KPI.AssignmentTemplateDropDownOption
+            (AssignmentTemplateID, OptionValue, SortOrder, Points)
+        SELECT
+            @AssignmentTemplateID,
+            JSON_VALUE(j.[value], '$.value'),
+            ISNULL(TRY_CAST(JSON_VALUE(j.[value], '$.sortOrder') AS INT), CAST(j.[key] AS INT)),
+            ISNULL(TRY_CAST(JSON_VALUE(j.[value], '$.points')    AS DECIMAL(9,4)), 0)
+        FROM OPENJSON(@OptionPoints) AS j
+        WHERE JSON_VALUE(j.[value], '$.value') IS NOT NULL;
     END
 END;
 GO
@@ -6360,15 +6574,25 @@ BEGIN
     SET NOCOUNT ON;
 
     UPDATE a
-    SET IsRequired         = t.IsRequired,
-        TargetValue        = t.TargetValue,
-        ThresholdGreen     = t.ThresholdGreen,
-        ThresholdAmber     = t.ThresholdAmber,
-        ThresholdRed       = t.ThresholdRed,
-        ThresholdDirection = t.ThresholdDirection,
-        SubmitterGuidance  = t.SubmitterGuidance,
-        ModifiedOnUtc      = SYSUTCDATETIME(),
-        ModifiedBy         = COALESCE(@ActorUPN, SESSION_USER)
+    SET IsRequired             = t.IsRequired,
+        TargetValue            = t.TargetValue,
+        ThresholdGreen         = t.ThresholdGreen,
+        ThresholdAmber         = t.ThresholdAmber,
+        ThresholdRed           = t.ThresholdRed,
+        ThresholdDirection     = t.ThresholdDirection,
+        SubmitterGuidance      = t.SubmitterGuidance,
+        KpiWeight              = t.KpiWeight,
+        ScoringMode            = t.ScoringMode,
+        BandPointsGreen        = t.BandPointsGreen,
+        BandPointsAmber        = t.BandPointsAmber,
+        BandPointsRed          = t.BandPointsRed,
+        BooleanYesPoints       = t.BooleanYesPoints,
+        BooleanNoPoints        = t.BooleanNoPoints,
+        MultiSelectScoreRule   = t.MultiSelectScoreRule,
+        PenaliseMissingOnScore = t.PenaliseMissingOnScore,
+        CategoryWeightSnapshot = t.CategoryWeightSnapshot,
+        ModifiedOnUtc          = SYSUTCDATETIME(),
+        ModifiedBy             = COALESCE(@ActorUPN, SESSION_USER)
     FROM KPI.Assignment         AS a
     JOIN KPI.AssignmentTemplate AS t ON t.AssignmentTemplateID = a.AssignmentTemplateID
     WHERE t.AssignmentTemplateID = @AssignmentTemplateID
@@ -6405,6 +6629,16 @@ BEGIN
         @TemplateThresholdDirection NVARCHAR(10),
         @TemplateSubmitterGuidance NVARCHAR(1000),
         @TemplateGroupName NVARCHAR(100),
+        @TemplateKpiWeight DECIMAL(9,4),
+        @TemplateScoringMode NVARCHAR(10),
+        @TemplateBandG DECIMAL(9,4),
+        @TemplateBandA DECIMAL(9,4),
+        @TemplateBandR DECIMAL(9,4),
+        @TemplateBoolY DECIMAL(9,4),
+        @TemplateBoolN DECIMAL(9,4),
+        @TemplateMSRule NVARCHAR(10),
+        @TemplatePenaliseMissing BIT,
+        @TemplateCategoryWeightSnapshot DECIMAL(9,4),
         -- Used when expanding account-wide templates to per-site assignments
         @SiteOrgUnitCode NVARCHAR(50);
 
@@ -6429,7 +6663,17 @@ BEGIN
             t.ThresholdRed,
             t.ThresholdDirection,
             t.SubmitterGuidance,
-            t.AssignmentGroupName
+            t.AssignmentGroupName,
+            t.KpiWeight,
+            t.ScoringMode,
+            t.BandPointsGreen,
+            t.BandPointsAmber,
+            t.BandPointsRed,
+            t.BooleanYesPoints,
+            t.BooleanNoPoints,
+            t.MultiSelectScoreRule,
+            t.PenaliseMissingOnScore,
+            t.CategoryWeightSnapshot
         FROM KPI.AssignmentTemplate AS t
         JOIN KPI.Definition         AS d     ON d.KPIID              = t.KPIID
         JOIN KPI.PeriodSchedule     AS sched ON sched.PeriodScheduleID = t.PeriodScheduleID
@@ -6447,7 +6691,10 @@ BEGIN
         @TemplateAccountCode, @TemplateOrgUnitCode, @TemplateOrgUnitType,
         @TemplateStartYear, @TemplateStartMonth, @TemplateEndYear, @TemplateEndMonth, @TemplateIsRequired,
         @TemplateTargetValue, @TemplateThresholdGreen, @TemplateThresholdAmber, @TemplateThresholdRed,
-        @TemplateThresholdDirection, @TemplateSubmitterGuidance, @TemplateGroupName;
+        @TemplateThresholdDirection, @TemplateSubmitterGuidance, @TemplateGroupName,
+        @TemplateKpiWeight, @TemplateScoringMode, @TemplateBandG, @TemplateBandA, @TemplateBandR,
+        @TemplateBoolY, @TemplateBoolN, @TemplateMSRule, @TemplatePenaliseMissing,
+        @TemplateCategoryWeightSnapshot;
 
     WHILE @@FETCH_STATUS = 0
     BEGIN
@@ -6494,24 +6741,34 @@ BEGIN
                 BEGIN
                     SET @GeneratedAssignmentId = NULL;
                     EXEC App.usp_AssignKpi
-                        @KPICode              = @TemplateKpiCode,
-                        @AccountCode          = @TemplateAccountCode,
-                        @OrgUnitCode          = @SiteOrgUnitCode,
-                        @OrgUnitType          = 'Site',
-                        @PeriodScheduleID     = @TemplateScheduleId,
-                        @PeriodYear           = @CurrentPeriodYear,
-                        @PeriodMonth          = @CurrentPeriodMonth,
-                        @AssignmentTemplateID = @CurrentTemplateId,
-                        @IsRequired           = @TemplateIsRequired,
-                        @TargetValue          = @TemplateTargetValue,
-                        @ThresholdGreen       = @TemplateThresholdGreen,
-                        @ThresholdAmber       = @TemplateThresholdAmber,
-                        @ThresholdRed         = @TemplateThresholdRed,
-                        @ThresholdDirection   = @TemplateThresholdDirection,
-                        @SubmitterGuidance    = @TemplateSubmitterGuidance,
-                        @AssignmentGroupName  = @TemplateGroupName,
-                        @ActorUPN             = @ActorUPN,
-                        @AssignmentID         = @GeneratedAssignmentId OUTPUT;
+                        @KPICode                = @TemplateKpiCode,
+                        @AccountCode            = @TemplateAccountCode,
+                        @OrgUnitCode            = @SiteOrgUnitCode,
+                        @OrgUnitType            = 'Site',
+                        @PeriodScheduleID       = @TemplateScheduleId,
+                        @PeriodYear             = @CurrentPeriodYear,
+                        @PeriodMonth            = @CurrentPeriodMonth,
+                        @AssignmentTemplateID   = @CurrentTemplateId,
+                        @IsRequired             = @TemplateIsRequired,
+                        @TargetValue            = @TemplateTargetValue,
+                        @ThresholdGreen         = @TemplateThresholdGreen,
+                        @ThresholdAmber         = @TemplateThresholdAmber,
+                        @ThresholdRed           = @TemplateThresholdRed,
+                        @ThresholdDirection     = @TemplateThresholdDirection,
+                        @SubmitterGuidance      = @TemplateSubmitterGuidance,
+                        @AssignmentGroupName    = @TemplateGroupName,
+                        @KpiWeight              = @TemplateKpiWeight,
+                        @ScoringMode            = @TemplateScoringMode,
+                        @BandPointsGreen        = @TemplateBandG,
+                        @BandPointsAmber        = @TemplateBandA,
+                        @BandPointsRed          = @TemplateBandR,
+                        @BooleanYesPoints       = @TemplateBoolY,
+                        @BooleanNoPoints        = @TemplateBoolN,
+                        @MultiSelectScoreRule   = @TemplateMSRule,
+                        @PenaliseMissingOnScore = @TemplatePenaliseMissing,
+                        @CategoryWeightSnapshot = @TemplateCategoryWeightSnapshot,
+                        @ActorUPN               = @ActorUPN,
+                        @AssignmentID           = @GeneratedAssignmentId OUTPUT;
 
                     FETCH NEXT FROM site_cursor INTO @SiteOrgUnitCode;
                 END
@@ -6524,24 +6781,34 @@ BEGIN
                 -- Site-specific template: single assignment
                 SET @GeneratedAssignmentId = NULL;
                 EXEC App.usp_AssignKpi
-                    @KPICode              = @TemplateKpiCode,
-                    @AccountCode          = @TemplateAccountCode,
-                    @OrgUnitCode          = @TemplateOrgUnitCode,
-                    @OrgUnitType          = @TemplateOrgUnitType,
-                    @PeriodScheduleID     = @TemplateScheduleId,
-                    @PeriodYear           = @CurrentPeriodYear,
-                    @PeriodMonth          = @CurrentPeriodMonth,
-                    @AssignmentTemplateID = @CurrentTemplateId,
-                    @IsRequired           = @TemplateIsRequired,
-                    @TargetValue          = @TemplateTargetValue,
-                    @ThresholdGreen       = @TemplateThresholdGreen,
-                    @ThresholdAmber       = @TemplateThresholdAmber,
-                    @ThresholdRed         = @TemplateThresholdRed,
-                    @ThresholdDirection   = @TemplateThresholdDirection,
-                    @SubmitterGuidance    = @TemplateSubmitterGuidance,
-                    @AssignmentGroupName  = @TemplateGroupName,
-                    @ActorUPN             = @ActorUPN,
-                    @AssignmentID         = @GeneratedAssignmentId OUTPUT;
+                    @KPICode                = @TemplateKpiCode,
+                    @AccountCode            = @TemplateAccountCode,
+                    @OrgUnitCode            = @TemplateOrgUnitCode,
+                    @OrgUnitType            = @TemplateOrgUnitType,
+                    @PeriodScheduleID       = @TemplateScheduleId,
+                    @PeriodYear             = @CurrentPeriodYear,
+                    @PeriodMonth            = @CurrentPeriodMonth,
+                    @AssignmentTemplateID   = @CurrentTemplateId,
+                    @IsRequired             = @TemplateIsRequired,
+                    @TargetValue            = @TemplateTargetValue,
+                    @ThresholdGreen         = @TemplateThresholdGreen,
+                    @ThresholdAmber         = @TemplateThresholdAmber,
+                    @ThresholdRed           = @TemplateThresholdRed,
+                    @ThresholdDirection     = @TemplateThresholdDirection,
+                    @SubmitterGuidance      = @TemplateSubmitterGuidance,
+                    @AssignmentGroupName    = @TemplateGroupName,
+                    @KpiWeight              = @TemplateKpiWeight,
+                    @ScoringMode            = @TemplateScoringMode,
+                    @BandPointsGreen        = @TemplateBandG,
+                    @BandPointsAmber        = @TemplateBandA,
+                    @BandPointsRed          = @TemplateBandR,
+                    @BooleanYesPoints       = @TemplateBoolY,
+                    @BooleanNoPoints        = @TemplateBoolN,
+                    @MultiSelectScoreRule   = @TemplateMSRule,
+                    @PenaliseMissingOnScore = @TemplatePenaliseMissing,
+                    @CategoryWeightSnapshot = @TemplateCategoryWeightSnapshot,
+                    @ActorUPN               = @ActorUPN,
+                    @AssignmentID           = @GeneratedAssignmentId OUTPUT;
             END
 
             FETCH NEXT FROM period_cursor INTO @CurrentPeriodYear, @CurrentPeriodMonth;
@@ -6555,11 +6822,118 @@ BEGIN
             @TemplateAccountCode, @TemplateOrgUnitCode, @TemplateOrgUnitType,
             @TemplateStartYear, @TemplateStartMonth, @TemplateEndYear, @TemplateEndMonth, @TemplateIsRequired,
             @TemplateTargetValue, @TemplateThresholdGreen, @TemplateThresholdAmber, @TemplateThresholdRed,
-            @TemplateThresholdDirection, @TemplateSubmitterGuidance, @TemplateGroupName;
+            @TemplateThresholdDirection, @TemplateSubmitterGuidance, @TemplateGroupName,
+            @TemplateKpiWeight, @TemplateScoringMode, @TemplateBandG, @TemplateBandA, @TemplateBandR,
+            @TemplateBoolY, @TemplateBoolN, @TemplateMSRule, @TemplatePenaliseMissing,
+            @TemplateCategoryWeightSnapshot;
     END
 
     CLOSE template_cursor;
     DEALLOCATE template_cursor;
+END;
+GO
+
+-- KPI.CategoryWeight upsert: per-account bulk merge of category weights.
+-- @WeightsJson format: [{"category":"Safety","weight":0.30,"isActive":true}, ...]
+-- Categories not present in the JSON are left untouched (use IsActive=0 to disable).
+CREATE OR ALTER PROCEDURE App.usp_UpsertCategoryWeights
+    @AccountCode NVARCHAR(50),
+    @WeightsJson NVARCHAR(MAX),
+    @ActorUPN    NVARCHAR(320) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @AccountId INT = (SELECT AccountId FROM Dim.Account WHERE AccountCode = @AccountCode AND IsActive = 1);
+    IF @AccountId IS NULL
+        THROW 50250, 'Account not found or inactive.', 1;
+
+    DECLARE @Actor NVARCHAR(128) = COALESCE(@ActorUPN, SESSION_USER);
+
+    ;WITH input AS (
+        SELECT
+            JSON_VALUE(j.[value], '$.category')                          AS Category,
+            TRY_CAST(JSON_VALUE(j.[value], '$.weight')   AS DECIMAL(9,4)) AS Weight,
+            TRY_CAST(JSON_VALUE(j.[value], '$.isActive') AS BIT)         AS IsActive
+        FROM OPENJSON(@WeightsJson) AS j
+    )
+    MERGE KPI.CategoryWeight AS tgt
+    USING input AS src
+       ON tgt.AccountId = @AccountId AND tgt.Category = src.Category
+    WHEN MATCHED THEN
+        UPDATE SET Weight        = ISNULL(src.Weight, tgt.Weight),
+                   IsActive      = ISNULL(src.IsActive, tgt.IsActive),
+                   ModifiedOnUtc = SYSUTCDATETIME(),
+                   ModifiedBy    = @Actor
+    WHEN NOT MATCHED BY TARGET AND src.Category IS NOT NULL THEN
+        INSERT (AccountId, Category, Weight, IsActive, CreatedBy, ModifiedBy)
+        VALUES (@AccountId, src.Category, ISNULL(src.Weight, 1.0), ISNULL(src.IsActive, 1), @Actor, @Actor);
+END;
+GO
+
+-- Re-snaps CategoryWeightSnapshot on every matching AssignmentTemplate from
+-- the current KPI.CategoryWeight, then cascades to unsubmitted assignments.
+-- Returns counts so the UI can confirm impact.
+CREATE OR ALTER PROCEDURE App.usp_RefreshTemplateCategoryWeights
+    @AccountCode NVARCHAR(50),
+    @Category    NVARCHAR(100) = NULL,
+    @ActorUPN    NVARCHAR(320) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @AccountId INT = (SELECT AccountId FROM Dim.Account WHERE AccountCode = @AccountCode AND IsActive = 1);
+    IF @AccountId IS NULL
+        THROW 50260, 'Account not found or inactive.', 1;
+
+    DECLARE @Actor NVARCHAR(128) = COALESCE(@ActorUPN, SESSION_USER);
+
+    UPDATE t
+    SET CategoryWeightSnapshot = ISNULL(cw.Weight, 1.0),
+        ModifiedOnUtc          = SYSUTCDATETIME(),
+        ModifiedBy             = @Actor
+    FROM KPI.AssignmentTemplate  AS t
+    JOIN KPI.Definition          AS d  ON d.KPIID = t.KPIID
+    LEFT JOIN KPI.CategoryWeight AS cw ON cw.AccountId = t.AccountId AND cw.Category = d.Category
+    WHERE t.AccountId = @AccountId
+      AND (@Category IS NULL OR d.Category = @Category);
+
+    DECLARE @TemplatesUpdated INT = @@ROWCOUNT;
+
+    DECLARE @TemplateId INT;
+    DECLARE @AssignmentsUpdated INT = 0;
+
+    DECLARE template_cursor CURSOR LOCAL FAST_FORWARD FOR
+        SELECT t.AssignmentTemplateID
+        FROM KPI.AssignmentTemplate AS t
+        JOIN KPI.Definition         AS d ON d.KPIID = t.KPIID
+        WHERE t.AccountId = @AccountId
+          AND (@Category IS NULL OR d.Category = @Category);
+
+    OPEN template_cursor;
+    FETCH NEXT FROM template_cursor INTO @TemplateId;
+
+    WHILE @@FETCH_STATUS = 0
+    BEGIN
+        DECLARE @CascadeCount INT = (
+            SELECT COUNT(*)
+            FROM KPI.Assignment AS a
+            WHERE a.AssignmentTemplateID = @TemplateId
+              AND NOT EXISTS (SELECT 1 FROM KPI.Submission s WHERE s.AssignmentID = a.AssignmentID)
+        );
+
+        EXEC App.usp_CascadeAssignmentTemplateThresholds
+            @AssignmentTemplateID = @TemplateId,
+            @ActorUPN             = @ActorUPN;
+
+        SET @AssignmentsUpdated = @AssignmentsUpdated + @CascadeCount;
+        FETCH NEXT FROM template_cursor INTO @TemplateId;
+    END
+
+    CLOSE template_cursor;
+    DEALLOCATE template_cursor;
+
+    SELECT @TemplatesUpdated AS TemplatesUpdated, @AssignmentsUpdated AS AssignmentsUpdated;
 END;
 GO
 
@@ -6790,8 +7164,8 @@ BEGIN
     DECLARE @LockedAt           DATETIME2 = CASE WHEN @NewLockState <> 'Unlocked' THEN SYSUTCDATETIME() ELSE NULL END;
     DECLARE @LockedByPrincipalId INT      = CASE WHEN @NewLockState <> 'Unlocked' THEN @SubmitterPrincipalId ELSE NULL END;
 
-    -- Snapshot the assignment's thresholds (and target) at first-submit time.
-    -- The RAG views consult these for submitted rows so editing the assignment
+    -- Snapshot the assignment's thresholds (and target) AND scoring config at first-submit time.
+    -- The RAG/score views consult these for submitted rows so editing the assignment
     -- later never re-scores history. Direction is resolved with assignment-override
     -- precedence over the definition default.
     DECLARE @SnapTargetValue        DECIMAL(18,4);
@@ -6799,16 +7173,43 @@ BEGIN
     DECLARE @SnapThresholdAmber     DECIMAL(18,4);
     DECLARE @SnapThresholdRed       DECIMAL(18,4);
     DECLARE @SnapThresholdDirection NVARCHAR(10);
+    DECLARE @SnapKpiWeight          DECIMAL(9,4);
+    DECLARE @SnapScoringMode        NVARCHAR(10);
+    DECLARE @SnapBandG              DECIMAL(9,4);
+    DECLARE @SnapBandA              DECIMAL(9,4);
+    DECLARE @SnapBandR              DECIMAL(9,4);
+    DECLARE @SnapBoolY              DECIMAL(9,4);
+    DECLARE @SnapBoolN              DECIMAL(9,4);
+    DECLARE @SnapMSRule             NVARCHAR(10);
+    DECLARE @SnapPenaliseMissing    BIT;
+    DECLARE @SnapTemplateId         INT;
 
     SELECT
         @SnapTargetValue        = a.TargetValue,
         @SnapThresholdGreen     = a.ThresholdGreen,
         @SnapThresholdAmber     = a.ThresholdAmber,
         @SnapThresholdRed       = a.ThresholdRed,
-        @SnapThresholdDirection = COALESCE(a.ThresholdDirection, d.ThresholdDirection)
+        @SnapThresholdDirection = COALESCE(a.ThresholdDirection, d.ThresholdDirection),
+        @SnapKpiWeight          = a.KpiWeight,
+        @SnapScoringMode        = a.ScoringMode,
+        @SnapBandG              = a.BandPointsGreen,
+        @SnapBandA              = a.BandPointsAmber,
+        @SnapBandR              = a.BandPointsRed,
+        @SnapBoolY              = a.BooleanYesPoints,
+        @SnapBoolN              = a.BooleanNoPoints,
+        @SnapMSRule             = a.MultiSelectScoreRule,
+        @SnapPenaliseMissing    = a.PenaliseMissingOnScore,
+        @SnapTemplateId         = a.AssignmentTemplateID
     FROM KPI.Assignment AS a
     JOIN KPI.Definition AS d ON d.KPIID = a.KPIID
     WHERE a.AssignmentID = @AssignmentID;
+
+    DECLARE @SnapDDPoints NVARCHAR(MAX) = (
+        SELECT opt.OptionValue AS [value], opt.Points AS [points]
+        FROM KPI.AssignmentTemplateDropDownOption AS opt
+        WHERE opt.AssignmentTemplateID = @SnapTemplateId
+        FOR JSON PATH
+    );
 
     IF @ExistingSubmissionID IS NULL
     BEGIN
@@ -6819,14 +7220,24 @@ BEGIN
              SourceType, LockState, LockedAt, LockedByPrincipalId,
              DefinitionSnapshot,
              SubmittedTargetValue, SubmittedThresholdGreen, SubmittedThresholdAmber,
-             SubmittedThresholdRed, SubmittedThresholdDirection)
+             SubmittedThresholdRed, SubmittedThresholdDirection,
+             SubmittedKpiWeight, SubmittedScoringMode,
+             SubmittedBandPointsGreen, SubmittedBandPointsAmber, SubmittedBandPointsRed,
+             SubmittedBooleanYesPoints, SubmittedBooleanNoPoints,
+             SubmittedMultiSelectScoreRule, SubmittedDropDownOptionPoints,
+             SubmittedPenaliseMissingOnScore)
         VALUES
             (@AssignmentID, @SubmitterPrincipalId, SYSUTCDATETIME(),
              @SubmissionValue, @SubmissionText, @SubmissionBoolean, @SubmissionNotes,
              @SourceType, @NewLockState, @LockedAt, @LockedByPrincipalId,
              @DefinitionSnapshot,
              @SnapTargetValue, @SnapThresholdGreen, @SnapThresholdAmber,
-             @SnapThresholdRed, @SnapThresholdDirection);
+             @SnapThresholdRed, @SnapThresholdDirection,
+             @SnapKpiWeight, @SnapScoringMode,
+             @SnapBandG, @SnapBandA, @SnapBandR,
+             @SnapBoolY, @SnapBoolN,
+             @SnapMSRule, @SnapDDPoints,
+             @SnapPenaliseMissing);
 
         SET @SubmissionID = SCOPE_IDENTITY();
 
@@ -7282,7 +7693,13 @@ AS
         sub.SubmissionBoolean,
         sub.SubmissionNotes,
         sub.LockState,
-        CAST(CASE WHEN sub.SubmissionID IS NOT NULL THEN 1 ELSE 0 END AS bit) AS IsSubmitted
+        CAST(CASE WHEN sub.SubmissionID IS NOT NULL THEN 1 ELSE 0 END AS bit) AS IsSubmitted,
+        -- Scoring (Phase 3): exposed so the capture form can show "Worth N points"
+        -- per KPI before the submitter picks a value. MaxScore is always 100
+        -- because per-KPI scores are normalised; KpiWeight is the multiplier
+        -- applied at composite-roll-up time.
+        asgn.KpiWeight,
+        CAST(100.0 AS DECIMAL(9,4))                             AS MaxScore
     FROM App.vSubmissionTokens AS st
     JOIN KPI.Assignment AS asgn
         ON asgn.PeriodID = st.PeriodId
@@ -8152,6 +8569,215 @@ AS
     LEFT JOIN Dim.OrgUnit            AS ou   ON ou.OrgUnitId         = asgn.OrgUnitId
     LEFT JOIN KPI.AssignmentTemplate AS tmpl ON tmpl.AssignmentTemplateID = asgn.AssignmentTemplateID
     WHERE asgn.IsActive = 1;
+GO
+
+-- ============================================================
+-- App.vKpiSubmissionScores — per-assignment normalised 0–100 score
+-- ============================================================
+-- See migrations/Scripts/KpiScoringPhase2.Up.sql for the full prose.
+-- Snapshot-aware via COALESCE; NULL = excluded from rollup.
+
+CREATE OR ALTER VIEW App.vKpiSubmissionScores
+AS
+SELECT
+    a.AssignmentID,
+    a.AccountId,
+    a.OrgUnitId    AS SiteOrgUnitId,
+    a.PeriodID,
+    a.IsRequired,
+    sub.SubmissionID,
+    sub.LockState,
+    d.KPIID,
+    d.KPICode,
+    d.KPIName,
+    d.Category,
+    d.DataType,
+    COALESCE(sub.SubmittedKpiWeight,            a.KpiWeight)              AS KpiWeight,
+    COALESCE(sub.SubmittedPenaliseMissingOnScore, a.PenaliseMissingOnScore) AS PenaliseMissingOnScore,
+    -- Per-template CategoryWeight snapshot. Default 1.0 when no row was set
+    -- on the assignment (e.g., legacy assignments before the snapshot landed).
+    COALESCE(a.CategoryWeightSnapshot, 1.0)                                AS CategoryWeight,
+    CASE
+        WHEN d.DataType = 'Text' THEN NULL
+        WHEN sub.SubmissionID IS NULL THEN
+            CASE WHEN COALESCE(sub.SubmittedPenaliseMissingOnScore, a.PenaliseMissingOnScore) = 1
+                  AND a.IsRequired = 1
+                 THEN 0
+                 ELSE NULL
+            END
+        WHEN d.DataType = 'Boolean' THEN
+            CASE
+                WHEN sub.SubmissionBoolean IS NULL THEN NULL
+                WHEN sub.SubmissionBoolean = 1 THEN COALESCE(sub.SubmittedBooleanYesPoints, a.BooleanYesPoints, 100)
+                ELSE COALESCE(sub.SubmittedBooleanNoPoints, a.BooleanNoPoints, 0)
+            END
+        WHEN d.DataType = 'DropDown' THEN dd.Points
+        WHEN d.DataType IN ('Numeric','Percentage','Currency','Time') THEN num.Score
+        ELSE NULL
+    END AS Score,
+    100.0 AS MaxScore
+FROM KPI.Assignment AS a
+JOIN KPI.Definition AS d ON d.KPIID = a.KPIID
+LEFT JOIN KPI.Submission AS sub ON sub.AssignmentID = a.AssignmentID
+OUTER APPLY (
+    SELECT
+        CASE COALESCE(sub.SubmittedMultiSelectScoreRule, a.MultiSelectScoreRule)
+            WHEN 'Sum' THEN
+                (SELECT CASE WHEN ISNULL(SUM(p.points), 0) > 100 THEN 100 ELSE ISNULL(SUM(p.points), 0) END
+                 FROM STRING_SPLIT(ISNULL(sub.SubmissionText, ''), '|') AS sel
+                 LEFT JOIN OPENJSON(COALESCE(sub.SubmittedDropDownOptionPoints, '[]'))
+                    WITH (value NVARCHAR(200) '$.value', points DECIMAL(9,4) '$.points') AS p
+                    ON LTRIM(RTRIM(sel.value)) = p.value
+                 WHERE LTRIM(RTRIM(sel.value)) <> '')
+            WHEN 'Avg' THEN
+                (SELECT AVG(ISNULL(p.points, 0))
+                 FROM STRING_SPLIT(ISNULL(sub.SubmissionText, ''), '|') AS sel
+                 LEFT JOIN OPENJSON(COALESCE(sub.SubmittedDropDownOptionPoints, '[]'))
+                    WITH (value NVARCHAR(200) '$.value', points DECIMAL(9,4) '$.points') AS p
+                    ON LTRIM(RTRIM(sel.value)) = p.value
+                 WHERE LTRIM(RTRIM(sel.value)) <> '')
+            WHEN 'Max' THEN
+                (SELECT MAX(ISNULL(p.points, 0))
+                 FROM STRING_SPLIT(ISNULL(sub.SubmissionText, ''), '|') AS sel
+                 LEFT JOIN OPENJSON(COALESCE(sub.SubmittedDropDownOptionPoints, '[]'))
+                    WITH (value NVARCHAR(200) '$.value', points DECIMAL(9,4) '$.points') AS p
+                    ON LTRIM(RTRIM(sel.value)) = p.value
+                 WHERE LTRIM(RTRIM(sel.value)) <> '')
+            ELSE
+                (SELECT TOP 1 ISNULL(p.points, 0)
+                 FROM OPENJSON(COALESCE(sub.SubmittedDropDownOptionPoints, '[]'))
+                    WITH (value NVARCHAR(200) '$.value', points DECIMAL(9,4) '$.points') AS p
+                 WHERE p.value = sub.SubmissionText)
+        END AS Points
+) AS dd
+OUTER APPLY (
+    SELECT
+        CASE
+            WHEN sub.SubmissionValue IS NULL THEN NULL
+            WHEN COALESCE(sub.SubmittedThresholdGreen, a.ThresholdGreen) IS NULL THEN NULL
+            WHEN COALESCE(sub.SubmittedScoringMode, a.ScoringMode) = 'Linear' THEN
+                CASE COALESCE(sub.SubmittedThresholdDirection, a.ThresholdDirection, d.ThresholdDirection)
+                    WHEN 'Higher' THEN
+                        CASE
+                            WHEN sub.SubmissionValue >= COALESCE(sub.SubmittedThresholdGreen, a.ThresholdGreen)
+                                THEN COALESCE(sub.SubmittedBandPointsGreen, a.BandPointsGreen)
+                            WHEN sub.SubmissionValue >= COALESCE(sub.SubmittedThresholdAmber, a.ThresholdAmber)
+                                THEN COALESCE(sub.SubmittedBandPointsAmber, a.BandPointsAmber)
+                                   + (sub.SubmissionValue - COALESCE(sub.SubmittedThresholdAmber, a.ThresholdAmber))
+                                   / NULLIF(COALESCE(sub.SubmittedThresholdGreen, a.ThresholdGreen)
+                                          - COALESCE(sub.SubmittedThresholdAmber, a.ThresholdAmber), 0)
+                                   * (COALESCE(sub.SubmittedBandPointsGreen, a.BandPointsGreen)
+                                    - COALESCE(sub.SubmittedBandPointsAmber, a.BandPointsAmber))
+                            WHEN sub.SubmissionValue >= COALESCE(sub.SubmittedThresholdRed, a.ThresholdRed)
+                                THEN COALESCE(sub.SubmittedBandPointsRed, a.BandPointsRed)
+                                   + (sub.SubmissionValue - COALESCE(sub.SubmittedThresholdRed, a.ThresholdRed))
+                                   / NULLIF(COALESCE(sub.SubmittedThresholdAmber, a.ThresholdAmber)
+                                          - COALESCE(sub.SubmittedThresholdRed, a.ThresholdRed), 0)
+                                   * (COALESCE(sub.SubmittedBandPointsAmber, a.BandPointsAmber)
+                                    - COALESCE(sub.SubmittedBandPointsRed, a.BandPointsRed))
+                            ELSE COALESCE(sub.SubmittedBandPointsRed, a.BandPointsRed)
+                        END
+                    WHEN 'Lower' THEN
+                        CASE
+                            WHEN sub.SubmissionValue <= COALESCE(sub.SubmittedThresholdGreen, a.ThresholdGreen)
+                                THEN COALESCE(sub.SubmittedBandPointsGreen, a.BandPointsGreen)
+                            WHEN sub.SubmissionValue <= COALESCE(sub.SubmittedThresholdAmber, a.ThresholdAmber)
+                                THEN COALESCE(sub.SubmittedBandPointsAmber, a.BandPointsAmber)
+                                   + (COALESCE(sub.SubmittedThresholdAmber, a.ThresholdAmber) - sub.SubmissionValue)
+                                   / NULLIF(COALESCE(sub.SubmittedThresholdAmber, a.ThresholdAmber)
+                                          - COALESCE(sub.SubmittedThresholdGreen, a.ThresholdGreen), 0)
+                                   * (COALESCE(sub.SubmittedBandPointsGreen, a.BandPointsGreen)
+                                    - COALESCE(sub.SubmittedBandPointsAmber, a.BandPointsAmber))
+                            WHEN sub.SubmissionValue <= COALESCE(sub.SubmittedThresholdRed, a.ThresholdRed)
+                                THEN COALESCE(sub.SubmittedBandPointsRed, a.BandPointsRed)
+                                   + (COALESCE(sub.SubmittedThresholdRed, a.ThresholdRed) - sub.SubmissionValue)
+                                   / NULLIF(COALESCE(sub.SubmittedThresholdRed, a.ThresholdRed)
+                                          - COALESCE(sub.SubmittedThresholdAmber, a.ThresholdAmber), 0)
+                                   * (COALESCE(sub.SubmittedBandPointsAmber, a.BandPointsAmber)
+                                    - COALESCE(sub.SubmittedBandPointsRed, a.BandPointsRed))
+                            ELSE COALESCE(sub.SubmittedBandPointsRed, a.BandPointsRed)
+                        END
+                    ELSE NULL
+                END
+            ELSE
+                CASE COALESCE(sub.SubmittedThresholdDirection, a.ThresholdDirection, d.ThresholdDirection)
+                    WHEN 'Higher' THEN
+                        CASE
+                            WHEN sub.SubmissionValue >= COALESCE(sub.SubmittedThresholdGreen, a.ThresholdGreen)
+                                THEN COALESCE(sub.SubmittedBandPointsGreen, a.BandPointsGreen)
+                            WHEN sub.SubmissionValue >= COALESCE(sub.SubmittedThresholdAmber, a.ThresholdAmber)
+                                THEN COALESCE(sub.SubmittedBandPointsAmber, a.BandPointsAmber)
+                            ELSE COALESCE(sub.SubmittedBandPointsRed, a.BandPointsRed)
+                        END
+                    WHEN 'Lower' THEN
+                        CASE
+                            WHEN sub.SubmissionValue <= COALESCE(sub.SubmittedThresholdGreen, a.ThresholdGreen)
+                                THEN COALESCE(sub.SubmittedBandPointsGreen, a.BandPointsGreen)
+                            WHEN sub.SubmissionValue <= COALESCE(sub.SubmittedThresholdAmber, a.ThresholdAmber)
+                                THEN COALESCE(sub.SubmittedBandPointsAmber, a.BandPointsAmber)
+                            ELSE COALESCE(sub.SubmittedBandPointsRed, a.BandPointsRed)
+                        END
+                    ELSE NULL
+                END
+        END AS Score
+) AS num
+WHERE a.IsActive = 1;
+GO
+
+-- ============================================================
+-- App.vSiteCompositeScore — site × period × category roll-up + composite
+-- ============================================================
+
+CREATE OR ALTER VIEW App.vSiteCompositeScore
+AS
+WITH per_category AS (
+    SELECT
+        s.AccountId,
+        s.SiteOrgUnitId,
+        s.PeriodID,
+        s.Category,
+        -- All rows in a (Account, Site, Period, Category) group share the same
+        -- snapshotted CategoryWeight (rare exception: rows under different
+        -- templates with different snapshots — AVG is a reasonable mean).
+        AVG(s.CategoryWeight) AS CategoryWeight,
+        SUM(CASE WHEN s.Score IS NULL THEN 0 ELSE s.Score * s.KpiWeight END) AS WeightedScore,
+        SUM(CASE WHEN s.Score IS NULL THEN 0 ELSE s.KpiWeight END)           AS WeightSum,
+        SUM(CASE WHEN s.Score IS NOT NULL THEN 1 ELSE 0 END)                  AS ScoredCount,
+        COUNT(*)                                                              AS TotalCount
+    FROM App.vKpiSubmissionScores AS s
+    WHERE s.SiteOrgUnitId IS NOT NULL
+    GROUP BY s.AccountId, s.SiteOrgUnitId, s.PeriodID, s.Category
+),
+weighted AS (
+    SELECT
+        pc.AccountId, pc.SiteOrgUnitId, pc.PeriodID, pc.Category,
+        pc.ScoredCount, pc.TotalCount,
+        CASE WHEN pc.WeightSum = 0 THEN NULL
+             ELSE pc.WeightedScore / pc.WeightSum
+        END                                AS CategoryScore,
+        pc.CategoryWeight                  AS CategoryWeight,
+        CAST(1 AS BIT)                     AS CategoryActive
+    FROM per_category AS pc
+)
+SELECT
+    w.AccountId,
+    w.SiteOrgUnitId,
+    w.PeriodID,
+    w.Category,
+    w.CategoryScore,
+    w.CategoryWeight,
+    w.CategoryActive,
+    w.ScoredCount,
+    w.TotalCount,
+    SUM(CASE WHEN w.CategoryScore IS NULL
+             THEN 0 ELSE w.CategoryScore * w.CategoryWeight END)
+        OVER (PARTITION BY w.AccountId, w.SiteOrgUnitId, w.PeriodID)
+    /
+    NULLIF(SUM(CASE WHEN w.CategoryScore IS NULL
+                    THEN 0 ELSE w.CategoryWeight END)
+        OVER (PARTITION BY w.AccountId, w.SiteOrgUnitId, w.PeriodID), 0)
+        AS CompositeScore
+FROM weighted AS w;
 GO
 
 CREATE OR ALTER VIEW Reporting.vw_PBIKPIFact

@@ -154,34 +154,37 @@ public static class KpiSubmissionEndpoints
 
             var items = await conn.QueryAsync<SiteSubmissionDetailDto>(@"
                 SELECT
-                    AssignmentId,
-                    ExternalId,
-                    KpiCode,
-                    KpiName,
-                    EffectiveKpiName,
-                    Category,
-                    DataType,
-                    IsRequired,
-                    TargetValue,
-                    ThresholdGreen,
-                    ThresholdAmber,
-                    ThresholdRed,
-                    EffectiveThresholdDirection,
-                    SubmissionId,
-                    SubmissionValue,
-                    SubmissionText,
-                    SubmissionBoolean,
-                    SubmissionNotes,
-                    LockState,
-                    SubmittedByUpn,
-                    SubmittedAt,
-                    IsSubmitted,
-                    RagStatus,
-                    AssignmentGroupName
-                FROM App.vSiteSubmissionDetails
-                WHERE SiteOrgUnitId = @SiteOrgUnitId
-                  AND PeriodId = @PeriodId
-                ORDER BY Category, KpiName",
+                    sd.AssignmentId,
+                    sd.ExternalId,
+                    sd.KpiCode,
+                    sd.KpiName,
+                    sd.EffectiveKpiName,
+                    sd.Category,
+                    sd.DataType,
+                    sd.IsRequired,
+                    sd.TargetValue,
+                    sd.ThresholdGreen,
+                    sd.ThresholdAmber,
+                    sd.ThresholdRed,
+                    sd.EffectiveThresholdDirection,
+                    sd.SubmissionId,
+                    sd.SubmissionValue,
+                    sd.SubmissionText,
+                    sd.SubmissionBoolean,
+                    sd.SubmissionNotes,
+                    sd.LockState,
+                    sd.SubmittedByUpn,
+                    sd.SubmittedAt,
+                    sd.IsSubmitted,
+                    sd.RagStatus,
+                    sd.AssignmentGroupName,
+                    sc.Score,
+                    sc.MaxScore
+                FROM App.vSiteSubmissionDetails AS sd
+                LEFT JOIN App.vKpiSubmissionScores AS sc ON sc.AssignmentID = sd.AssignmentId
+                WHERE sd.SiteOrgUnitId = @SiteOrgUnitId
+                  AND sd.PeriodId = @PeriodId
+                ORDER BY sd.Category, sd.KpiName",
                 new { SiteOrgUnitId = siteOrgUnitId, PeriodId = periodId });
 
             var list = items.ToList();

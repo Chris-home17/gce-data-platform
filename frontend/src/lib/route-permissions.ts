@@ -39,11 +39,12 @@ export const ROUTE_PERMISSIONS: ReadonlyArray<{ prefix: string; permission: Requ
   { prefix: '/policies',          permission: PERMISSIONS.POLICIES_MANAGE },
 
   // KPI catalog authoring — KPI Admin only
-  { prefix: '/kpi/definitions',   permission: PERMISSIONS.KPI_ADMIN },
-  { prefix: '/kpi/periods',       permission: PERMISSIONS.KPI_ADMIN },
-  { prefix: '/kpi/packages',      permission: PERMISSIONS.KPI_ADMIN },
+  { prefix: '/kpi/definitions',     permission: PERMISSIONS.KPI_ADMIN },
+  { prefix: '/kpi/periods',         permission: PERMISSIONS.KPI_ADMIN },
+  { prefix: '/kpi/packages',        permission: PERMISSIONS.KPI_ADMIN },
+  { prefix: '/kpi/category-weights', permission: PERMISSIONS.KPI_ADMIN },
   // KPI Assignments — account-side managers (KPI Assign) or admins
-  { prefix: '/kpi/assignments',   permission: [PERMISSIONS.KPI_ASSIGN, PERMISSIONS.KPI_ADMIN] },
+  { prefix: '/kpi/assignments',     permission: [PERMISSIONS.KPI_ASSIGN, PERMISSIONS.KPI_ADMIN] },
 ]
 
 /**

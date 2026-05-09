@@ -388,6 +388,17 @@ export interface BatchKpiAssignmentTemplateItem {
   submitterGuidance?: string | null
   customKpiName?: string | null
   customKpiDescription?: string | null
+  kpiWeight?: number | null
+  scoringMode?: 'Band' | 'Linear' | null
+  bandPointsGreen?: number | null
+  bandPointsAmber?: number | null
+  bandPointsRed?: number | null
+  booleanYesPoints?: number | null
+  booleanNoPoints?: number | null
+  multiSelectScoreRule?: 'Sum' | 'Avg' | 'Max' | null
+  penaliseMissingOnScore?: boolean | null
+  /** Per-option points for DropDown KPIs; replaces all rows on the template when set. */
+  optionPoints?: DropDownOptionPoints[] | null
 }
 
 export interface BatchCreateKpiAssignmentTemplatesInput {
@@ -656,6 +667,68 @@ export interface KpiAssignmentTemplate {
   kpiPackageId: number | null
   kpiPackageName: string | null
   assignmentGroupName: string | null
+  /** Scoring config (Phase 1, KPI scoring layer). All fields default-populated server-side. */
+  kpiWeight: number
+  scoringMode: 'Band' | 'Linear'
+  bandPointsGreen: number
+  bandPointsAmber: number
+  bandPointsRed: number
+  booleanYesPoints: number | null
+  booleanNoPoints: number | null
+  multiSelectScoreRule: 'Sum' | 'Avg' | 'Max' | null
+  penaliseMissingOnScore: boolean
+  /** JSON string of [{value, points, sortOrder}] for the template's per-option points; null for non-DropDown templates. */
+  optionPointsRaw: string | null
+  /** Per-template snapshot of the account-level CategoryWeight at template-creation time. */
+  categoryWeightSnapshot: number | null
+}
+
+/** Per-option points for a DropDown KPI assignment template. */
+export interface DropDownOptionPoints {
+  optionValue: string
+  points: number
+  sortOrder?: number | null
+}
+
+/** From KPI.CategoryWeight: per-account weight applied to each KPI Category. */
+export interface CategoryWeight {
+  category: string
+  weight: number
+  isActive: boolean
+}
+
+export interface UpsertCategoryWeightsInput {
+  accountCode: string
+  weights: CategoryWeight[]
+}
+
+/** Trigger an explicit re-snap of CategoryWeightSnapshot on existing templates
+ *  for an account (optionally narrowed to one Category) and cascade to
+ *  unsubmitted assignments. Submitted history is unaffected. */
+export interface RefreshTemplateCategoryWeightsInput {
+  accountCode: string
+  category?: string | null
+}
+
+export interface RefreshTemplateCategoryWeightsResponse {
+  templatesUpdated: number
+  assignmentsUpdated: number
+}
+
+/** Per-category score row from App.vSiteCompositeScore (Phase 2 of the KPI scoring layer).
+ * One row per (Site, Period, Category). CompositeScore is constant across all
+ * category rows in a (Site, Period) group; the frontend dedupes on display. */
+export interface SiteCategoryScore {
+  accountId: number
+  siteOrgUnitId: number
+  periodId: number
+  category: string
+  categoryScore: number | null
+  categoryWeight: number
+  categoryActive: boolean
+  scoredCount: number
+  totalCount: number
+  compositeScore: number | null
 }
 
 /** From App.vSiteCompletionSummary (screen K-04) */
@@ -676,6 +749,8 @@ export interface SiteCompletion {
   reminderResolved: boolean
   /** null = ungrouped assignments */
   groupName: string | null
+  /** Site-level composite score 0-100 (Phase 2). Populated only when ?withScores=true; otherwise null. */
+  compositeScore: number | null
 }
 
 export interface KpiAssignmentGroup {
@@ -711,6 +786,10 @@ export interface SiteSubmissionDetail {
   isSubmitted: boolean
   ragStatus: 'Green' | 'Amber' | 'Red' | null
   assignmentGroupName: string | null
+  /** Per-submission 0-100 score (Phase 2). NULL when excluded from scoring. */
+  score: number | null
+  /** Always 100 — exposed for "Score / Max" display. */
+  maxScore: number | null
 }
 
 // ---------------------------------------------------------------------------
@@ -913,6 +992,18 @@ export interface CreateKpiAssignmentTemplateInput {
   customKpiDescription?: string | null
   materializeNow: boolean
   assignmentGroupName?: string | null
+  // Scoring config (Phase 1, KPI scoring layer). NULL = server applies defaults.
+  kpiWeight?: number | null
+  scoringMode?: 'Band' | 'Linear' | null
+  bandPointsGreen?: number | null
+  bandPointsAmber?: number | null
+  bandPointsRed?: number | null
+  booleanYesPoints?: number | null
+  booleanNoPoints?: number | null
+  multiSelectScoreRule?: 'Sum' | 'Avg' | 'Max' | null
+  penaliseMissingOnScore?: boolean | null
+  /** When set, replaces all dropdown option points on the template. */
+  optionPoints?: DropDownOptionPoints[] | null
 }
 
 /** PATCH payload for an existing template. KPI / schedule / account / scope /
@@ -927,6 +1018,16 @@ export interface UpdateKpiAssignmentTemplateInput {
   submitterGuidance?: string
   customKpiName?: string | null
   customKpiDescription?: string | null
+  kpiWeight?: number | null
+  scoringMode?: 'Band' | 'Linear' | null
+  bandPointsGreen?: number | null
+  bandPointsAmber?: number | null
+  bandPointsRed?: number | null
+  booleanYesPoints?: number | null
+  booleanNoPoints?: number | null
+  multiSelectScoreRule?: 'Sum' | 'Avg' | 'Max' | null
+  penaliseMissingOnScore?: boolean | null
+  optionPoints?: DropDownOptionPoints[] | null
 }
 
 // ---------------------------------------------------------------------------
@@ -970,6 +1071,10 @@ export interface AssignmentWithSubmission {
   submissionNotes: string | null
   lockState: 'Unlocked' | 'Locked' | 'LockedByAuto' | 'LockedByPeriodClose' | null
   isSubmitted: boolean
+  /** KPI weight applied to the score at composite roll-up (Phase 3). */
+  kpiWeight: number
+  /** Always 100 — exposed for "Worth N points" display on the capture form. */
+  maxScore: number
 }
 
 export interface SubmissionTokenContext {

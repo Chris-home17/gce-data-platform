@@ -90,6 +90,20 @@ interface KpiTailoringValues {
   overrideKpiName: boolean
   customKpiName: string
   customKpiDescription: string
+  // Scoring (Phase 1, KPI scoring layer). Values stored as strings so empty
+  // inputs round-trip cleanly through the form state.
+  kpiWeight: string
+  scoringMode: 'Band' | 'Linear'
+  bandPointsGreen: string
+  bandPointsAmber: string
+  bandPointsRed: string
+  booleanYesPoints: string
+  booleanNoPoints: string
+  multiSelectScoreRule: 'Sum' | 'Avg' | 'Max'
+  penaliseMissingOnScore: boolean
+  /** Per-option points for DropDown KPIs. Seeded from the catalog when the row
+   *  is first expanded; values stored as strings for input round-trip. */
+  optionPoints: Array<{ optionValue: string; points: string }>
 }
 
 interface EffectiveKpi {
@@ -99,6 +113,8 @@ interface EffectiveKpi {
   category: string | null
   sourcePackageId: number | null
   sourcePackageName: string | null
+  /** Pipe-delimited option list from the KPI catalog; null for non-DropDown KPIs. */
+  dropDownOptionsRaw: string | null
 }
 
 function defaultTailoring(): KpiTailoringValues {
@@ -113,6 +129,16 @@ function defaultTailoring(): KpiTailoringValues {
     overrideKpiName: false,
     customKpiName: '',
     customKpiDescription: '',
+    kpiWeight: '1',
+    scoringMode: 'Band',
+    bandPointsGreen: '100',
+    bandPointsAmber: '50',
+    bandPointsRed: '0',
+    booleanYesPoints: '100',
+    booleanNoPoints: '0',
+    multiSelectScoreRule: 'Sum',
+    penaliseMissingOnScore: true,
+    optionPoints: [],
   }
 }
 
@@ -125,7 +151,18 @@ function isTailoringDirty(v: KpiTailoringValues): boolean {
     v.thresholdRed !== '' ||
     v.thresholdDirection !== 'none' ||
     v.submitterGuidance !== '' ||
-    v.overrideKpiName
+    v.overrideKpiName ||
+    // Scoring dirtiness: anything different from the defaults
+    v.kpiWeight !== '1' ||
+    v.scoringMode !== 'Band' ||
+    v.bandPointsGreen !== '100' ||
+    v.bandPointsAmber !== '50' ||
+    v.bandPointsRed !== '0' ||
+    v.booleanYesPoints !== '100' ||
+    v.booleanNoPoints !== '0' ||
+    v.multiSelectScoreRule !== 'Sum' ||
+    !v.penaliseMissingOnScore ||
+    v.optionPoints.some((o) => o.points !== '' && o.points !== '0')
   )
 }
 
@@ -781,18 +818,36 @@ interface KpiTailoringRowProps {
   onChange: (patch: Partial<KpiTailoringValues>) => void
   fieldErrors: string[]
   showErrors: boolean
+  /** Current account-level CategoryWeight that will be snapshotted onto the
+   *  template at save time. Null if the account has no row for this category. */
+  currentCategoryWeight: number | null
 }
 
-function KpiTailoringRow({ kpi, values, onChange, fieldErrors, showErrors }: KpiTailoringRowProps) {
+function KpiTailoringRow({ kpi, values, onChange, fieldErrors, showErrors, currentCategoryWeight }: KpiTailoringRowProps) {
   const [expanded, setExpanded] = useState(false)
   const isDirty = isTailoringDirty(values)
   const supportsThresholds = ['Numeric', 'Percentage', 'Currency', 'Time'].includes(kpi.dataType ?? '')
   const isTimeKpi = kpi.dataType === 'Time'
+  const isDropDown = kpi.dataType === 'DropDown'
   const hasErrors = showErrors && fieldErrors.length > 0
 
   useEffect(() => {
     if (hasErrors) setExpanded(true)
   }, [hasErrors])
+
+  // Seed dropdown option-points from the KPI catalog the first time we have
+  // both the row data and an empty optionPoints list. Re-runs cheaply if
+  // dropDownOptionsRaw arrives later (catalog fetch resolves async).
+  useEffect(() => {
+    if (!isDropDown) return
+    if (values.optionPoints.length > 0) return
+    const seeded = (kpi.dropDownOptionsRaw ?? '')
+      .split('|')
+      .map((o) => o.trim())
+      .filter(Boolean)
+      .map((optionValue) => ({ optionValue, points: '0' }))
+    if (seeded.length > 0) onChange({ optionPoints: seeded })
+  }, [isDropDown, kpi.dropDownOptionsRaw]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const err = (field: string) => showErrors && fieldErrors.includes(field)
 
@@ -930,6 +985,166 @@ function KpiTailoringRow({ kpi, values, onChange, fieldErrors, showErrors }: Kpi
             </>
           )}
 
+          {/* Scoring */}
+          <SectionHeading>Scoring</SectionHeading>
+          {kpi.dataType === 'Text' ? (
+            <p className="text-xs text-muted-foreground rounded-md border border-dashed px-3 py-2">
+              Text KPIs are informational and excluded from the composite score.
+            </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">KPI weight</Label>
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min={0}
+                    className="h-9"
+                    value={values.kpiWeight}
+                    onChange={(e) => onChange({ kpiWeight: e.target.value })}
+                  />
+                  <p className="text-[11px] text-muted-foreground">1.0 = standard. Higher = more weight in the composite.</p>
+                </div>
+                {supportsThresholds && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Scoring mode</Label>
+                    <Select
+                      value={values.scoringMode}
+                      onValueChange={(v) => onChange({ scoringMode: v as KpiTailoringValues['scoringMode'] })}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Band">Banded — flat per RAG band</SelectItem>
+                        <SelectItem value="Linear">Linear — interpolate between bands</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+
+              {supportsThresholds && (
+                <div className="grid grid-cols-3 gap-3">
+                  {(['bandPointsGreen', 'bandPointsAmber', 'bandPointsRed'] as const).map((field) => (
+                    <div key={field} className="space-y-1.5">
+                      <Label className="text-xs capitalize">
+                        {field.replace('bandPoints', '')} pts
+                      </Label>
+                      <Input
+                        type="number"
+                        step="1"
+                        className="h-9"
+                        value={values[field]}
+                        onChange={(e) => onChange({ [field]: e.target.value })}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {kpi.dataType === 'Boolean' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Yes pts</Label>
+                    <Input
+                      type="number"
+                      step="1"
+                      className="h-9"
+                      value={values.booleanYesPoints}
+                      onChange={(e) => onChange({ booleanYesPoints: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">No pts</Label>
+                    <Input
+                      type="number"
+                      step="1"
+                      className="h-9"
+                      value={values.booleanNoPoints}
+                      onChange={(e) => onChange({ booleanNoPoints: e.target.value })}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {isDropDown && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Multi-select rule</Label>
+                    <Select
+                      value={values.multiSelectScoreRule}
+                      onValueChange={(v) => onChange({ multiSelectScoreRule: v as KpiTailoringValues['multiSelectScoreRule'] })}
+                    >
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Sum">Sum (capped at 100)</SelectItem>
+                        <SelectItem value="Avg">Average of selected</SelectItem>
+                        <SelectItem value="Max">Max of selected</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground">
+                      How points combine when the submitter picks more than one option.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Option points</Label>
+                    {values.optionPoints.length === 0 ? (
+                      <p className="text-xs text-muted-foreground rounded-md border border-dashed px-3 py-2">
+                        This KPI has no dropdown options defined in the catalog. Add options on the KPI
+                        definition first.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {values.optionPoints.map((opt, idx) => (
+                          <div key={`${opt.optionValue}-${idx}`} className="grid grid-cols-[1fr_120px] gap-2 items-center">
+                            <Input value={opt.optionValue} readOnly className="h-9 font-mono text-sm" />
+                            <Input
+                              type="number"
+                              step="1"
+                              className="h-9"
+                              value={opt.points}
+                              onChange={(e) => {
+                                const next = [...values.optionPoints]
+                                next[idx] = { ...next[idx], points: e.target.value }
+                                onChange({ optionPoints: next })
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              <div className="flex items-center justify-between rounded-md border px-3 py-2.5">
+                <div>
+                  <p className="text-sm font-medium">Penalise missing submissions</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    On: missing required submissions count as 0 in the score. Off: excluded entirely.
+                  </p>
+                </div>
+                <Switch
+                  checked={values.penaliseMissingOnScore}
+                  onCheckedChange={(v) => onChange({ penaliseMissingOnScore: v })}
+                />
+              </div>
+
+              <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                <span className="font-medium">Category weight: </span>
+                <span className="font-mono text-foreground">
+                  {currentCategoryWeight !== null ? currentCategoryWeight.toFixed(2) : '1.00'}
+                </span>
+                {kpi.category && <> ({kpi.category})</>}
+                <span> — current value for this category. Will be snapshotted on save and locked for this template.</span>
+              </div>
+            </>
+          )}
+
           {/* Display */}
           <SectionHeading>Display</SectionHeading>
           <div className="flex items-center justify-between rounded-md border px-3 py-2.5">
@@ -1006,6 +1221,8 @@ interface StepTailorProps {
   onApplyRequiredToAll: (v: boolean) => void
   tailoringErrors: Map<string, string[]>
   showErrors: boolean
+  /** Live account-level CategoryWeight map; rows display "current value, will be snapshotted". */
+  categoryWeightByCategory: Map<string, number>
 }
 
 function StepTailor({
@@ -1017,6 +1234,7 @@ function StepTailor({
   onApplyRequiredToAll,
   tailoringErrors,
   showErrors,
+  categoryWeightByCategory,
 }: StepTailorProps) {
   return (
     <div className="space-y-4">
@@ -1062,6 +1280,7 @@ function StepTailor({
             onChange={(patch) => onTailoringChange(kpi.kpiCode, patch)}
             fieldErrors={tailoringErrors.get(kpi.kpiCode) ?? []}
             showErrors={showErrors}
+            currentCategoryWeight={kpi.category ? (categoryWeightByCategory.get(kpi.category) ?? null) : null}
           />
         ))}
       </div>
@@ -1102,6 +1321,32 @@ export function AssignKpisWizard() {
   const [showTailoringErrors, setShowTailoringErrors] = useState(false)
 
   const queryClient = useQueryClient()
+
+  // Definitions catalog — needed at the wizard level so effectiveKpis can
+  // attach each KPI's dropdown options. Same queryKey as StepBuildKpiSet's
+  // copy so React Query dedupes (single network call).
+  const definitionsQuery = useQuery({
+    queryKey: ['kpi', 'definitions'],
+    queryFn: () => api.kpi.definitions.list(),
+    enabled: open,
+  })
+
+  // Live account-level CategoryWeight rows — used by StepTailor to show
+  // "current value, will be snapshotted on save" per KPI. Refreshes when the
+  // selected account changes.
+  const categoryWeightsQuery = useQuery({
+    queryKey: ['kpi', 'category-weights', context.accountCode],
+    queryFn: () => api.kpi.categoryWeights.list(context.accountCode),
+    enabled: open && !!context.accountCode,
+  })
+
+  const categoryWeightByCategory = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const w of categoryWeightsQuery.data?.items ?? []) {
+      if (w.isActive) map.set(w.category, w.weight)
+    }
+    return map
+  }, [categoryWeightsQuery.data])
 
   // Existing templates for deduplication
   const templatesQuery = useQuery({
@@ -1164,6 +1409,12 @@ export function AssignKpisWizard() {
 
   // Effective KPIs in the cart (packages resolved + standalone), excluding already-assigned
   const effectiveKpis = useMemo<EffectiveKpi[]>(() => {
+    // Build a kpiCode → dropDownOptionsRaw lookup so per-KPI rows can render
+    // the options editor without an extra fetch.
+    const optionsByCode = new Map<string, string | null>()
+    for (const def of definitionsQuery.data?.items ?? []) {
+      optionsByCode.set(def.kpiCode, def.dropDownOptionsRaw ?? null)
+    }
     const result: EffectiveKpi[] = []
     const seen = new Set<string>()
     for (const entry of cart) {
@@ -1178,6 +1429,7 @@ export function AssignKpisWizard() {
               category: item.category,
               sourcePackageId: entry.packageId,
               sourcePackageName: entry.packageName,
+              dropDownOptionsRaw: optionsByCode.get(item.kpiCode) ?? null,
             })
           }
         }
@@ -1191,12 +1443,13 @@ export function AssignKpisWizard() {
             category: entry.category,
             sourcePackageId: null,
             sourcePackageName: null,
+            dropDownOptionsRaw: optionsByCode.get(entry.kpiCode) ?? null,
           })
         }
       }
     }
     return result
-  }, [cart, existingKpiCodes])
+  }, [cart, existingKpiCodes, definitionsQuery.data])
 
   // Populate tailoring map when entering step 2
   useEffect(() => {
@@ -1327,6 +1580,10 @@ export function AssignKpisWizard() {
     mutationFn: () => {
       const items: BatchKpiAssignmentTemplateItem[] = effectiveKpis.map((kpi) => {
         const t = tailoring.get(kpi.kpiCode) ?? defaultTailoring()
+        const isNumericLike = ['Numeric', 'Percentage', 'Currency', 'Time'].includes(kpi.dataType ?? '')
+        const isBoolean = kpi.dataType === 'Boolean'
+        const isDropDown = kpi.dataType === 'DropDown'
+        const isText = kpi.dataType === 'Text'
         return {
           kpiCode: kpi.kpiCode,
           kpiPackageId: kpi.sourcePackageId ?? null,
@@ -1339,6 +1596,23 @@ export function AssignKpisWizard() {
           submitterGuidance: t.submitterGuidance || null,
           customKpiName: t.overrideKpiName ? (t.customKpiName || null) : null,
           customKpiDescription: t.overrideKpiName ? (t.customKpiDescription || null) : null,
+          // Scoring: omit for Text (excluded). For everything else, pass weight
+          // and the type-specific points fields the backend expects.
+          kpiWeight: isText ? null : (parseOptionalNumber(t.kpiWeight) ?? 1),
+          scoringMode: isNumericLike ? t.scoringMode : null,
+          bandPointsGreen: isNumericLike ? (parseOptionalNumber(t.bandPointsGreen) ?? 100) : null,
+          bandPointsAmber: isNumericLike ? (parseOptionalNumber(t.bandPointsAmber) ?? 50) : null,
+          bandPointsRed:   isNumericLike ? (parseOptionalNumber(t.bandPointsRed)   ?? 0)   : null,
+          booleanYesPoints: isBoolean ? (parseOptionalNumber(t.booleanYesPoints) ?? 100) : null,
+          booleanNoPoints:  isBoolean ? (parseOptionalNumber(t.booleanNoPoints)  ?? 0)   : null,
+          multiSelectScoreRule: isDropDown ? t.multiSelectScoreRule : null,
+          penaliseMissingOnScore: isText ? null : t.penaliseMissingOnScore,
+          optionPoints: isDropDown && t.optionPoints.length > 0
+            ? t.optionPoints.map((o) => ({
+                optionValue: o.optionValue,
+                points: parseOptionalNumber(o.points) ?? 0,
+              }))
+            : null,
         }
       })
       return api.kpi.assignments.templates.batchCreate({
@@ -1421,6 +1695,7 @@ export function AssignKpisWizard() {
               onApplyRequiredToAll={applyRequiredToAll}
               tailoringErrors={tailoringErrors}
               showErrors={showTailoringErrors}
+              categoryWeightByCategory={categoryWeightByCategory}
             />
           )}
         </div>

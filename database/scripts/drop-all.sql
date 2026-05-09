@@ -90,6 +90,12 @@ GO
 IF OBJECT_ID('App.vAuditLog', 'V') IS NOT NULL
     DROP VIEW App.vAuditLog;
 GO
+IF OBJECT_ID('App.vSiteCompositeScore', 'V') IS NOT NULL
+    DROP VIEW App.vSiteCompositeScore;
+GO
+IF OBJECT_ID('App.vKpiSubmissionScores', 'V') IS NOT NULL
+    DROP VIEW App.vKpiSubmissionScores;
+GO
 IF OBJECT_ID('App.vKpiSubmissions', 'V') IS NOT NULL
     DROP VIEW App.vKpiSubmissions;
 GO
@@ -296,6 +302,12 @@ GO
 IF OBJECT_ID('App.usp_DeactivateKpiAssignment', 'P') IS NOT NULL
     DROP PROCEDURE App.usp_DeactivateKpiAssignment;
 GO
+IF OBJECT_ID('App.usp_RefreshTemplateCategoryWeights', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_RefreshTemplateCategoryWeights;
+GO
+IF OBJECT_ID('App.usp_UpsertCategoryWeights', 'P') IS NOT NULL
+    DROP PROCEDURE App.usp_UpsertCategoryWeights;
+GO
 IF OBJECT_ID('App.usp_MaterializeKpiAssignmentTemplates', 'P') IS NOT NULL
     DROP PROCEDURE App.usp_MaterializeKpiAssignmentTemplates;
 GO
@@ -469,6 +481,9 @@ IF OBJECT_ID('KPI.AssignmentTemplateDropDownOption', 'U') IS NOT NULL
 GO
 IF OBJECT_ID('KPI.AssignmentTemplate', 'U') IS NOT NULL
     DROP TABLE KPI.AssignmentTemplate;
+GO
+IF OBJECT_ID('KPI.CategoryWeight', 'U') IS NOT NULL
+    DROP TABLE KPI.CategoryWeight;
 GO
 IF OBJECT_ID('KPI.KpiPackageTag', 'U') IS NOT NULL
     DROP TABLE KPI.KpiPackageTag;
