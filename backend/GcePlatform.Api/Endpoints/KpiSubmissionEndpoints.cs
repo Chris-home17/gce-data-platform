@@ -23,6 +23,22 @@ public static class KpiSubmissionEndpoints
 
             using var conn = db.CreateConnection();
 
+            // Pre-submit validation (per-assignment rules). Runs in C# because
+            // T-SQL has no native regex; usp_SubmitKpi only snapshots the rules.
+            var ruleRow = await LookupRules(conn, request.AssignmentExternalId);
+            if (ruleRow is not null)
+            {
+                var validation = SubmissionValidator.Validate(
+                    ruleRow.Value.DataType,
+                    new SubmissionValidator.Rules(
+                        ruleRow.Value.MinValue, ruleRow.Value.MaxValue,
+                        ruleRow.Value.Precision, ruleRow.Value.Regex, ruleRow.Value.Message),
+                    request.SubmissionValue,
+                    request.SubmissionText);
+                if (!validation.Ok)
+                    return Results.BadRequest(new ApiError("VALIDATION_FAILED", validation.ErrorMessage!));
+            }
+
             var p = new DynamicParameters();
             p.Add("@AssignmentExternalId", request.AssignmentExternalId);
             p.Add("@SubmitterUPN",         upn);
@@ -81,6 +97,30 @@ public static class KpiSubmissionEndpoints
 
             foreach (var request in requests)
             {
+                // Validate before calling the proc (rules pulled per-assignment).
+                var ruleRow = await LookupRules(conn, request.AssignmentExternalId);
+                if (ruleRow is not null)
+                {
+                    var validation = SubmissionValidator.Validate(
+                        ruleRow.Value.DataType,
+                        new SubmissionValidator.Rules(
+                            ruleRow.Value.MinValue, ruleRow.Value.MaxValue,
+                            ruleRow.Value.Precision, ruleRow.Value.Regex, ruleRow.Value.Message),
+                        request.SubmissionValue,
+                        request.SubmissionText);
+                    if (!validation.Ok)
+                    {
+                        results.Add(new
+                        {
+                            assignmentExternalId = request.AssignmentExternalId,
+                            submissionId = (int?)null,
+                            success = false,
+                            error = validation.ErrorMessage,
+                        });
+                        continue;
+                    }
+                }
+
                 var p = new DynamicParameters();
                 p.Add("@AssignmentExternalId", request.AssignmentExternalId);
                 p.Add("@SubmitterUPN",         upn);
@@ -227,4 +267,28 @@ public static class KpiSubmissionEndpoints
 
         return app;
     }
+
+    /// <summary>
+    /// Single Dapper read of an assignment's validation rules + data type
+    /// keyed by ExternalId. Returns null if the assignment doesn't exist —
+    /// usp_SubmitKpi will then raise the standard "not found" error.
+    /// </summary>
+    private static async Task<RuleRow?> LookupRules(System.Data.IDbConnection conn, Guid assignmentExternalId)
+    {
+        return await conn.QuerySingleOrDefaultAsync<RuleRow?>(@"
+            SELECT
+                d.DataType                AS DataType,
+                a.ValidationMinValue      AS MinValue,
+                a.ValidationMaxValue      AS MaxValue,
+                a.ValidationPrecision     AS Precision,
+                a.ValidationRegex         AS Regex,
+                a.ValidationMessage       AS Message
+            FROM KPI.Assignment AS a
+            JOIN KPI.Definition AS d ON d.KPIID = a.KPIID
+            WHERE a.ExternalId = @AssignmentExternalId
+              AND a.IsActive = 1",
+            new { AssignmentExternalId = assignmentExternalId });
+    }
+
+    private record struct RuleRow(string DataType, decimal? MinValue, decimal? MaxValue, int? Precision, string? Regex, string? Message);
 }

@@ -4571,6 +4571,15 @@ BEGIN
         -- Snapshot of the account-level CategoryWeight at materialise time. Composite
         -- score reads this directly; cascade proc only updates it for unsubmitted assignments.
         CategoryWeightSnapshot DECIMAL(9,4)     NULL,
+        -- Optional per-assignment validation rules. NULL = no rule of that kind.
+        -- Enforced in the C# endpoint before usp_SubmitKpi runs.
+        ValidationMinValue     DECIMAL(18,4)    NULL,
+        ValidationMaxValue     DECIMAL(18,4)    NULL,
+        ValidationPrecision    INT              NULL
+            CONSTRAINT CK_KpiAsgn_ValidationPrecision
+                CHECK (ValidationPrecision IS NULL OR ValidationPrecision BETWEEN 0 AND 8),
+        ValidationRegex        NVARCHAR(500)    NULL,
+        ValidationMessage      NVARCHAR(500)    NULL,
         -- Admin
         AssignedByPrincipalId INT               NULL,
         IsActive            BIT                 NOT NULL CONSTRAINT DF_KpiAsgn_IsActive   DEFAULT (1),
@@ -4663,6 +4672,14 @@ BEGIN
         -- Snapshot of the account-level CategoryWeight at template-creation time.
         -- usp_RefreshTemplateCategoryWeights re-snaps explicitly when admin asks.
         CategoryWeightSnapshot DECIMAL(9,4) NULL,
+        -- Optional per-assignment validation rules. NULL = no rule of that kind.
+        ValidationMinValue   DECIMAL(18,4) NULL,
+        ValidationMaxValue   DECIMAL(18,4) NULL,
+        ValidationPrecision  INT NULL
+            CONSTRAINT CK_KpiTpl_ValidationPrecision
+                CHECK (ValidationPrecision IS NULL OR ValidationPrecision BETWEEN 0 AND 8),
+        ValidationRegex      NVARCHAR(500) NULL,
+        ValidationMessage    NVARCHAR(500) NULL,
         IsActive             BIT NOT NULL
             CONSTRAINT DF_KpiAssignmentTemplate_IsActive DEFAULT (1),
         CreatedOnUtc         DATETIME2(3) NOT NULL
@@ -4867,6 +4884,12 @@ BEGIN
                 CHECK (SubmittedMultiSelectScoreRule IN ('Sum','Avg','Max') OR SubmittedMultiSelectScoreRule IS NULL),
         SubmittedDropDownOptionPoints   NVARCHAR(MAX) NULL,
         SubmittedPenaliseMissingOnScore BIT           NULL,
+        -- Validation rules snapshot (Phase: KpiSubmissionValidation).
+        SubmittedValidationMinValue     DECIMAL(18,4) NULL,
+        SubmittedValidationMaxValue     DECIMAL(18,4) NULL,
+        SubmittedValidationPrecision    INT           NULL,
+        SubmittedValidationRegex        NVARCHAR(500) NULL,
+        SubmittedValidationMessage      NVARCHAR(500) NULL,
         -- Source
         SourceType              NVARCHAR(20)        NOT NULL
             CONSTRAINT CK_KpiSub_SourceType
@@ -5393,6 +5416,11 @@ AS
         t.MultiSelectScoreRule,
         t.PenaliseMissingOnScore,
         t.CategoryWeightSnapshot,
+        t.ValidationMinValue,
+        t.ValidationMaxValue,
+        t.ValidationPrecision,
+        t.ValidationRegex,
+        t.ValidationMessage,
         -- JSON of {value, points, sortOrder} for the template's per-option points;
         -- NULL when no rows exist in KPI.AssignmentTemplateDropDownOption.
         (
@@ -6071,6 +6099,11 @@ CREATE OR ALTER PROCEDURE App.usp_AssignKpi
     @MultiSelectScoreRule   NVARCHAR(10)    = NULL,
     @PenaliseMissingOnScore BIT             = 1,
     @CategoryWeightSnapshot DECIMAL(9,4)    = NULL,
+    @ValidationMinValue     DECIMAL(18,4)   = NULL,
+    @ValidationMaxValue     DECIMAL(18,4)   = NULL,
+    @ValidationPrecision    INT             = NULL,
+    @ValidationRegex        NVARCHAR(500)   = NULL,
+    @ValidationMessage      NVARCHAR(500)   = NULL,
     @ActorUPN               NVARCHAR(320)   = NULL,
     @AssignmentID           INT OUTPUT
 AS
@@ -6158,14 +6191,16 @@ BEGIN
              ThresholdDirection, SubmitterGuidance, AssignedByPrincipalId, AssignmentGroupName,
              KpiWeight, ScoringMode, BandPointsGreen, BandPointsAmber, BandPointsRed,
              BooleanYesPoints, BooleanNoPoints, MultiSelectScoreRule, PenaliseMissingOnScore,
-             CategoryWeightSnapshot)
+             CategoryWeightSnapshot,
+             ValidationMinValue, ValidationMaxValue, ValidationPrecision, ValidationRegex, ValidationMessage)
         VALUES
             (@KPIID, @AccountId, @OrgUnitId, @PeriodID, @AssignmentTemplateID, @IsRequired,
              @TargetValue, @ThresholdGreen, @ThresholdAmber, @ThresholdRed,
              @ThresholdDirection, @SubmitterGuidance, @ActorPrincipalId, @AssignmentGroupName,
              @KpiWeight, @ScoringMode, @BandPointsGreen, @BandPointsAmber, @BandPointsRed,
              @BooleanYesPoints, @BooleanNoPoints, @MultiSelectScoreRule, @PenaliseMissingOnScore,
-             @CategoryWeightSnapshot);
+             @CategoryWeightSnapshot,
+             @ValidationMinValue, @ValidationMaxValue, @ValidationPrecision, @ValidationRegex, @ValidationMessage);
 
         SET @AssignmentID = SCOPE_IDENTITY();
     END
@@ -6189,6 +6224,11 @@ BEGIN
             MultiSelectScoreRule   = @MultiSelectScoreRule,
             PenaliseMissingOnScore = @PenaliseMissingOnScore,
             -- CategoryWeightSnapshot deliberately NOT touched on UPDATE (locked).
+            ValidationMinValue     = @ValidationMinValue,
+            ValidationMaxValue     = @ValidationMaxValue,
+            ValidationPrecision    = @ValidationPrecision,
+            ValidationRegex        = @ValidationRegex,
+            ValidationMessage      = @ValidationMessage,
             IsActive               = 1,   -- reactivate if previously deactivated
             ModifiedOnUtc          = SYSUTCDATETIME(),
             ModifiedBy             = COALESCE(@ActorUPN, SESSION_USER)
@@ -6387,6 +6427,11 @@ CREATE OR ALTER PROCEDURE App.usp_UpsertKpiAssignmentTemplate
     -- in KPI.AssignmentTemplateDropDownOption for this template.
     -- Format: [{"value":"Yes","points":10,"sortOrder":1}, ...]
     @OptionPoints           NVARCHAR(MAX)   = NULL,
+    @ValidationMinValue     DECIMAL(18,4)   = NULL,
+    @ValidationMaxValue     DECIMAL(18,4)   = NULL,
+    @ValidationPrecision    INT             = NULL,
+    @ValidationRegex        NVARCHAR(500)   = NULL,
+    @ValidationMessage      NVARCHAR(500)   = NULL,
     @ActorUPN               NVARCHAR(320)   = NULL,
     @AssignmentTemplateID   INT OUTPUT
 AS
@@ -6492,7 +6537,8 @@ BEGIN
              CustomKpiName, CustomKpiDescription, KpiPackageId, AssignmentGroupName,
              KpiWeight, ScoringMode, BandPointsGreen, BandPointsAmber, BandPointsRed,
              BooleanYesPoints, BooleanNoPoints, MultiSelectScoreRule, PenaliseMissingOnScore,
-             CategoryWeightSnapshot)
+             CategoryWeightSnapshot,
+             ValidationMinValue, ValidationMaxValue, ValidationPrecision, ValidationRegex, ValidationMessage)
         VALUES
             (@KPIID, @PeriodScheduleID, @AccountId, @OrgUnitId, @StartPeriodYear, @StartPeriodMonth, @EndPeriodYear, @EndPeriodMonth,
              @IsRequired, @TargetValue, @ThresholdGreen, @ThresholdAmber, @ThresholdRed, @ThresholdDirection, @SubmitterGuidance,
@@ -6506,7 +6552,8 @@ BEGIN
              @BooleanNoPoints,
              @MultiSelectScoreRule,
              COALESCE(@PenaliseMissingOnScore, @IsRequired),
-             @SnapCategoryWeight);
+             @SnapCategoryWeight,
+             @ValidationMinValue, @ValidationMaxValue, @ValidationPrecision, @ValidationRegex, @ValidationMessage);
 
         SET @AssignmentTemplateID = SCOPE_IDENTITY();
     END
@@ -6537,6 +6584,12 @@ BEGIN
             BooleanNoPoints        = @BooleanNoPoints,
             MultiSelectScoreRule   = @MultiSelectScoreRule,
             PenaliseMissingOnScore = COALESCE(@PenaliseMissingOnScore, PenaliseMissingOnScore),
+            -- Validation rules: admin can tighten/relax any time; not locked.
+            ValidationMinValue     = @ValidationMinValue,
+            ValidationMaxValue     = @ValidationMaxValue,
+            ValidationPrecision    = @ValidationPrecision,
+            ValidationRegex        = @ValidationRegex,
+            ValidationMessage      = @ValidationMessage,
             IsActive               = 1,
             ModifiedOnUtc          = SYSUTCDATETIME(),
             ModifiedBy             = COALESCE(@ActorUPN, SESSION_USER)
@@ -6591,6 +6644,11 @@ BEGIN
         MultiSelectScoreRule   = t.MultiSelectScoreRule,
         PenaliseMissingOnScore = t.PenaliseMissingOnScore,
         CategoryWeightSnapshot = t.CategoryWeightSnapshot,
+        ValidationMinValue     = t.ValidationMinValue,
+        ValidationMaxValue     = t.ValidationMaxValue,
+        ValidationPrecision    = t.ValidationPrecision,
+        ValidationRegex        = t.ValidationRegex,
+        ValidationMessage      = t.ValidationMessage,
         ModifiedOnUtc          = SYSUTCDATETIME(),
         ModifiedBy             = COALESCE(@ActorUPN, SESSION_USER)
     FROM KPI.Assignment         AS a
@@ -6639,6 +6697,11 @@ BEGIN
         @TemplateMSRule NVARCHAR(10),
         @TemplatePenaliseMissing BIT,
         @TemplateCategoryWeightSnapshot DECIMAL(9,4),
+        @TemplateValidationMin DECIMAL(18,4),
+        @TemplateValidationMax DECIMAL(18,4),
+        @TemplateValidationPrecision INT,
+        @TemplateValidationRegex NVARCHAR(500),
+        @TemplateValidationMessage NVARCHAR(500),
         -- Used when expanding account-wide templates to per-site assignments
         @SiteOrgUnitCode NVARCHAR(50);
 
@@ -6673,7 +6736,12 @@ BEGIN
             t.BooleanNoPoints,
             t.MultiSelectScoreRule,
             t.PenaliseMissingOnScore,
-            t.CategoryWeightSnapshot
+            t.CategoryWeightSnapshot,
+            t.ValidationMinValue,
+            t.ValidationMaxValue,
+            t.ValidationPrecision,
+            t.ValidationRegex,
+            t.ValidationMessage
         FROM KPI.AssignmentTemplate AS t
         JOIN KPI.Definition         AS d     ON d.KPIID              = t.KPIID
         JOIN KPI.PeriodSchedule     AS sched ON sched.PeriodScheduleID = t.PeriodScheduleID
@@ -6694,7 +6762,9 @@ BEGIN
         @TemplateThresholdDirection, @TemplateSubmitterGuidance, @TemplateGroupName,
         @TemplateKpiWeight, @TemplateScoringMode, @TemplateBandG, @TemplateBandA, @TemplateBandR,
         @TemplateBoolY, @TemplateBoolN, @TemplateMSRule, @TemplatePenaliseMissing,
-        @TemplateCategoryWeightSnapshot;
+        @TemplateCategoryWeightSnapshot,
+        @TemplateValidationMin, @TemplateValidationMax, @TemplateValidationPrecision,
+        @TemplateValidationRegex, @TemplateValidationMessage;
 
     WHILE @@FETCH_STATUS = 0
     BEGIN
@@ -6767,6 +6837,11 @@ BEGIN
                         @MultiSelectScoreRule   = @TemplateMSRule,
                         @PenaliseMissingOnScore = @TemplatePenaliseMissing,
                         @CategoryWeightSnapshot = @TemplateCategoryWeightSnapshot,
+                        @ValidationMinValue     = @TemplateValidationMin,
+                        @ValidationMaxValue     = @TemplateValidationMax,
+                        @ValidationPrecision    = @TemplateValidationPrecision,
+                        @ValidationRegex        = @TemplateValidationRegex,
+                        @ValidationMessage      = @TemplateValidationMessage,
                         @ActorUPN               = @ActorUPN,
                         @AssignmentID           = @GeneratedAssignmentId OUTPUT;
 
@@ -6807,6 +6882,11 @@ BEGIN
                     @MultiSelectScoreRule   = @TemplateMSRule,
                     @PenaliseMissingOnScore = @TemplatePenaliseMissing,
                     @CategoryWeightSnapshot = @TemplateCategoryWeightSnapshot,
+                    @ValidationMinValue     = @TemplateValidationMin,
+                    @ValidationMaxValue     = @TemplateValidationMax,
+                    @ValidationPrecision    = @TemplateValidationPrecision,
+                    @ValidationRegex        = @TemplateValidationRegex,
+                    @ValidationMessage      = @TemplateValidationMessage,
                     @ActorUPN               = @ActorUPN,
                     @AssignmentID           = @GeneratedAssignmentId OUTPUT;
             END
@@ -6825,7 +6905,9 @@ BEGIN
             @TemplateThresholdDirection, @TemplateSubmitterGuidance, @TemplateGroupName,
             @TemplateKpiWeight, @TemplateScoringMode, @TemplateBandG, @TemplateBandA, @TemplateBandR,
             @TemplateBoolY, @TemplateBoolN, @TemplateMSRule, @TemplatePenaliseMissing,
-            @TemplateCategoryWeightSnapshot;
+            @TemplateCategoryWeightSnapshot,
+            @TemplateValidationMin, @TemplateValidationMax, @TemplateValidationPrecision,
+            @TemplateValidationRegex, @TemplateValidationMessage;
     END
 
     CLOSE template_cursor;
@@ -7183,6 +7265,11 @@ BEGIN
     DECLARE @SnapMSRule             NVARCHAR(10);
     DECLARE @SnapPenaliseMissing    BIT;
     DECLARE @SnapTemplateId         INT;
+    DECLARE @SnapValMin             DECIMAL(18,4);
+    DECLARE @SnapValMax             DECIMAL(18,4);
+    DECLARE @SnapValPrecision       INT;
+    DECLARE @SnapValRegex           NVARCHAR(500);
+    DECLARE @SnapValMessage         NVARCHAR(500);
 
     SELECT
         @SnapTargetValue        = a.TargetValue,
@@ -7199,7 +7286,12 @@ BEGIN
         @SnapBoolN              = a.BooleanNoPoints,
         @SnapMSRule             = a.MultiSelectScoreRule,
         @SnapPenaliseMissing    = a.PenaliseMissingOnScore,
-        @SnapTemplateId         = a.AssignmentTemplateID
+        @SnapTemplateId         = a.AssignmentTemplateID,
+        @SnapValMin             = a.ValidationMinValue,
+        @SnapValMax             = a.ValidationMaxValue,
+        @SnapValPrecision       = a.ValidationPrecision,
+        @SnapValRegex           = a.ValidationRegex,
+        @SnapValMessage         = a.ValidationMessage
     FROM KPI.Assignment AS a
     JOIN KPI.Definition AS d ON d.KPIID = a.KPIID
     WHERE a.AssignmentID = @AssignmentID;
@@ -7225,7 +7317,9 @@ BEGIN
              SubmittedBandPointsGreen, SubmittedBandPointsAmber, SubmittedBandPointsRed,
              SubmittedBooleanYesPoints, SubmittedBooleanNoPoints,
              SubmittedMultiSelectScoreRule, SubmittedDropDownOptionPoints,
-             SubmittedPenaliseMissingOnScore)
+             SubmittedPenaliseMissingOnScore,
+             SubmittedValidationMinValue, SubmittedValidationMaxValue, SubmittedValidationPrecision,
+             SubmittedValidationRegex, SubmittedValidationMessage)
         VALUES
             (@AssignmentID, @SubmitterPrincipalId, SYSUTCDATETIME(),
              @SubmissionValue, @SubmissionText, @SubmissionBoolean, @SubmissionNotes,
@@ -7237,7 +7331,9 @@ BEGIN
              @SnapBandG, @SnapBandA, @SnapBandR,
              @SnapBoolY, @SnapBoolN,
              @SnapMSRule, @SnapDDPoints,
-             @SnapPenaliseMissing);
+             @SnapPenaliseMissing,
+             @SnapValMin, @SnapValMax, @SnapValPrecision,
+             @SnapValRegex, @SnapValMessage);
 
         SET @SubmissionID = SCOPE_IDENTITY();
 
@@ -7699,7 +7795,13 @@ AS
         -- because per-KPI scores are normalised; KpiWeight is the multiplier
         -- applied at composite-roll-up time.
         asgn.KpiWeight,
-        CAST(100.0 AS DECIMAL(9,4))                             AS MaxScore
+        CAST(100.0 AS DECIMAL(9,4))                             AS MaxScore,
+        -- Validation rules: capture page mirrors these for client-side feedback.
+        asgn.ValidationMinValue,
+        asgn.ValidationMaxValue,
+        asgn.ValidationPrecision,
+        asgn.ValidationRegex,
+        asgn.ValidationMessage
     FROM App.vSubmissionTokens AS st
     JOIN KPI.Assignment AS asgn
         ON asgn.PeriodID = st.PeriodId

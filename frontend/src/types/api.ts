@@ -399,6 +399,11 @@ export interface BatchKpiAssignmentTemplateItem {
   penaliseMissingOnScore?: boolean | null
   /** Per-option points for DropDown KPIs; replaces all rows on the template when set. */
   optionPoints?: DropDownOptionPoints[] | null
+  validationMinValue?: number | null
+  validationMaxValue?: number | null
+  validationPrecision?: number | null
+  validationRegex?: string | null
+  validationMessage?: string | null
 }
 
 export interface BatchCreateKpiAssignmentTemplatesInput {
@@ -681,6 +686,12 @@ export interface KpiAssignmentTemplate {
   optionPointsRaw: string | null
   /** Per-template snapshot of the account-level CategoryWeight at template-creation time. */
   categoryWeightSnapshot: number | null
+  /** Per-assignment validation rules. NULL = no rule of that kind. Enforced at submit time. */
+  validationMinValue: number | null
+  validationMaxValue: number | null
+  validationPrecision: number | null
+  validationRegex: string | null
+  validationMessage: string | null
 }
 
 /** Per-option points for a DropDown KPI assignment template. */
@@ -1004,6 +1015,11 @@ export interface CreateKpiAssignmentTemplateInput {
   penaliseMissingOnScore?: boolean | null
   /** When set, replaces all dropdown option points on the template. */
   optionPoints?: DropDownOptionPoints[] | null
+  validationMinValue?: number | null
+  validationMaxValue?: number | null
+  validationPrecision?: number | null
+  validationRegex?: string | null
+  validationMessage?: string | null
 }
 
 /** PATCH payload for an existing template. KPI / schedule / account / scope /
@@ -1028,6 +1044,11 @@ export interface UpdateKpiAssignmentTemplateInput {
   multiSelectScoreRule?: 'Sum' | 'Avg' | 'Max' | null
   penaliseMissingOnScore?: boolean | null
   optionPoints?: DropDownOptionPoints[] | null
+  validationMinValue?: number | null
+  validationMaxValue?: number | null
+  validationPrecision?: number | null
+  validationRegex?: string | null
+  validationMessage?: string | null
 }
 
 // ---------------------------------------------------------------------------
@@ -1075,6 +1096,12 @@ export interface AssignmentWithSubmission {
   kpiWeight: number
   /** Always 100 — exposed for "Worth N points" display on the capture form. */
   maxScore: number
+  /** Per-assignment validation rules — capture page mirrors these client-side. */
+  validationMinValue: number | null
+  validationMaxValue: number | null
+  validationPrecision: number | null
+  validationRegex: string | null
+  validationMessage: string | null
 }
 
 export interface SubmissionTokenContext {

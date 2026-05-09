@@ -53,7 +53,12 @@ public static class KpiAssignmentEndpoints
         MultiSelectScoreRule,
         CAST(PenaliseMissingOnScore AS bit) AS PenaliseMissingOnScore,
         OptionPointsRaw,
-        CategoryWeightSnapshot";
+        CategoryWeightSnapshot,
+        ValidationMinValue,
+        ValidationMaxValue,
+        ValidationPrecision,
+        ValidationRegex,
+        ValidationMessage";
 
     public static WebApplication MapKpiAssignmentEndpoints(this WebApplication app)
     {
@@ -201,6 +206,11 @@ public static class KpiAssignmentEndpoints
             p.Add("@MultiSelectScoreRule", request.MultiSelectScoreRule);
             p.Add("@PenaliseMissingOnScore", request.PenaliseMissingOnScore);
             p.Add("@OptionPoints", SerializeOptionPoints(request.OptionPoints));
+            p.Add("@ValidationMinValue", request.ValidationMinValue);
+            p.Add("@ValidationMaxValue", request.ValidationMaxValue);
+            p.Add("@ValidationPrecision", request.ValidationPrecision);
+            p.Add("@ValidationRegex", request.ValidationRegex);
+            p.Add("@ValidationMessage", request.ValidationMessage);
             p.Add("@AssignmentTemplateID", dbType: System.Data.DbType.Int32,
                   direction: System.Data.ParameterDirection.Output);
 
@@ -276,6 +286,11 @@ public static class KpiAssignmentEndpoints
             p.Add("@MultiSelectScoreRule", request.MultiSelectScoreRule);
             p.Add("@PenaliseMissingOnScore", request.PenaliseMissingOnScore);
             p.Add("@OptionPoints", SerializeOptionPoints(request.OptionPoints));
+            p.Add("@ValidationMinValue", request.ValidationMinValue);
+            p.Add("@ValidationMaxValue", request.ValidationMaxValue);
+            p.Add("@ValidationPrecision", request.ValidationPrecision);
+            p.Add("@ValidationRegex", request.ValidationRegex);
+            p.Add("@ValidationMessage", request.ValidationMessage);
             p.Add("@AssignmentTemplateID", dbType: System.Data.DbType.Int32,
                   direction: System.Data.ParameterDirection.Output);
 
@@ -367,6 +382,11 @@ public static class KpiAssignmentEndpoints
                         p.Add("@MultiSelectScoreRule", item.MultiSelectScoreRule);
                         p.Add("@PenaliseMissingOnScore", item.PenaliseMissingOnScore);
                         p.Add("@OptionPoints", SerializeOptionPoints(item.OptionPoints));
+                        p.Add("@ValidationMinValue", item.ValidationMinValue);
+                        p.Add("@ValidationMaxValue", item.ValidationMaxValue);
+                        p.Add("@ValidationPrecision", item.ValidationPrecision);
+                        p.Add("@ValidationRegex", item.ValidationRegex);
+                        p.Add("@ValidationMessage", item.ValidationMessage);
                         p.Add("@AssignmentTemplateID", dbType: System.Data.DbType.Int32,
                               direction: System.Data.ParameterDirection.Output);
 

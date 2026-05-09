@@ -91,6 +91,12 @@ const schema = z.object({
   multiSelectScoreRule: z.enum(['Sum', 'Avg', 'Max']).optional(),
   penaliseMissingOnScore: z.boolean(),
   optionPoints: z.array(optionPointsRow).optional(),
+  // Validation (all optional)
+  validationMinValue: z.number().nullable().optional(),
+  validationMaxValue: z.number().nullable().optional(),
+  validationPrecision: z.number().int().min(0).max(8).nullable().optional(),
+  validationRegex: z.string().max(500).optional(),
+  validationMessage: z.string().max(500).optional(),
 }).superRefine((d, ctx) => {
   if (d.overrideKpiName && !d.customKpiName?.trim()) {
     ctx.addIssue({ code: 'custom', path: ['customKpiName'], message: 'Display name is required when override is enabled' })
@@ -182,6 +188,11 @@ export function EditAssignmentTemplateSheet({ template, open, onClose }: EditAss
       multiSelectScoreRule: (template?.multiSelectScoreRule as FormValues['multiSelectScoreRule']) ?? 'Sum',
       penaliseMissingOnScore: template?.penaliseMissingOnScore ?? true,
       optionPoints: parseOptionPoints(template?.optionPointsRaw),
+      validationMinValue: template?.validationMinValue ?? null,
+      validationMaxValue: template?.validationMaxValue ?? null,
+      validationPrecision: template?.validationPrecision ?? null,
+      validationRegex: template?.validationRegex ?? '',
+      validationMessage: template?.validationMessage ?? '',
     },
   })
 
@@ -209,6 +220,11 @@ export function EditAssignmentTemplateSheet({ template, open, onClose }: EditAss
         multiSelectScoreRule: (template.multiSelectScoreRule as FormValues['multiSelectScoreRule']) ?? 'Sum',
         penaliseMissingOnScore: template.penaliseMissingOnScore ?? true,
         optionPoints: parseOptionPoints(template.optionPointsRaw),
+        validationMinValue: template.validationMinValue ?? null,
+        validationMaxValue: template.validationMaxValue ?? null,
+        validationPrecision: template.validationPrecision ?? null,
+        validationRegex: template.validationRegex ?? '',
+        validationMessage: template.validationMessage ?? '',
       })
     }
   }, [open, template?.assignmentTemplateId]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -253,6 +269,12 @@ export function EditAssignmentTemplateSheet({ template, open, onClose }: EditAss
         optionPoints: isDropDownKpi && (values.optionPoints?.length ?? 0) > 0
           ? values.optionPoints!.map((o) => ({ optionValue: o.optionValue, points: o.points ?? 0 }))
           : null,
+        // Validation rules — Boolean is excluded; other types map their relevant rules.
+        validationMinValue: isTextKpi || isBooleanKpi ? null : (values.validationMinValue ?? null),
+        validationMaxValue: isTextKpi || isBooleanKpi ? null : (values.validationMaxValue ?? null),
+        validationPrecision: supportsThresholds && !isTimeKpi ? (values.validationPrecision ?? null) : null,
+        validationRegex: (isTextKpi || isDropDownKpi) ? (values.validationRegex?.trim() || null) : null,
+        validationMessage: isBooleanKpi ? null : (values.validationMessage?.trim() || null),
       })
     },
     onSuccess: (updated) => {
@@ -690,6 +712,135 @@ export function EditAssignmentTemplateSheet({ template, open, onClose }: EditAss
                   {template.category && <> ({template.category})</>}
                   <span> — snapshotted when this template was created. Edit on the Category Weights page and click <strong>Re-apply to existing templates</strong> to push a new value to this template&apos;s unsubmitted assignments.</span>
                 </div>
+              </>
+            )}
+
+            {/* ── Validation (optional) ───────────────────── */}
+            {!isBooleanKpi && (
+              <>
+                <SectionHeading>Validation <span className="font-normal text-muted-foreground">(optional)</span></SectionHeading>
+                {supportsThresholds && (
+                  <div className="grid grid-cols-3 gap-3">
+                    <FormField
+                      control={form.control}
+                      name="validationMinValue"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Min value</FormLabel>
+                          <FormControl>
+                            {isTimeKpi ? (
+                              <TimeInput value={field.value ?? null} onChange={field.onChange} />
+                            ) : (
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={field.value ?? ''}
+                                onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))}
+                                placeholder="No min"
+                              />
+                            )}
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="validationMaxValue"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Max value</FormLabel>
+                          <FormControl>
+                            {isTimeKpi ? (
+                              <TimeInput value={field.value ?? null} onChange={field.onChange} />
+                            ) : (
+                              <Input
+                                type="number"
+                                step="0.01"
+                                value={field.value ?? ''}
+                                onChange={(e) => field.onChange(parseOptionalNumber(e.target.value))}
+                                placeholder="No max"
+                              />
+                            )}
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    {!isTimeKpi && (
+                      <FormField
+                        control={form.control}
+                        name="validationPrecision"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Decimal places</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                step="1"
+                                min={0}
+                                max={8}
+                                value={field.value ?? ''}
+                                onChange={(e) => {
+                                  const n = parseOptionalNumber(e.target.value)
+                                  field.onChange(n === null ? null : Math.round(n))
+                                }}
+                                placeholder="Any"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+                  </div>
+                )}
+
+                {(isTextKpi || isDropDownKpi) && (
+                  <FormField
+                    control={form.control}
+                    name="validationRegex"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Regex pattern</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="text"
+                            className="font-mono"
+                            placeholder={'e.g.  ^ORD-\\d{6}$'}
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription className="text-xs">
+                          Submitted value must match this pattern. Leave empty to skip.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
+                <FormField
+                  control={form.control}
+                  name="validationMessage"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Custom error message <span className="font-normal text-muted-foreground">(optional)</span></FormLabel>
+                      <FormControl>
+                        <Input
+                          type="text"
+                          placeholder="Defaults to a generic message"
+                          maxLength={500}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription className="text-xs">
+                        Shown to the submitter when validation fails. Use this to point them at the correct format.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </>
             )}
 

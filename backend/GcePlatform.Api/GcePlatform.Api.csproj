@@ -86,6 +86,9 @@
     <!-- KpiScoringCategoryWeightTemplate: per-template CategoryWeightSnapshot + cascade proc -->
     <EmbeddedResource Include="Migrations\Scripts\KpiScoringCategoryWeightTemplate.Up.sql" />
     <EmbeddedResource Include="Migrations\Scripts\KpiScoringCategoryWeightTemplate.Down.sql" />
+    <!-- KpiSubmissionValidation: per-assignment Min/Max/Precision/Regex + snapshot -->
+    <EmbeddedResource Include="Migrations\Scripts\KpiSubmissionValidation.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\KpiSubmissionValidation.Down.sql" />
   </ItemGroup>
 
 </Project>

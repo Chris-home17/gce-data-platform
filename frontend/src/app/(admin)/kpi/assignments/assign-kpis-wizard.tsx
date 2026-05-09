@@ -104,6 +104,12 @@ interface KpiTailoringValues {
   /** Per-option points for DropDown KPIs. Seeded from the catalog when the row
    *  is first expanded; values stored as strings for input round-trip. */
   optionPoints: Array<{ optionValue: string; points: string }>
+  // Validation rules — all optional. Stored as strings for input round-trip.
+  validationMinValue: string
+  validationMaxValue: string
+  validationPrecision: string
+  validationRegex: string
+  validationMessage: string
 }
 
 interface EffectiveKpi {
@@ -139,6 +145,11 @@ function defaultTailoring(): KpiTailoringValues {
     multiSelectScoreRule: 'Sum',
     penaliseMissingOnScore: true,
     optionPoints: [],
+    validationMinValue: '',
+    validationMaxValue: '',
+    validationPrecision: '',
+    validationRegex: '',
+    validationMessage: '',
   }
 }
 
@@ -162,7 +173,12 @@ function isTailoringDirty(v: KpiTailoringValues): boolean {
     v.booleanNoPoints !== '0' ||
     v.multiSelectScoreRule !== 'Sum' ||
     !v.penaliseMissingOnScore ||
-    v.optionPoints.some((o) => o.points !== '' && o.points !== '0')
+    v.optionPoints.some((o) => o.points !== '' && o.points !== '0') ||
+    v.validationMinValue !== '' ||
+    v.validationMaxValue !== '' ||
+    v.validationPrecision !== '' ||
+    v.validationRegex !== '' ||
+    v.validationMessage !== ''
   )
 }
 
@@ -1145,6 +1161,101 @@ function KpiTailoringRow({ kpi, values, onChange, fieldErrors, showErrors, curre
             </>
           )}
 
+          {/* Validation */}
+          {kpi.dataType !== 'Boolean' && (
+            <>
+              <SectionHeading>Validation <span className="font-normal text-muted-foreground">(optional)</span></SectionHeading>
+              {supportsThresholds && (
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Min value</Label>
+                    {isTimeKpi ? (
+                      <TimeInput
+                        className="h-9"
+                        value={values.validationMinValue ? parseTimeToSeconds(values.validationMinValue) : null}
+                        onChange={(secs) => onChange({ validationMinValue: secs == null ? '' : String(secs) })}
+                      />
+                    ) : (
+                      <Input
+                        type="number"
+                        step="0.01"
+                        className="h-9"
+                        value={values.validationMinValue}
+                        onChange={(e) => onChange({ validationMinValue: e.target.value })}
+                        placeholder="No min"
+                      />
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Max value</Label>
+                    {isTimeKpi ? (
+                      <TimeInput
+                        className="h-9"
+                        value={values.validationMaxValue ? parseTimeToSeconds(values.validationMaxValue) : null}
+                        onChange={(secs) => onChange({ validationMaxValue: secs == null ? '' : String(secs) })}
+                      />
+                    ) : (
+                      <Input
+                        type="number"
+                        step="0.01"
+                        className="h-9"
+                        value={values.validationMaxValue}
+                        onChange={(e) => onChange({ validationMaxValue: e.target.value })}
+                        placeholder="No max"
+                      />
+                    )}
+                  </div>
+                  {!isTimeKpi && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">Decimal places</Label>
+                      <Input
+                        type="number"
+                        step="1"
+                        min={0}
+                        max={8}
+                        className="h-9"
+                        value={values.validationPrecision}
+                        onChange={(e) => onChange({ validationPrecision: e.target.value })}
+                        placeholder="Any"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {(kpi.dataType === 'Text' || kpi.dataType === 'DropDown') && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Regex pattern</Label>
+                  <Input
+                    type="text"
+                    className="h-9 font-mono"
+                    value={values.validationRegex}
+                    onChange={(e) => onChange({ validationRegex: e.target.value })}
+                    placeholder={'e.g.  ^ORD-\\d{6}$'}
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Submitted value must match this regex. Leave empty to skip.
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">Custom error message <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                <Input
+                  type="text"
+                  className="h-9"
+                  value={values.validationMessage}
+                  onChange={(e) => onChange({ validationMessage: e.target.value })}
+                  placeholder="Defaults to a generic message"
+                  maxLength={500}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Shown to the submitter when validation fails. Use this to point them at the correct format.
+                </p>
+              </div>
+            </>
+          )}
+
           {/* Display */}
           <SectionHeading>Display</SectionHeading>
           <div className="flex items-center justify-between rounded-md border px-3 py-2.5">
@@ -1613,6 +1724,16 @@ export function AssignKpisWizard() {
                 points: parseOptionalNumber(o.points) ?? 0,
               }))
             : null,
+          // Validation rules — Boolean KPIs aren't validated.
+          validationMinValue: kpi.dataType === 'Boolean' ? null : parseOptionalNumber(t.validationMinValue),
+          validationMaxValue: kpi.dataType === 'Boolean' ? null : parseOptionalNumber(t.validationMaxValue),
+          validationPrecision: kpi.dataType === 'Boolean' ? null : parseOptionalNumber(t.validationPrecision),
+          validationRegex: (kpi.dataType === 'Text' || kpi.dataType === 'DropDown') && t.validationRegex.trim()
+            ? t.validationRegex.trim()
+            : null,
+          validationMessage: kpi.dataType === 'Boolean'
+            ? null
+            : (t.validationMessage.trim() || null),
         }
       })
       return api.kpi.assignments.templates.batchCreate({

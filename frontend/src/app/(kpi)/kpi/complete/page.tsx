@@ -1,9 +1,10 @@
 'use client'
 
-import { Suspense, useState, useCallback } from 'react'
+import { Suspense, useState, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { validateSubmission } from '@/lib/submission-validator'
 import {
   Lock,
   CheckCircle2,
@@ -249,6 +250,35 @@ function KpiRow({ assignment, index, onSaved }: KpiRowProps) {
   const [notes, setNotes] = useState<string>(assignment.submissionNotes ?? '')
   const [dirty, setDirty] = useState(false)
 
+  // Live validation: re-evaluates whenever the input changes.
+  const validation = useMemo(() => {
+    const numericValue = (isNumeric || isTime) && value !== '' ? Number(value) : null
+    const textValue = isText
+      ? value
+      : isDropDown
+        ? selectedOptions.join('|')
+        : null
+    return validateSubmission({
+      dataType: assignment.dataType,
+      rules: {
+        minValue: assignment.validationMinValue ?? null,
+        maxValue: assignment.validationMaxValue ?? null,
+        precision: assignment.validationPrecision ?? null,
+        regex: assignment.validationRegex ?? null,
+        message: assignment.validationMessage ?? null,
+      },
+      value: numericValue,
+      text: textValue,
+    })
+  }, [
+    assignment.dataType, assignment.validationMinValue, assignment.validationMaxValue,
+    assignment.validationPrecision, assignment.validationRegex, assignment.validationMessage,
+    value, selectedOptions, isText, isDropDown, isNumeric, isTime,
+  ])
+
+  const validationError = !validation.ok ? validation.error : null
+  const showValidationError = validationError && (dirty || assignment.isSubmitted)
+
   const handleChange = useCallback((v: string) => {
     setValue(v)
     setDirty(true)
@@ -467,7 +497,7 @@ function KpiRow({ assignment, index, onSaved }: KpiRowProps) {
               <Button
                 className="kpi-save-btn shrink-0 h-9 px-4 text-sm font-medium"
                 onClick={() => mutation.mutate()}
-                disabled={mutation.isPending || boolValue === null || (!dirty && assignment.isSubmitted)}
+                disabled={mutation.isPending || boolValue === null || !!validationError || (!dirty && assignment.isSubmitted)}
               >
                 {mutation.isPending ? (
                   <span className="flex items-center gap-1.5">
@@ -523,7 +553,7 @@ function KpiRow({ assignment, index, onSaved }: KpiRowProps) {
                 <Button
                   className="kpi-save-btn shrink-0 h-9 px-4 text-sm font-medium"
                   onClick={() => mutation.mutate()}
-                  disabled={mutation.isPending || selectedOptions.length === 0 || (!dirty && assignment.isSubmitted)}
+                  disabled={mutation.isPending || selectedOptions.length === 0 || !!validationError || (!dirty && assignment.isSubmitted)}
                 >
                   {mutation.isPending ? (
                     <span className="flex items-center gap-1.5">
@@ -570,7 +600,7 @@ function KpiRow({ assignment, index, onSaved }: KpiRowProps) {
               <Button
                 className="kpi-save-btn shrink-0 h-9 px-4 text-sm font-medium"
                 onClick={() => mutation.mutate()}
-                disabled={mutation.isPending || !dirty && assignment.isSubmitted}
+                disabled={mutation.isPending || !!validationError || (!dirty && assignment.isSubmitted)}
               >
                 {mutation.isPending ? (
                   <span className="flex items-center gap-1.5">
@@ -585,6 +615,11 @@ function KpiRow({ assignment, index, onSaved }: KpiRowProps) {
                 )}
               </Button>
             </div>
+          )}
+
+          {/* Validation error — shown after the user has interacted or already submitted. */}
+          {showValidationError && (
+            <p className="text-xs text-red-600 font-medium">{validationError}</p>
           )}
 
           {/* Notes input — only shown for non-boolean, non-dropdown (those have it inline) */}

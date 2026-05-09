@@ -367,7 +367,12 @@ public record EffectiveKpiAssignmentDto(
     decimal? ThresholdRed,
     string   EffectiveThresholdDirection,
     string?  SubmitterGuidance,
-    bool     IsActive
+    bool     IsActive,
+    decimal? ValidationMinValue = null,
+    decimal? ValidationMaxValue = null,
+    int?     ValidationPrecision = null,
+    string?  ValidationRegex = null,
+    string?  ValidationMessage = null
 );
 
 public record KpiAssignmentTemplateDto(
@@ -415,7 +420,13 @@ public record KpiAssignmentTemplateDto(
     /// <summary>JSON [{value,points,sortOrder}] of the template's per-option points; null for non-DropDown templates.</summary>
     string?   OptionPointsRaw = null,
     /// <summary>Per-template snapshot of the account-level CategoryWeight at template-creation time.</summary>
-    decimal?  CategoryWeightSnapshot = null
+    decimal?  CategoryWeightSnapshot = null,
+    /// <summary>Per-assignment validation rule: minimum value (numeric-like data types).</summary>
+    decimal?  ValidationMinValue = null,
+    decimal?  ValidationMaxValue = null,
+    int?      ValidationPrecision = null,
+    string?   ValidationRegex = null,
+    string?   ValidationMessage = null
 );
 
 // Per-option points + sort order for DropDown KPI assignments.
@@ -453,7 +464,12 @@ public record CreateKpiAssignmentTemplateRequest(
     string?   MultiSelectScoreRule = null,
     bool?     PenaliseMissingOnScore = null,
     // When non-null, replaces all dropdown option points for this template.
-    IEnumerable<DropDownOptionPointsDto>? OptionPoints = null
+    IEnumerable<DropDownOptionPointsDto>? OptionPoints = null,
+    decimal?  ValidationMinValue = null,
+    decimal?  ValidationMaxValue = null,
+    int?      ValidationPrecision = null,
+    string?   ValidationRegex = null,
+    string?   ValidationMessage = null
 );
 
 // KPI / schedule / account / scope / group name are immutable post-create — they
@@ -479,7 +495,12 @@ public record UpdateKpiAssignmentTemplateRequest(
     decimal?  BooleanNoPoints = null,
     string?   MultiSelectScoreRule = null,
     bool?     PenaliseMissingOnScore = null,
-    IEnumerable<DropDownOptionPointsDto>? OptionPoints = null
+    IEnumerable<DropDownOptionPointsDto>? OptionPoints = null,
+    decimal?  ValidationMinValue = null,
+    decimal?  ValidationMaxValue = null,
+    int?      ValidationPrecision = null,
+    string?   ValidationRegex = null,
+    string?   ValidationMessage = null
 );
 
 public record BatchKpiAssignmentTemplateItem(
@@ -504,7 +525,12 @@ public record BatchKpiAssignmentTemplateItem(
     string?   MultiSelectScoreRule = null,
     bool?     PenaliseMissingOnScore = null,
     /// <summary>Per-option points for DropDown KPIs. Replaces all rows on the template when non-null.</summary>
-    IEnumerable<DropDownOptionPointsDto>? OptionPoints = null
+    IEnumerable<DropDownOptionPointsDto>? OptionPoints = null,
+    decimal?  ValidationMinValue = null,
+    decimal?  ValidationMaxValue = null,
+    int?      ValidationPrecision = null,
+    string?   ValidationRegex = null,
+    string?   ValidationMessage = null
 );
 
 // ---------------------------------------------------------------------------
@@ -988,7 +1014,12 @@ public record AssignmentWithSubmissionDto(
     /// <summary>KPI weight applied to the score at composite roll-up (Phase 3, KPI scoring layer).</summary>
     decimal  KpiWeight = 1m,
     /// <summary>Always 100.0 — exposed for "Worth N points" display on the capture form.</summary>
-    decimal  MaxScore = 100m
+    decimal  MaxScore = 100m,
+    decimal? ValidationMinValue = null,
+    decimal? ValidationMaxValue = null,
+    int?     ValidationPrecision = null,
+    string?  ValidationRegex = null,
+    string?  ValidationMessage = null
 );
 
 public record SubmissionTokenContextDto(

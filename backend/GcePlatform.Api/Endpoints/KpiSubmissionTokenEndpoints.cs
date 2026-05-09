@@ -118,7 +118,12 @@ public static class KpiSubmissionTokenEndpoints
                     LockState,
                     IsSubmitted,
                     KpiWeight,
-                    MaxScore
+                    MaxScore,
+                    ValidationMinValue,
+                    ValidationMaxValue,
+                    ValidationPrecision,
+                    ValidationRegex,
+                    ValidationMessage
                 FROM App.vSubmissionTokenAssignments
                 WHERE TokenId = @TokenId
                 ORDER BY Category, KpiName",
