@@ -33,6 +33,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { StatCard } from '@/components/shared/stat-card'
 import { ErrorState } from '@/components/shared/error-state'
+import { ScoreBreakdownCard } from '@/components/shared/score-breakdown-card'
 import type { SiteSubmissionDetail } from '@/types/api'
 
 const KPI_MONITORING_REFRESH_EVENT = 'gce:kpi-monitoring-refresh'
@@ -123,7 +124,7 @@ function SubmissionRow({ row, periodStatus, onUnlocked }: SubmissionRowProps) {
                 )}
                 title="Score / Max"
               >
-                {row.score.toFixed(0)} / {row.maxScore.toFixed(0)}
+                {row.score.toFixed(1)} / {row.maxScore.toFixed(0)}
               </span>
             )}
           </div>
@@ -285,16 +286,27 @@ export function SitePeriodDetail({ siteOrgUnitId, periodId }: SitePeriodDetailPr
     refetchOnWindowFocus: true,
   })
 
+  // Per-category scores feed the breakdown card. Re-uses the same endpoint the
+  // monitoring overview uses; the cache key matches `monitoring-view.tsx` so the
+  // two pages share a single fetch when both are warm.
+  const { data: scoresData, refetch: refetchScores } = useQuery({
+    queryKey: ['kpi', 'site-scores', periodId, 'all'],
+    queryFn: () => api.kpi.siteScores.list({ periodId }),
+    refetchOnWindowFocus: true,
+  })
+
   useEffect(() => {
     function handleRefreshSignal() {
       void refetchMonitoring()
       void refetchDetails()
+      void refetchScores()
     }
 
     function handleStorage(event: StorageEvent) {
       if (event.key !== KPI_MONITORING_REFRESH_EVENT) return
       void refetchMonitoring()
       void refetchDetails()
+      void refetchScores()
     }
 
     window.addEventListener(KPI_MONITORING_REFRESH_EVENT, handleRefreshSignal)
@@ -304,7 +316,7 @@ export function SitePeriodDetail({ siteOrgUnitId, periodId }: SitePeriodDetailPr
       window.removeEventListener(KPI_MONITORING_REFRESH_EVENT, handleRefreshSignal)
       window.removeEventListener('storage', handleStorage)
     }
-  }, [refetchDetails, refetchMonitoring])
+  }, [refetchDetails, refetchMonitoring, refetchScores])
 
   function handleUnlocked() {
     queryClient.invalidateQueries({ queryKey: ['kpi', 'site-submissions', siteOrgUnitId, periodId] })
@@ -334,6 +346,12 @@ export function SitePeriodDetail({ siteOrgUnitId, periodId }: SitePeriodDetailPr
         : i.assignmentGroupName === groupFilterValue
     )
   }, [data, groupFilterActive, groupFilterValue])
+
+  // Per-category rows for this site only — `siteScores.list` returns rows
+  // across the whole period, so narrow before passing to the breakdown card.
+  const siteCategoryRows = useMemo(() => {
+    return (scoresData?.items ?? []).filter((r) => r.siteOrgUnitId === siteOrgUnitId)
+  }, [scoresData, siteOrgUnitId])
 
   // Group by category
   const grouped = filteredItems.reduce<Record<string, SiteSubmissionDetail[]>>((acc, item) => {
@@ -473,6 +491,17 @@ export function SitePeriodDetail({ siteOrgUnitId, periodId }: SitePeriodDetailPr
           />
         </div>
       </div>
+
+      {/* Score breakdown — explains how the composite is built up from each
+          category's contribution and lets you simulate fixing a KPI. The composite
+          is a site-level aggregate (not group-scoped), so we feed the full
+          submission list here even when a group filter is active. */}
+      {!detailLoading && siteCategoryRows.length > 0 && (
+        <ScoreBreakdownCard
+          submissions={data?.items ?? []}
+          categoryRows={siteCategoryRows}
+        />
+      )}
 
       {/* KPI list */}
       <div className="space-y-6">

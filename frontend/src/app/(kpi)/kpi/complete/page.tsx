@@ -70,7 +70,9 @@ const PAGE_STYLES = `
 
   .kpi-progress-fill {
     height: 100%;
-    background: linear-gradient(90deg, var(--kpi-primary), var(--kpi-primary2));
+    /* Branded mode sets --kpi-progress-fill to a colour that always contrasts
+       with the header (primary). Default mode falls back to the gradient. */
+    background: var(--kpi-progress-fill, linear-gradient(90deg, var(--kpi-primary), var(--kpi-primary2)));
     border-radius: 2px;
     transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
   }
@@ -728,25 +730,53 @@ function KpiCompleteContent() {
     return (1.05 / (L + 0.05)) >= (L + 0.05) / 0.05 ? '#FFFFFF' : '#000000'
   }
 
+  // Mix a hex colour toward black (negative) or white (positive) by `amount`
+  // in [-1, 1]. Used to derive a guaranteed-different hover shade.
+  function shadeHex(hex: string, amount: number): string {
+    if (!/^#[0-9A-Fa-f]{6}$/.test(hex)) return hex
+    const r = parseInt(hex.slice(1, 3), 16)
+    const g = parseInt(hex.slice(3, 5), 16)
+    const b = parseInt(hex.slice(5, 7), 16)
+    const blend = (c: number) => {
+      const target = amount >= 0 ? 255 : 0
+      return Math.round(c + (target - c) * Math.abs(amount))
+    }
+    const toHex = (n: number) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0')
+    return '#' + toHex(blend(r)) + toHex(blend(g)) + toHex(blend(b))
+  }
+
   const branding = ctx.branding
   const branded = !!branding?.primaryColor
 
   // Compute text color client-side — this is authoritative for the header
   const computedTextOnPrimary = branded ? resolveTextColor(branding!.primaryColor!) : '#111827'
 
-  // Derive a readable accent for required labels from the accent or primary color
-  const accentColor = branding?.accentColor ?? branding?.primaryColor
+  // Derive a readable accent for required labels and the save button.
+  // If no accent is set, fall back to the page's text-on-primary so the
+  // accent never collapses to the header background.
+  const rawAccent  = branding?.accentColor ?? branding?.primaryColor
+  const accentColor = (rawAccent && rawAccent.toLowerCase() !== branding?.primaryColor?.toLowerCase())
+    ? rawAccent
+    : computedTextOnPrimary
+
+  // Hover for the save button: always a darker shade of the accent itself.
+  // Never falls back to primary (which would collapse to the header bg
+  // when the brand uses a light primary like white).
+  const accentHover = shadeHex(accentColor!, -0.18)
 
   const brandingOverride = branded
     ? `:root {
         --kpi-primary:        ${branding!.primaryColor};
         --kpi-primary2:       ${branding!.primaryColor2 ?? branding!.primaryColor};
         --kpi-accent:         ${accentColor};
-        --kpi-accent-hover:   ${branding!.primaryColor2 ?? branding!.primaryColor};
+        --kpi-accent-hover:   ${accentHover};
         --kpi-required-color: ${accentColor};
         --kpi-category-color: ${branding!.secondaryColor ?? branding!.primaryColor};
         --kpi-progress-track: ${branding!.secondaryColor ?? branding!.primaryColor};
         --kpi-divider-color:  ${branding!.secondaryColor ?? branding!.primaryColor};
+        /* Progress fill must contrast with the header (primary). text-on-primary
+           is mathematically guaranteed to do so regardless of brand inputs. */
+        --kpi-progress-fill:  ${computedTextOnPrimary};
       }`
     : ''
 

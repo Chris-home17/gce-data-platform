@@ -219,7 +219,8 @@ public static class KpiSubmissionEndpoints
                     sd.RagStatus,
                     sd.AssignmentGroupName,
                     sc.Score,
-                    sc.MaxScore
+                    sc.MaxScore,
+                    sc.KpiWeight
                 FROM App.vSiteSubmissionDetails AS sd
                 LEFT JOIN App.vKpiSubmissionScores AS sc ON sc.AssignmentID = sd.AssignmentId
                 WHERE sd.SiteOrgUnitId = @SiteOrgUnitId

@@ -801,6 +801,9 @@ export interface SiteSubmissionDetail {
   score: number | null
   /** Always 100 — exposed for "Score / Max" display. */
   maxScore: number | null
+  /** Snapshot-aware KPI weight (from vKpiSubmissionScores). Used to derive
+   *  each KPI's normalised contribution to the composite score. */
+  kpiWeight: number | null
 }
 
 // ---------------------------------------------------------------------------

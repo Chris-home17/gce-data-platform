@@ -8,6 +8,8 @@ import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { cn, formatPercent } from '@/lib/utils'
 import { CategoryScoreBar } from '@/components/shared/category-score-bar'
+import { TopDetractorsPanel } from '@/components/shared/top-detractors-panel'
+import { NonStartersBanner } from '@/components/shared/non-starters-banner'
 import {
   Select,
   SelectContent,
@@ -230,7 +232,7 @@ const monitoringColumns: ColumnDef<SiteCompletion, unknown>[] = [
       const s = row.original.compositeScore
       if (s === null || s === undefined) return <span className="text-xs text-muted-foreground">—</span>
       const colour = s >= 80 ? 'text-success' : s >= 50 ? 'text-warning' : 'text-danger'
-      return <span className={cn('tabular-nums text-sm font-medium', colour)}>{s.toFixed(0)}</span>
+      return <span className={cn('tabular-nums text-sm font-medium', colour)}>{s.toFixed(1)}</span>
     },
     meta: { className: 'w-20 text-right', headerClassName: 'text-right' },
   },
@@ -486,6 +488,14 @@ export function MonitoringView() {
     return (scoresData?.items ?? []).filter((r) => visibleSiteIds.has(r.siteOrgUnitId))
   }, [scoresData, filteredItems])
 
+  // Site name lookup for the detractors panel deep-links. Built from the same
+  // filteredItems so it stays in sync with the visible scope.
+  const siteNamesById = useMemo(() => {
+    const m = new Map<number, { name: string; code: string }>()
+    for (const i of filteredItems) m.set(i.siteOrgUnitId, { name: i.siteName, code: i.siteCode })
+    return m
+  }, [filteredItems])
+
   if (isError) {
     return (
       <ErrorState title="Failed to load monitoring data" error={error} />
@@ -612,7 +622,7 @@ export function MonitoringView() {
           />
           <StatCard
             title="Composite Score"
-            value={stats.avgComposite === null ? '—' : stats.avgComposite.toFixed(0)}
+            value={stats.avgComposite === null ? '—' : stats.avgComposite.toFixed(1)}
             subtitle={stats.avgComposite === null ? 'no scoreable data' : 'avg across sites'}
             icon={Gauge}
             iconColor={
@@ -653,12 +663,28 @@ export function MonitoringView() {
         </div>
       )}
 
+      {/* Engagement signal — surfaces sites that haven't submitted anything yet.
+          Self-hides when zero non-starters exist in the visible scope. */}
+      {selectedPeriod && (
+        <NonStartersBanner
+          rows={filteredItems}
+          periodId={selectedPeriod.periodId}
+        />
+      )}
+
       {/* Per-category breakdown panel (Phase 2 of the KPI scoring layer) */}
       {selectedPeriod && visibleScoreRows.length > 0 && (
-        <section className="rounded-md border bg-card p-4">
-          <h2 className="mb-3 text-sm font-semibold">Score by category</h2>
-          <CategoryScoreBar rows={visibleScoreRows} />
-        </section>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <section className="rounded-md border bg-card p-4">
+            <h2 className="mb-3 text-sm font-semibold">Score by category</h2>
+            <CategoryScoreBar rows={visibleScoreRows} />
+          </section>
+          <TopDetractorsPanel
+            rows={visibleScoreRows}
+            siteNamesById={siteNamesById}
+            periodId={selectedPeriod.periodId}
+          />
+        </div>
       )}
 
       {/* Site table */}

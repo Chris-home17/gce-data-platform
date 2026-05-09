@@ -949,7 +949,10 @@ public record SiteSubmissionDetailDto(
     /// <summary>Per-submission 0–100 score (Phase 2). NULL for excluded rows (Text type, missing+not-penalised, no scoreable inputs).</summary>
     decimal?  Score = null,
     /// <summary>Always 100.0 — exposed for "Score / Max" display.</summary>
-    decimal?  MaxScore = null
+    decimal?  MaxScore = null,
+    /// <summary>Snapshot-aware KPI weight from vKpiSubmissionScores. Used by the
+    /// score-breakdown UI to derive each KPI's normalised contribution to the composite.</summary>
+    decimal?  KpiWeight = null
 );
 
 // ---------------------------------------------------------------------------
