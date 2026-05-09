@@ -46,6 +46,7 @@ import {
   hasRequiredPermission,
   type RequiredPermission,
 } from '@/lib/route-permissions'
+import { Logo } from '@/components/brand/logo'
 
 // ---------------------------------------------------------------------------
 // Nav structure
@@ -132,14 +133,14 @@ function SidebarNavItem({ item }: { item: NavItem }) {
       className={cn(
         'group flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150',
         isActive
-          ? 'bg-slate-700 text-white shadow-sm'
-          : 'text-slate-400 hover:bg-slate-800 hover:text-slate-100'
+          ? 'border-l-[3px] border-[hsl(var(--brand))] bg-[hsl(var(--sidebar-bg-elevated))] pl-[calc(0.75rem-3px)] text-white shadow-sm'
+          : 'text-[hsl(var(--sidebar-foreground-muted))] hover:bg-white/5 hover:text-white'
       )}
     >
       <Icon
         className={cn(
           'h-4 w-4 shrink-0 transition-colors',
-          isActive ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'
+          isActive ? 'text-white' : 'text-white/60 group-hover:text-white/90'
         )}
       />
       {item.label}
@@ -158,7 +159,7 @@ function AccountSwitcher() {
 
   if (isLoading) {
     return (
-      <div className="mx-1 mb-3 h-10 animate-pulse rounded-lg bg-slate-800" />
+      <div className="mx-1 mb-3 h-10 animate-pulse rounded-lg bg-white/10" />
     )
   }
 
@@ -167,15 +168,15 @@ function AccountSwitcher() {
   if (!hasMultiple) {
     // Single account — just show the name, no dropdown needed
     return (
-      <div className="mx-1 mb-3 flex items-center gap-2.5 rounded-lg bg-slate-800/60 px-3 py-2.5">
-        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-blue-500/20 text-xs font-bold text-blue-300">
+      <div className="mx-1 mb-3 flex items-center gap-2.5 rounded-lg bg-white/5 px-3 py-2.5">
+        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-[hsl(var(--brand))]/20 text-xs font-bold text-[hsl(353_98%_75%)]">
           {selectedAccount.accountCode.charAt(0)}
         </div>
         <div className="min-w-0">
-          <p className="truncate text-xs font-semibold leading-tight text-slate-200">
+          <p className="truncate text-xs font-semibold leading-tight text-white">
             {selectedAccount.accountName}
           </p>
-          <p className="font-mono text-[10px] text-slate-500">{selectedAccount.accountCode}</p>
+          <p className="font-mono text-[10px] text-white/50">{selectedAccount.accountCode}</p>
         </div>
       </div>
     )
@@ -185,17 +186,17 @@ function AccountSwitcher() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="mx-1 mb-3 flex w-[calc(100%-0.5rem)] items-center gap-2.5 rounded-lg bg-slate-800/60 px-3 py-2.5 text-left transition-colors hover:bg-slate-800 focus:outline-none focus-visible:ring-1 focus-visible:ring-blue-500">
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-blue-500/20 text-xs font-bold text-blue-300">
+        <button className="mx-1 mb-3 flex w-[calc(100%-0.5rem)] items-center gap-2.5 rounded-lg bg-white/5 px-3 py-2.5 text-left transition-colors hover:bg-white/10 focus:outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]">
+          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-[hsl(var(--brand))]/20 text-xs font-bold text-[hsl(353_98%_75%)]">
             {selectedAccount.accountCode.charAt(0)}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-semibold leading-tight text-slate-200">
+            <p className="truncate text-xs font-semibold leading-tight text-white">
               {selectedAccount.accountName}
             </p>
-            <p className="font-mono text-[10px] text-slate-500">{selectedAccount.accountCode}</p>
+            <p className="font-mono text-[10px] text-white/50">{selectedAccount.accountCode}</p>
           </div>
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-white/50" />
         </button>
       </DropdownMenuTrigger>
 
@@ -249,12 +250,10 @@ function SidebarContent() {
     <div className="flex h-full flex-col gap-1 overflow-y-auto px-3 py-4">
       {/* Wordmark */}
       <div className="mb-4 flex items-center gap-3 px-2">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500 text-sm font-bold text-white shadow-md">
-          G
-        </div>
+        <Logo size="sm" className="shrink-0" />
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold leading-tight text-white">GCE Platform</p>
-          <p className="truncate text-xs text-slate-400">Admin Portal</p>
+          <p className="truncate text-xs text-white/60">Admin Portal</p>
         </div>
       </div>
 
@@ -264,7 +263,7 @@ function SidebarContent() {
       {/* Nav sections */}
       {visibleSections.map((section) => (
         <div key={section.title} className="mb-4">
-          <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+          <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-widest text-white/40">
             {section.title}
           </p>
           <nav className="space-y-0.5">
@@ -284,7 +283,7 @@ function SidebarContent() {
 
 export function Sidebar() {
   return (
-    <aside className="hidden w-60 shrink-0 bg-slate-900 lg:flex lg:flex-col">
+    <aside className="hidden w-60 shrink-0 bg-[hsl(var(--sidebar-bg))] lg:flex lg:flex-col">
       <SidebarContent />
     </aside>
   )
@@ -321,7 +320,7 @@ export function MobileSidebar() {
       {/* Drawer */}
       <div
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-60 bg-slate-900 shadow-2xl transition-transform duration-200 ease-in-out lg:hidden',
+          'fixed inset-y-0 left-0 z-50 w-60 bg-[hsl(var(--sidebar-bg))] shadow-2xl transition-transform duration-200 ease-in-out lg:hidden',
           open ? 'translate-x-0' : '-translate-x-full'
         )}
         role="dialog"
@@ -334,7 +333,7 @@ export function MobileSidebar() {
             size="icon"
             onClick={() => setOpen(false)}
             aria-label="Close navigation menu"
-            className="text-slate-400 hover:text-white hover:bg-slate-800"
+            className="text-white/70 hover:text-white hover:bg-white/10"
           >
             <X className="h-4 w-4" />
           </Button>

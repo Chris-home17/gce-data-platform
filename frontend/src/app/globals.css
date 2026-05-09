@@ -5,28 +5,28 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 204 87% 10%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 204 87% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 204 87% 10%;
 
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 353 98% 57%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 80 2% 96%;
+    --secondary-foreground: 204 87% 10%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 80 2% 96%;
+    --muted-foreground: 220 4% 34%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 80 2% 92%;
+    --accent-foreground: 204 87% 10%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 347 75% 38%;
+    --destructive-foreground: 0 0% 100%;
 
     /* Semantic signal tokens (RAG / warnings / info) */
     --success: 142 71% 45%;
@@ -41,11 +41,11 @@
     --warning-muted-foreground: 28 74% 33%;
     --warning-border: 40 80% 78%;
 
-    --danger: 0 84.2% 60.2%;
-    --danger-foreground: 0 60% 20%;
-    --danger-muted: 0 93% 94%;
-    --danger-muted-foreground: 0 70% 40%;
-    --danger-border: 0 80% 85%;
+    --danger: 347 75% 38%;
+    --danger-foreground: 0 0% 100%;
+    --danger-muted: 347 70% 95%;
+    --danger-muted-foreground: 347 75% 30%;
+    --danger-border: 347 60% 82%;
 
     --info: 217 91% 60%;
     --info-foreground: 224 76% 20%;
@@ -53,42 +53,52 @@
     --info-muted-foreground: 224 64% 33%;
     --info-border: 214 90% 82%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --border: 80 2% 88%;
+    --input: 80 2% 88%;
+    --ring: 353 98% 57%;
 
     --radius: 0.5rem;
 
-    /* GCE brand */
-    --brand: 221.2 83.2% 53.3%;
-    --brand-foreground: 210 40% 98%;
-    --brand-muted: 221.2 83.2% 96%;
+    /* Securitas brand */
+    --brand: 353 98% 57%;
+    --brand-foreground: 0 0% 100%;
+    --brand-muted: 353 98% 96%;
+
+    --brand-purple: 258 100% 69%;
+    --brand-purple-foreground: 0 0% 100%;
+    --brand-purple-muted: 253 92% 95%;
+
+    /* Sidebar surfaces (SEC Navy family) */
+    --sidebar-bg: 204 87% 10%;
+    --sidebar-bg-elevated: 207 75% 15%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-foreground-muted: 0 0% 70%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 204 87% 10%;
+    --foreground: 0 0% 98%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 207 75% 15%;
+    --card-foreground: 0 0% 98%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 207 75% 15%;
+    --popover-foreground: 0 0% 98%;
 
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 353 90% 60%;
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 207 75% 15%;
+    --secondary-foreground: 0 0% 98%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 207 75% 15%;
+    --muted-foreground: 0 0% 70%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 207 75% 18%;
+    --accent-foreground: 0 0% 98%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 347 70% 45%;
+    --destructive-foreground: 0 0% 100%;
 
     /* Semantic signal tokens (dark) */
     --success: 142 65% 50%;
@@ -103,11 +113,11 @@
     --warning-muted-foreground: 40 80% 70%;
     --warning-border: 32 35% 30%;
 
-    --danger: 0 72% 55%;
-    --danger-foreground: 0 90% 95%;
-    --danger-muted: 0 40% 20%;
-    --danger-muted-foreground: 0 75% 75%;
-    --danger-border: 0 35% 30%;
+    --danger: 347 70% 50%;
+    --danger-foreground: 0 0% 98%;
+    --danger-muted: 347 40% 22%;
+    --danger-muted-foreground: 347 75% 78%;
+    --danger-border: 347 35% 32%;
 
     --info: 217 91% 65%;
     --info-foreground: 214 90% 92%;
@@ -115,14 +125,24 @@
     --info-muted-foreground: 214 80% 75%;
     --info-border: 220 35% 30%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --border: 207 75% 18%;
+    --input: 207 75% 18%;
+    --ring: 353 90% 60%;
 
-    /* GCE brand dark */
-    --brand: 217.2 91.2% 59.8%;
-    --brand-foreground: 222.2 47.4% 11.2%;
-    --brand-muted: 217.2 32.6% 17.5%;
+    /* Securitas brand (dark) */
+    --brand: 353 90% 60%;
+    --brand-foreground: 0 0% 100%;
+    --brand-muted: 207 75% 18%;
+
+    --brand-purple: 258 100% 73%;
+    --brand-purple-foreground: 0 0% 100%;
+    --brand-purple-muted: 207 75% 18%;
+
+    /* Sidebar surfaces (unchanged across light/dark modes) */
+    --sidebar-bg: 204 87% 10%;
+    --sidebar-bg-elevated: 207 75% 15%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-foreground-muted: 0 0% 70%;
   }
 }
 
