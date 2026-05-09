@@ -141,7 +141,12 @@ public static class KpiAssignmentEndpoints
                 MultiSelectScoreRule,
                 CAST(PenaliseMissingOnScore AS bit) AS PenaliseMissingOnScore,
                 OptionPointsRaw,
-                CategoryWeightSnapshot";
+                CategoryWeightSnapshot,
+                ValidationMinValue,
+                ValidationMaxValue,
+                ValidationPrecision,
+                ValidationRegex,
+                ValidationMessage";
 
             IEnumerable<KpiAssignmentTemplateDto> items;
             if (await platformAuth.HasPermissionAsync(user, conn, Permissions.SuperAdmin))

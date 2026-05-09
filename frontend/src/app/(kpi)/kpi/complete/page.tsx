@@ -28,10 +28,6 @@ import type { AssignmentWithSubmission, SubmissionTokenContext } from '@/types/a
 
 const KPI_MONITORING_REFRESH_EVENT = 'gce:kpi-monitoring-refresh'
 
-// Phase 3 of the KPI scoring layer is gated behind this build-time flag
-// (must match the value in monitoring-view.tsx).
-const SCORING_ENABLED = process.env.NEXT_PUBLIC_KPI_SCORING_ENABLED === 'true'
-
 // ---------------------------------------------------------------------------
 // Fonts + global styles for this isolated page
 // ---------------------------------------------------------------------------
@@ -368,7 +364,7 @@ function KpiRow({ assignment, index, onSaved }: KpiRowProps) {
               {assignment.effectiveKpiName}
             </span>
             <span className="mono-font text-[11px] text-gray-400">{assignment.kpiCode}</span>
-            {SCORING_ENABLED && !isText && (
+            {!isText && (
               <span
                 className="text-[11px] font-medium tabular-nums px-1.5 py-0.5 rounded bg-blue-50 text-blue-700"
                 title={assignment.kpiWeight === 1 ? 'Maximum score this KPI can earn' : `Worth ${assignment.kpiWeight}× weight in the composite score`}

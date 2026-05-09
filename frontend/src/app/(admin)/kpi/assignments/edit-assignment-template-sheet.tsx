@@ -26,6 +26,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Select,
@@ -651,11 +652,14 @@ export function EditAssignmentTemplateSheet({ template, open, onClose }: EditAss
                     />
 
                     <div className="space-y-1.5">
-                      <FormLabel className="text-sm">Option points</FormLabel>
-                      <FormDescription className="text-xs">
+                      {/* Standalone label/description — must use plain primitives, not Form*,
+                          because there's no <FormField> context (optionPoints is rendered as
+                          a list, not a single named field). */}
+                      <Label className="text-sm">Option points</Label>
+                      <p className="text-xs text-muted-foreground">
                         Score awarded when the submitter selects each option. Values default to 0 and can be
                         any number; the multi-select rule above decides how they combine.
-                      </FormDescription>
+                      </p>
                       {(form.watch('optionPoints') ?? []).length === 0 ? (
                         <p className="text-xs text-muted-foreground rounded-md border border-dashed px-3 py-2">
                           This KPI has no dropdown options defined in the catalog. Add options on the KPI

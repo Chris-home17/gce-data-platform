@@ -215,9 +215,9 @@ BEGIN
 
         IF @TotalRequired > 0 AND @TotalSubmitted >= @TotalRequired
         BEGIN
-            UPDATE KPI.SiteReminderState
-            SET ReminderResolved = 1, ReminderResolvedAt = SYSUTCDATETIME(), ModifiedOnUtc = SYSUTCDATETIME()
-            WHERE SiteOrgUnitId = @SiteOrgUnitId AND PeriodID = @PeriodID AND ReminderResolved = 0;
+            UPDATE Workflow.ReminderState
+SET IsResolved = 1, ResolvedAt = SYSUTCDATETIME(), ModifiedOnUtc = SYSUTCDATETIME()
+WHERE OrgUnitId = @SiteOrgUnitId AND PeriodID = @PeriodID AND IsResolved = 0;
         END
     END
 

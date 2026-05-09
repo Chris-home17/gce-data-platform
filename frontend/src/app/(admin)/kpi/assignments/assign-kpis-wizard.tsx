@@ -622,16 +622,16 @@ function StepBuildKpiSet({
   return (
     <div className="flex h-full flex-col gap-4 lg:flex-row">
       {/* Picker panel */}
-      <div className="flex-1 min-w-0">
-        <Tabs defaultValue="packages">
+      <div className="flex-1 min-w-0 flex flex-col min-h-0">
+        <Tabs defaultValue="packages" className="flex flex-1 flex-col min-h-0">
           <TabsList className="w-full">
             <TabsTrigger value="packages" className="flex-1">Packages</TabsTrigger>
             <TabsTrigger value="individual" className="flex-1">Individual KPIs</TabsTrigger>
           </TabsList>
 
           {/* Packages tab */}
-          <TabsContent value="packages" className="mt-3">
-            <div className="space-y-1.5 max-h-[420px] overflow-y-auto pr-1">
+          <TabsContent value="packages" className="mt-3 flex flex-1 flex-col min-h-0">
+            <div className="space-y-1.5 flex-1 min-h-0 overflow-y-auto pr-1">
               {activePackages.length === 0 && packagesQuery.isFetched && (
                 <p className="text-xs text-muted-foreground py-4 text-center">No active packages.</p>
               )}
@@ -675,9 +675,9 @@ function StepBuildKpiSet({
           </TabsContent>
 
           {/* Individual KPIs tab */}
-          <TabsContent value="individual" className="mt-3">
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
+          <TabsContent value="individual" className="mt-3 flex flex-1 flex-col min-h-0">
+            <div className="space-y-2 flex flex-1 flex-col min-h-0">
+              <div className="flex items-center gap-2 shrink-0">
                 <div className="relative flex-1">
                   <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
@@ -700,7 +700,7 @@ function StepBuildKpiSet({
                 </Select>
               </div>
 
-              <div className="space-y-1 max-h-[380px] overflow-y-auto pr-1">
+              <div className="space-y-1 flex-1 min-h-0 overflow-y-auto pr-1">
                 {filteredKpis.length === 0 && definitionsQuery.isFetched && (
                   <p className="text-xs text-muted-foreground py-4 text-center">No KPIs match the current filter.</p>
                 )}
@@ -747,13 +747,13 @@ function StepBuildKpiSet({
       </div>
 
       {/* Cart panel */}
-      <div className="lg:w-72 shrink-0">
-        <div className="rounded-md border h-full">
-          <div className="px-3 py-2 border-b bg-muted/30 flex items-center justify-between">
+      <div className="lg:w-72 shrink-0 flex flex-col min-h-0">
+        <div className="rounded-md border h-full flex flex-col min-h-0">
+          <div className="px-3 py-2 border-b bg-muted/30 flex items-center justify-between shrink-0">
             <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">KPI Set</p>
             <Badge variant="secondary" className="text-xs">{totalCartKpis} KPI{totalCartKpis !== 1 ? 's' : ''}</Badge>
           </div>
-          <div className="p-2 space-y-1.5 max-h-[460px] overflow-y-auto">
+          <div className="p-2 space-y-1.5 flex-1 min-h-0 overflow-y-auto">
             {cart.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-6">
                 Add packages or individual KPIs from the left.

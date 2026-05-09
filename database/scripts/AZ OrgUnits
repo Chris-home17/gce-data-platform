@@ -16,3 +16,13 @@ Site,AZ-SE-001,Astra Zeneca SE - Gärtuna,Country,SSEU-SE
 Site,AZ-SE-002,Astra Zeneca SE - Gothenburg,Country,SSEU-SE
 Site,AZ-SE-003,Astra Zeneca SE - SBC B921,Country,SSEU-SE
 Site,AZ-SE-004,Astra Zeneca SE - Snäckviken,Country,SSEU-SE
+
+
+Type,Code,Name,ParentType,ParentCode
+Region,SSEU,Security Services Europe,,
+Country,SSEU-FR,France,Region,SSEU
+Site,AC-FR-001,Action FR - Paris 1,Country,SSEU-FR
+Site,AC-FR-002,Action FR - Paris 2,Country,SSEU-FR
+Site,AC-FR-003,Action FR - Paris 3,Country,SSEU-FR
+Site,AC-FR-004,Action FR - Paris 4,Country,SSEU-FR
+Site,AC-FR-005,Action FR - Paris 5,Country,SSEU-FR

@@ -37,10 +37,6 @@ import type { SiteSubmissionDetail } from '@/types/api'
 
 const KPI_MONITORING_REFRESH_EVENT = 'gce:kpi-monitoring-refresh'
 
-// Phase 2 of the KPI scoring layer is gated behind this build-time flag
-// (must match the value in monitoring-view.tsx).
-const SCORING_ENABLED = process.env.NEXT_PUBLIC_KPI_SCORING_ENABLED === 'true'
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -117,7 +113,7 @@ function SubmissionRow({ row, periodStatus, onUnlocked }: SubmissionRowProps) {
             <span className="font-medium">{row.effectiveKpiName}</span>
             <span className="font-mono text-[11px] text-muted-foreground">{row.kpiCode}</span>
             {ragDot(row.ragStatus)}
-            {SCORING_ENABLED && row.score !== null && row.maxScore !== null && (
+            {row.score !== null && row.maxScore !== null && (
               <span
                 className={cn(
                   'text-[11px] font-medium tabular-nums px-1.5 py-0.5 rounded',
