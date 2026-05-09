@@ -1252,3 +1252,16 @@ export interface CreatePlatformRoleInput {
 export interface SetPlatformRolePermissionsInput {
   permissionCodes: string[]
 }
+
+// ---------------------------------------------------------------------------
+// Build/version info — surfaced by the anonymous /api/version endpoint
+// ---------------------------------------------------------------------------
+
+export interface VersionInfo {
+  appVersion: string
+  informationalVersion: string
+  gitSha: string | null
+  buildDate: string | null
+  schemaVersion: string | null
+  environment: string
+}

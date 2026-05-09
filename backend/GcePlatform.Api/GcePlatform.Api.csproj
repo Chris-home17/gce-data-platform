@@ -2,10 +2,40 @@
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
-<Nullable>enable</Nullable>
+    <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>GcePlatform.Api</RootNamespace>
+    <Version>0.1.0</Version>
+    <IncludeSourceRevisionInInformationalVersion>true</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
+
+  <!--
+    Populate SourceRevisionId with the short git SHA so it is appended to
+    AssemblyInformationalVersion (e.g. "0.1.0+a1b2c3d"). Tolerates builds
+    where git is unavailable (published artifacts, containers without .git)
+    by falling back to "unknown".
+  -->
+  <Target Name="SetGitSha" BeforeTargets="GetAssemblyVersion;GenerateAssemblyInfo">
+    <Exec Command="git rev-parse --short=7 HEAD"
+          ConsoleToMSBuild="true"
+          ContinueOnError="true"
+          IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="GitShortSha" />
+      <Output TaskParameter="ExitCode" PropertyName="GitExitCode" />
+    </Exec>
+    <PropertyGroup>
+      <SourceRevisionId Condition="'$(GitExitCode)' == '0' AND '$(SourceRevisionId)' == ''">$(GitShortSha)</SourceRevisionId>
+      <SourceRevisionId Condition="'$(SourceRevisionId)' == ''">unknown</SourceRevisionId>
+    </PropertyGroup>
+  </Target>
+
+  <!-- Bake build timestamp into the assembly so the /api/version endpoint can report it. -->
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>BuildDate</_Parameter1>
+      <_Parameter2>$([System.DateTime]::UtcNow.ToString("o"))</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
 
   <ItemGroup>
     <!-- SQL Server driver -->

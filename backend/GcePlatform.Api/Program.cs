@@ -116,6 +116,7 @@ try
     app.MapCoverageEndpoints();
     app.MapGrantEndpoints();
     app.MapDelegationEndpoints();
+    app.MapVersionEndpoints();
 
     // Health probe — useful for Container Apps liveness/readiness checks
     app.MapGet("/health", () => Results.Ok(new { status = "healthy" }))

@@ -95,6 +95,7 @@ import type {
   SiteCategoryScore,
   RefreshTemplateCategoryWeightsInput,
   RefreshTemplateCategoryWeightsResponse,
+  VersionInfo,
 } from '@/types/api'
 
 // ---------------------------------------------------------------------------
@@ -685,6 +686,12 @@ export const api = {
   platformPermissions: {
     list(): Promise<ApiList<PlatformPermission>> {
       return apiFetch('/platform-permissions')
+    },
+  },
+
+  version: {
+    get(): Promise<VersionInfo> {
+      return apiFetch('/version')
     },
   },
 } as const

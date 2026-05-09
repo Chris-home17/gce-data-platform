@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { MobileSidebar } from './sidebar'
+import { VersionChip } from './version-chip'
 
 const SELECTED_ACCOUNT_STORAGE_KEY = 'gce:selectedAccountId'
 
@@ -136,6 +137,7 @@ export function Topbar() {
       </div>
 
       <div className="flex items-center gap-2">
+        <VersionChip />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
