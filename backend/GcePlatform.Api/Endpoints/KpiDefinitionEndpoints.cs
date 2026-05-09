@@ -21,6 +21,8 @@ public static class KpiDefinitionEndpoints
                     KpiCode,
                     KpiName,
                     KpiDescription,
+                    CategoryId,
+                    CategoryCode,
                     Category,
                     Unit,
                     DataType,
@@ -49,6 +51,8 @@ public static class KpiDefinitionEndpoints
                     KpiCode,
                     KpiName,
                     KpiDescription,
+                    CategoryId,
+                    CategoryCode,
                     Category,
                     Unit,
                     DataType,
@@ -79,7 +83,8 @@ public static class KpiDefinitionEndpoints
 
             // Fetch current record to get KpiCode (immutable) and IsActive (preserve)
             var current = await conn.QuerySingleOrDefaultAsync<KpiDefinitionDto>(@"
-                SELECT KpiId, ExternalId, KpiCode, KpiName, KpiDescription, Category, Unit,
+                SELECT KpiId, ExternalId, KpiCode, KpiName, KpiDescription,
+                       CategoryId, CategoryCode, Category, Unit,
                        DataType, AllowMultiValue, CollectionType, ThresholdDirection,
                        IsActive, AssignmentCount, DropDownOptionsRaw, TagsRaw
                 FROM App.vKpiDefinitions
@@ -89,15 +94,25 @@ public static class KpiDefinitionEndpoints
             if (current is null)
                 return Results.NotFound(new ApiError("KPI_NOT_FOUND", $"KPI definition {id} not found."));
 
+            // Reject re-categorise to a missing or inactive category — the FK will reject
+            // a missing target anyway, but a clean ApiError is friendlier than a SQL fault.
+            var catActive = await conn.ExecuteScalarAsync<bool?>(
+                "SELECT IsActive FROM KPI.Category WHERE KpiCategoryId = @Id",
+                new { Id = request.CategoryId });
+            if (catActive is null)
+                return Results.BadRequest(new ApiError("CATEGORY_NOT_FOUND", $"KPI category {request.CategoryId} not found."));
+            if (catActive == false)
+                return Results.BadRequest(new ApiError("CATEGORY_INACTIVE", "Cannot assign a KPI to an inactive category."));
+
             string? optionsPipe = request.DropDownOptions is null
                 ? null
                 : string.Join("||", request.DropDownOptions.Where(o => !string.IsNullOrWhiteSpace(o)));
 
             var p = new DynamicParameters();
-            p.Add("@KpiCode",             current.KpiCode);
+            p.Add("@KpiCode",             current.KpiCode);  // immutable
             p.Add("@KpiName",             request.KpiName);
             p.Add("@KpiDescription",      request.KpiDescription);
-            p.Add("@Category",            request.Category);
+            p.Add("@KpiCategoryId",       request.CategoryId);
             p.Add("@Unit",                request.Unit);
             p.Add("@DataType",            request.DataType);
             p.Add("@AllowMultiValue",     request.AllowMultiValue);
@@ -105,6 +120,7 @@ public static class KpiDefinitionEndpoints
             p.Add("@ThresholdDirection",  request.ThresholdDirection);
             p.Add("@DropDownOptionsPipe", optionsPipe);
             p.Add("@IsActive",            current.IsActive);
+            p.Add("@ActorUPN",            PlatformAuthService.GetUpn(user));
             p.Add("@KPIID", dbType: System.Data.DbType.Int32,
                   direction: System.Data.ParameterDirection.Output);
 
@@ -121,7 +137,8 @@ public static class KpiDefinitionEndpoints
             }
 
             var updated = await conn.QuerySingleAsync<KpiDefinitionDto>(@"
-                SELECT KpiId, ExternalId, KpiCode, KpiName, KpiDescription, Category, Unit,
+                SELECT KpiId, ExternalId, KpiCode, KpiName, KpiDescription,
+                       CategoryId, CategoryCode, Category, Unit,
                        DataType, AllowMultiValue, CollectionType, ThresholdDirection,
                        IsActive, AssignmentCount, DropDownOptionsRaw, TagsRaw
                 FROM App.vKpiDefinitions
@@ -146,6 +163,8 @@ public static class KpiDefinitionEndpoints
                     KpiCode,
                     KpiName,
                     KpiDescription,
+                    CategoryId,
+                    CategoryCode,
                     Category,
                     Unit,
                     DataType,
@@ -178,16 +197,29 @@ public static class KpiDefinitionEndpoints
             if (!await platformAuth.HasPermissionAsync(user, conn, Permissions.KpiAdmin))
                 return Results.Forbid();
 
+            // Validate the chosen category exists and is active.
+            var catActive = await conn.ExecuteScalarAsync<bool?>(
+                "SELECT IsActive FROM KPI.Category WHERE KpiCategoryId = @Id",
+                new { Id = request.CategoryId });
+            if (catActive is null)
+                return Results.BadRequest(new ApiError("CATEGORY_NOT_FOUND", $"KPI category {request.CategoryId} not found."));
+            if (catActive == false)
+                return Results.BadRequest(new ApiError("CATEGORY_INACTIVE", "Cannot assign a KPI to an inactive category."));
+
             // Convert option list to pipe-delimited string expected by the stored proc
             string? optionsPipe = request.DropDownOptions is null
                 ? null
                 : string.Join("||", request.DropDownOptions.Where(o => !string.IsNullOrWhiteSpace(o)));
 
+            // KpiCode is OPTIONAL: when null/empty, the proc auto-generates {CategoryCode}-NNN.
+            // When provided, the proc normalises to upper-case (and we do too for clarity).
+            var rawCode = string.IsNullOrWhiteSpace(request.KpiCode) ? null : request.KpiCode.Trim().ToUpperInvariant();
+
             var p = new DynamicParameters();
-            p.Add("@KpiCode",             request.KpiCode.ToUpperInvariant());
+            p.Add("@KpiCode",             rawCode);  // null → server auto-generates
             p.Add("@KpiName",             request.KpiName);
             p.Add("@KpiDescription",      request.KpiDescription);
-            p.Add("@Category",            request.Category);
+            p.Add("@KpiCategoryId",       request.CategoryId);
             p.Add("@Unit",                request.Unit);
             p.Add("@DataType",            request.DataType);
             p.Add("@AllowMultiValue",     request.AllowMultiValue);
@@ -195,6 +227,7 @@ public static class KpiDefinitionEndpoints
             p.Add("@ThresholdDirection",  request.ThresholdDirection);
             p.Add("@DropDownOptionsPipe", optionsPipe);
             p.Add("@IsActive",            true);
+            p.Add("@ActorUPN",            PlatformAuthService.GetUpn(user));
             p.Add("@KPIID", dbType: System.Data.DbType.Int32,
                   direction: System.Data.ParameterDirection.Output);
 
@@ -213,7 +246,8 @@ public static class KpiDefinitionEndpoints
             }
 
             var created = await conn.QuerySingleAsync<KpiDefinitionDto>(@"
-                SELECT KpiId, ExternalId, KpiCode, KpiName, KpiDescription, Category, Unit,
+                SELECT KpiId, ExternalId, KpiCode, KpiName, KpiDescription,
+                       CategoryId, CategoryCode, Category, Unit,
                        DataType, AllowMultiValue, CollectionType, ThresholdDirection,
                        IsActive, AssignmentCount, DropDownOptionsRaw, TagsRaw
                 FROM App.vKpiDefinitions

@@ -199,6 +199,8 @@ public static class KpiSubmissionEndpoints
                     sd.KpiCode,
                     sd.KpiName,
                     sd.EffectiveKpiName,
+                    sd.CategoryId,
+                    sd.CategoryCode,
                     sd.Category,
                     sd.DataType,
                     sd.IsRequired,

@@ -6,7 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Loader2, Plus, X } from 'lucide-react'
+import { Loader2, Plus, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Sheet,
@@ -38,15 +38,21 @@ import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { api } from '@/lib/api'
 
+// CategoryId is required (NOT NULL FK on KPI.Definition).
+// kpiCode is optional — when blank, the server auto-generates {CategoryCode}-NNN.
 const schema = z.object({
+  categoryId: z
+    .number({ invalid_type_error: 'Pick a category' })
+    .int()
+    .positive('Pick a category'),
   kpiCode: z
     .string()
-    .min(2)
     .max(50)
-    .regex(/^[A-Z0-9_-]+$/i, 'Only letters, numbers, hyphens and underscores'),
+    .regex(/^[A-Z0-9_-]*$/i, 'Only letters, numbers, hyphens and underscores')
+    .optional()
+    .or(z.literal('')),
   kpiName: z.string().min(2).max(200),
   kpiDescription: z.string().max(1000).optional(),
-  category: z.string().max(100).optional(),
   unit: z.string().max(50).optional(),
   dataType: z.enum(['Numeric', 'Percentage', 'Boolean', 'Text', 'Currency', 'DropDown', 'Time']),
   allowMultiValue: z.boolean().default(false),
@@ -74,6 +80,14 @@ export function NewDefinitionDialog() {
   const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(new Set())
   const queryClient = useQueryClient()
 
+  // Active categories only — admins must reactivate or create new ones to use them.
+  const categoriesQuery = useQuery({
+    queryKey: ['kpi', 'categories', 'active'],
+    queryFn: () => api.kpi.categories.list({ includeInactive: false }),
+    enabled: open,
+  })
+  const activeCategories = categoriesQuery.data?.items ?? []
+
   const tagsQuery = useQuery({
     queryKey: ['tags'],
     queryFn: () => api.tags.list(),
@@ -87,10 +101,10 @@ export function NewDefinitionDialog() {
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
+      categoryId: undefined as unknown as number,
       kpiCode: '',
       kpiName: '',
       kpiDescription: '',
-      category: '',
       unit: '',
       dataType: 'Numeric',
       allowMultiValue: false,
@@ -102,15 +116,46 @@ export function NewDefinitionDialog() {
   const watchedDataType = form.watch('dataType')
   const isDropDown = watchedDataType === 'DropDown'
 
+  // Preview for the auto-generated KPI code: same algorithm as the server proc
+  // (next 3-digit suffix in the chosen category) so the user knows what they'll get.
+  const watchedCategoryId = form.watch('categoryId')
+  const watchedKpiCode = form.watch('kpiCode')
+  const definitionsQuery = useQuery({
+    queryKey: ['kpi', 'definitions'],
+    queryFn: () => api.kpi.definitions.list(),
+    enabled: open,
+  })
+  const autoCodePreview = useMemo(() => {
+    if (!watchedCategoryId || (watchedKpiCode && watchedKpiCode.trim() !== '')) return null
+    const cat = activeCategories.find((c) => c.kpiCategoryId === watchedCategoryId)
+    if (!cat) return null
+    const prefix = `${cat.code}-`
+    const existing = definitionsQuery.data?.items ?? []
+    const nextN = existing
+      .map((d) => d.kpiCode)
+      .filter((code) => code.startsWith(prefix))
+      .map((code) => parseInt(code.slice(prefix.length), 10))
+      .filter((n) => Number.isFinite(n))
+      .reduce((max, n) => Math.max(max, n), 0) + 1
+    const padded = nextN < 1000 ? String(nextN).padStart(3, '0') : String(nextN)
+    return `${prefix}${padded}`
+  }, [watchedCategoryId, watchedKpiCode, activeCategories, definitionsQuery.data])
+
   const mutation = useMutation({
     mutationFn: (values: FormValues) =>
       api.kpi.definitions.create({
-        ...values,
-        kpiCode: values.kpiCode.toUpperCase(),
+        categoryId: values.categoryId,
+        // Empty string → undefined → server auto-generates.
+        kpiCode: values.kpiCode && values.kpiCode.trim() !== ''
+          ? values.kpiCode.trim().toUpperCase()
+          : undefined,
+        kpiName: values.kpiName,
         thresholdDirection: values.thresholdDirection === 'none' ? null : values.thresholdDirection,
         kpiDescription: values.kpiDescription || undefined,
-        category: values.category || undefined,
         unit: values.unit || undefined,
+        dataType: values.dataType,
+        allowMultiValue: values.allowMultiValue,
+        collectionType: values.collectionType,
         dropDownOptions: isDropDown ? dropDownOptions : undefined,
         tagIds: selectedTagIds.size > 0 ? Array.from(selectedTagIds) : undefined,
       }),
@@ -171,38 +216,79 @@ export function NewDefinitionDialog() {
             {/* ── Identity ─────────────────────────────── */}
             <SectionHeading>Identity</SectionHeading>
 
-            <div className="grid grid-cols-2 gap-3">
-              <FormField
-                control={form.control}
-                name="kpiCode"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Code</FormLabel>
+            <FormField
+              control={form.control}
+              name="categoryId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Category</FormLabel>
+                  <Select
+                    value={field.value ? String(field.value) : ''}
+                    onValueChange={(v) => field.onChange(parseInt(v, 10))}
+                    disabled={categoriesQuery.isLoading || activeCategories.length === 0}
+                  >
                     <FormControl>
-                      <Input
-                        placeholder="e.g. S-005"
-                        {...field}
-                        onChange={(e) => field.onChange(e.target.value.toUpperCase())}
-                      />
+                      <SelectTrigger>
+                        <SelectValue placeholder={
+                          categoriesQuery.isLoading
+                            ? 'Loading…'
+                            : activeCategories.length === 0
+                            ? 'No active categories — create one first'
+                            : 'Pick a category'
+                        } />
+                      </SelectTrigger>
                     </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="category"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Category <span className="text-muted-foreground">(optional)</span></FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g. Safety" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
+                    <SelectContent>
+                      {activeCategories.map((cat) => (
+                        <SelectItem key={cat.kpiCategoryId} value={String(cat.kpiCategoryId)}>
+                          <span className="flex items-center gap-2">
+                            <span className="font-mono text-[11px] text-muted-foreground">{cat.code}</span>
+                            <span>{cat.name}</span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {activeCategories.length === 0 && !categoriesQuery.isLoading && (
+                    <FormDescription className="text-destructive">
+                      No active categories yet. Create one in <a className="underline" href="/kpi/categories">KPI Categories</a> first.
+                    </FormDescription>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="kpiCode"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Code <span className="text-muted-foreground">(optional)</span></FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder={autoCodePreview ?? 'Auto-generated from category'}
+                      maxLength={50}
+                      {...field}
+                      value={field.value ?? ''}
+                      onChange={(e) => field.onChange(e.target.value.toUpperCase())}
+                    />
+                  </FormControl>
+                  {autoCodePreview && !field.value && (
+                    <FormDescription className="text-xs flex items-center gap-1.5 text-info-muted-foreground">
+                      <Sparkles className="h-3 w-3" />
+                      Will be auto-generated as <strong>{autoCodePreview}</strong>. Code is locked once saved.
+                    </FormDescription>
+                  )}
+                  {!autoCodePreview && (
+                    <FormDescription className="text-xs">
+                      Leave blank to auto-generate. Code is locked once saved.
+                    </FormDescription>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}
@@ -421,7 +507,7 @@ export function NewDefinitionDialog() {
               </Button>
               <Button
                 type="submit"
-                disabled={mutation.isPending || (isDropDown && dropDownOptions.length === 0)}
+                disabled={mutation.isPending || (isDropDown && dropDownOptions.length === 0) || activeCategories.length === 0}
               >
                 {mutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {mutation.isPending ? 'Creating…' : 'Create KPI'}

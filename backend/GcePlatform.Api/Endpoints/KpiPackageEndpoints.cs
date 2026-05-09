@@ -38,7 +38,9 @@ public static class KpiPackageEndpoints
                 return Results.NotFound(new ApiError("KPI_PACKAGE_NOT_FOUND", $"KPI package {id} not found."));
 
             var items = await conn.QueryAsync<KpiPackageItemDto>(@"
-                SELECT KpiPackageItemId, KpiPackageId, KpiId, KpiCode, KpiName, Category, DataType, KpiIsActive
+                SELECT KpiPackageItemId, KpiPackageId, KpiId, KpiCode, KpiName,
+                       CategoryId, CategoryCode, Category,
+                       DataType, KpiIsActive
                 FROM App.vKpiPackageItems
                 WHERE KpiPackageId = @Id
                 ORDER BY KpiCode",
@@ -170,7 +172,9 @@ public static class KpiPackageEndpoints
                 commandType: System.Data.CommandType.StoredProcedure);
 
             var items = await conn.QueryAsync<KpiPackageItemDto>(@"
-                SELECT KpiPackageItemId, KpiPackageId, KpiId, KpiCode, KpiName, Category, DataType, KpiIsActive
+                SELECT KpiPackageItemId, KpiPackageId, KpiId, KpiCode, KpiName,
+                       CategoryId, CategoryCode, Category,
+                       DataType, KpiIsActive
                 FROM App.vKpiPackageItems
                 WHERE KpiPackageId = @Id
                 ORDER BY KpiCode",
@@ -192,7 +196,9 @@ public static class KpiPackageEndpoints
                 return Results.Forbid();
 
             var packageItems = (await conn.QueryAsync<KpiPackageItemDto>(@"
-                SELECT KpiPackageItemId, KpiPackageId, KpiId, KpiCode, KpiName, Category, DataType, KpiIsActive
+                SELECT KpiPackageItemId, KpiPackageId, KpiId, KpiCode, KpiName,
+                       CategoryId, CategoryCode, Category,
+                       DataType, KpiIsActive
                 FROM App.vKpiPackageItems
                 WHERE KpiPackageId = @Id AND KpiIsActive = 1
                 ORDER BY KpiCode",

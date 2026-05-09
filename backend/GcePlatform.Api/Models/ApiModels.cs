@@ -222,6 +222,8 @@ public record KpiPackageItemDto(
     int     KpiId,
     string  KpiCode,
     string  KpiName,
+    int?    CategoryId,
+    string? CategoryCode,
     string? Category,
     string? DataType,
     bool    KpiIsActive
@@ -253,6 +255,40 @@ public record CreateTemplatesFromPackageRequest(
 );
 
 // ---------------------------------------------------------------------------
+// KPI Category  (KPI.Category — global lookup, not per-account)
+// ---------------------------------------------------------------------------
+
+public record KpiCategoryDto(
+    int      KpiCategoryId,
+    Guid     ExternalId,
+    string   Code,
+    string   Name,
+    string?  Description,
+    bool     IsActive,
+    DateTime CreatedOnUtc,
+    DateTime ModifiedOnUtc,
+    /// <summary>How many KPI definitions FK to this category. Used by the admin UI to warn before deactivation.</summary>
+    int      DefinitionCount,
+    /// <summary>How many account-level CategoryWeight rows reference this category.</summary>
+    int      CategoryWeightCount
+);
+
+// Code is locked from creation onward — supplied here, never on Update.
+public record CreateKpiCategoryRequest(
+    string  Code,
+    string  Name,
+    string? Description,
+    bool?   IsActive = true
+);
+
+// Update never carries Code (immutable). Active flag is optional; omit to keep current.
+public record UpdateKpiCategoryRequest(
+    string  Name,
+    string? Description,
+    bool?   IsActive = null
+);
+
+// ---------------------------------------------------------------------------
 // KPI Definition  (App.vKpiDefinitions — screen K-01)
 // ---------------------------------------------------------------------------
 
@@ -262,6 +298,11 @@ public record KpiDefinitionDto(
     string  KpiCode,
     string  KpiName,
     string? KpiDescription,
+    /// <summary>FK into KPI.Category. NOT NULL on the table; nullable here only because
+    /// the column type historically allowed NULL. Always populated post-migration.</summary>
+    int?    CategoryId,
+    string? CategoryCode,
+    /// <summary>Category display name — sourced from KPI.Category.Name via the view.</summary>
     string? Category,
     string? Unit,
     string  DataType,
@@ -276,27 +317,32 @@ public record KpiDefinitionDto(
     string? TagsRaw
 );
 
+// KpiCode is OPTIONAL: when null/empty, the server auto-generates {CategoryCode}-NNN
+// where NNN is the next available 3-digit suffix in that category.
+// CategoryId is required (NOT NULL FK on KPI.Definition).
 public record CreateKpiDefinitionRequest(
-    string   KpiCode,
+    int      CategoryId,
     string   KpiName,
     string?  KpiDescription,
-    string?  Category,
     string?  Unit,
     string   DataType,
     bool     AllowMultiValue,
     string   CollectionType,
     string?  ThresholdDirection,
+    /// <summary>Optional. If null/empty, server auto-generates as {CategoryCode}-NNN.</summary>
+    string?  KpiCode,
     // DropDown options — null to skip, empty list to clear
     IEnumerable<string>? DropDownOptions,
     // Tag IDs to assign — null to skip, empty list to clear
     IEnumerable<int>? TagIds
 );
 
-// KpiCode is immutable after creation (stable identifier used by assignments).
+// KpiCode is immutable after creation (stable identifier used by assignments and snapshots).
+// CategoryId is mutable — admins can re-categorise a KPI later; KpiCode does NOT regenerate.
 public record UpdateKpiDefinitionRequest(
+    int      CategoryId,
     string   KpiName,
     string?  KpiDescription,
-    string?  Category,
     string?  Unit,
     string   DataType,
     bool     AllowMultiValue,
@@ -317,6 +363,8 @@ public record KpiAssignmentDto(
     Guid     ExternalId,
     string   KpiCode,
     string   KpiName,
+    int?     CategoryId,
+    string?  CategoryCode,
     string?  Category,
     string   AccountCode,
     string   AccountName,
@@ -350,6 +398,8 @@ public record EffectiveKpiAssignmentDto(
     string   KpiName,
     string   EffectiveKpiName,
     string?  EffectiveKpiDescription,
+    int?     CategoryId,
+    string?  CategoryCode,
     string?  Category,
     string   AccountCode,
     string   AccountName,
@@ -384,6 +434,8 @@ public record KpiAssignmentTemplateDto(
     string?   CustomKpiDescription,
     string?   EffectiveKpiName,
     string?   EffectiveKpiDescription,
+    int?      CategoryId,
+    string?   CategoryCode,
     string?   Category,
     int?      PeriodScheduleId,
     string?   ScheduleName,
@@ -539,23 +591,35 @@ public record BatchKpiAssignmentTemplateItem(
 // composite score on the Monitoring page (live in Phase 2).
 // ---------------------------------------------------------------------------
 
+// Reads return KpiCategoryId + Code + Name so the UI can render and re-key edits.
 public record CategoryWeightDto(
-    string   Category,
+    int      KpiCategoryId,
+    string   CategoryCode,
+    string   Category,        // category name, sourced from KPI.Category.Name
     decimal  Weight,
     bool     IsActive
 );
 
+// Writes are keyed by KpiCategoryId. CategoryCode is accepted as an alternative
+// (the proc resolves it server-side); the front-end normally posts the ID.
+public record UpsertCategoryWeightItem(
+    int?    KpiCategoryId = null,
+    string? CategoryCode  = null,
+    decimal Weight        = 1m,
+    bool    IsActive      = true
+);
+
 public record UpsertCategoryWeightsRequest(
-    string                          AccountCode,
-    IEnumerable<CategoryWeightDto>  Weights
+    string                              AccountCode,
+    IEnumerable<UpsertCategoryWeightItem> Weights
 );
 
 // Trigger an explicit re-snap of CategoryWeightSnapshot on every assignment
-// template under a given account (optionally narrowed to one Category) and
+// template under a given account (optionally narrowed to one category) and
 // cascade to unsubmitted assignments. Submitted history is unaffected.
 public record RefreshTemplateCategoryWeightsRequest(
     string  AccountCode,
-    string? Category = null
+    int?    KpiCategoryId = null
 );
 
 public record RefreshTemplateCategoryWeightsResponse(
@@ -639,6 +703,8 @@ public record SiteCategoryScoreDto(
     int       AccountId,
     int       SiteOrgUnitId,
     int       PeriodId,
+    int       CategoryId,
+    string    CategoryCode,
     string    Category,
     decimal?  CategoryScore,
     decimal   CategoryWeight,
@@ -927,6 +993,8 @@ public record SiteSubmissionDetailDto(
     string    KpiCode,
     string    KpiName,
     string    EffectiveKpiName,
+    int?      CategoryId,
+    string?   CategoryCode,
     string?   Category,
     string    DataType,
     bool      IsRequired,
@@ -994,6 +1062,8 @@ public record AssignmentWithSubmissionDto(
     string   KpiName,
     string   EffectiveKpiName,
     string?  EffectiveKpiDescription,
+    int?     CategoryId,
+    string?  CategoryCode,
     string?  Category,
     string   DataType,
     bool     AllowMultiValue,

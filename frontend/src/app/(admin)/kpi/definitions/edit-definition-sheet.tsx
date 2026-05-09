@@ -46,10 +46,15 @@ function parseTagsRaw(raw: string | null): Array<{ id: number; name: string }> {
   })
 }
 
+// CategoryId is required and mutable. KpiCode is locked from creation onward
+// and never appears in this payload.
 const schema = z.object({
+  categoryId: z
+    .number({ invalid_type_error: 'Pick a category' })
+    .int()
+    .positive('Pick a category'),
   kpiName: z.string().min(2).max(200),
   kpiDescription: z.string().max(1000).optional(),
-  category: z.string().max(100).optional(),
   unit: z.string().max(50).optional(),
   dataType: z.enum(['Numeric', 'Percentage', 'Boolean', 'Text', 'Currency', 'DropDown', 'Time']),
   allowMultiValue: z.boolean().default(false),
@@ -93,12 +98,25 @@ export function EditDefinitionSheet({ kpi, open, onClose }: EditDefinitionSheetP
     [tagsQuery.data]
   )
 
+  // Active categories for the picker. The KPI's current category may itself be
+  // inactive (admin deactivated it after assignment); we still render it as a
+  // disabled option so the form value stays valid until the user picks another.
+  const categoriesQuery = useQuery({
+    queryKey: ['kpi', 'categories', 'all'],
+    queryFn: () => api.kpi.categories.list({ includeInactive: true }),
+    enabled: open,
+  })
+  const allCategories = categoriesQuery.data?.items ?? []
+  const selectableCategories = allCategories.filter(
+    (c) => c.isActive || c.kpiCategoryId === kpi.categoryId
+  )
+
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
+      categoryId: kpi.categoryId ?? (undefined as unknown as number),
       kpiName: kpi.kpiName,
       kpiDescription: kpi.kpiDescription ?? '',
-      category: kpi.category ?? '',
       unit: kpi.unit ?? '',
       dataType: kpi.dataType as FormValues['dataType'],
       allowMultiValue: kpi.allowMultiValue,
@@ -111,9 +129,9 @@ export function EditDefinitionSheet({ kpi, open, onClose }: EditDefinitionSheetP
   useEffect(() => {
     if (open) {
       form.reset({
+        categoryId: kpi.categoryId ?? (undefined as unknown as number),
         kpiName: kpi.kpiName,
         kpiDescription: kpi.kpiDescription ?? '',
-        category: kpi.category ?? '',
         unit: kpi.unit ?? '',
         dataType: kpi.dataType as FormValues['dataType'],
         allowMultiValue: kpi.allowMultiValue,
@@ -134,11 +152,14 @@ export function EditDefinitionSheet({ kpi, open, onClose }: EditDefinitionSheetP
   const mutation = useMutation({
     mutationFn: (values: FormValues) =>
       api.kpi.definitions.update(kpi.kpiId, {
-        ...values,
+        categoryId: values.categoryId,
+        kpiName: values.kpiName,
         thresholdDirection: values.thresholdDirection === 'none' ? null : values.thresholdDirection,
         kpiDescription: values.kpiDescription || undefined,
-        category: values.category || undefined,
         unit: values.unit || undefined,
+        dataType: values.dataType,
+        allowMultiValue: values.allowMultiValue,
+        collectionType: values.collectionType,
         dropDownOptions: isDropDown ? dropDownOptions : null,
         tagIds: Array.from(selectedTagIds),
       }),
@@ -193,13 +214,34 @@ export function EditDefinitionSheet({ kpi, open, onClose }: EditDefinitionSheetP
               </div>
               <FormField
                 control={form.control}
-                name="category"
+                name="categoryId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Category <span className="text-muted-foreground">(optional)</span></FormLabel>
-                    <FormControl>
-                      <Input placeholder="e.g. Safety" {...field} />
-                    </FormControl>
+                    <FormLabel>Category</FormLabel>
+                    <Select
+                      value={field.value ? String(field.value) : ''}
+                      onValueChange={(v) => field.onChange(parseInt(v, 10))}
+                      disabled={categoriesQuery.isLoading}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={categoriesQuery.isLoading ? 'Loading…' : 'Pick a category'} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {selectableCategories.map((cat) => (
+                          <SelectItem key={cat.kpiCategoryId} value={String(cat.kpiCategoryId)}>
+                            <span className="flex items-center gap-2">
+                              <span className="font-mono text-[11px] text-muted-foreground">{cat.code}</span>
+                              <span>{cat.name}</span>
+                              {!cat.isActive && (
+                                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">inactive</span>
+                              )}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormMessage />
                   </FormItem>
                 )}

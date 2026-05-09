@@ -789,39 +789,65 @@ EXEC App.UpsertRole
     @Description = 'Read-only access to KPI submission data across all accounts.',
     @RoleId = @KpiReviewerRoleId OUTPUT;
 
+-- ─── KPI categories (global lookup) ──────────────────────────
+-- Created BEFORE any KPI definitions because Definition.KpiCategoryId is a NOT NULL FK.
+-- Codes are immutable; chosen to match the single-letter prefix used by the seeded
+-- KPI codes below (S-001 etc.) so future auto-generated codes stay in the same family.
+DECLARE @CatSafetyId INT, @CatQualityId INT, @CatProductivityId INT,
+        @CatFinanceId INT, @CatHrId INT, @CatComplianceId INT;
+
+EXEC App.usp_UpsertKpiCategory @Code = 'S', @Name = 'Safety',
+    @Description = N'Workplace safety incidents, training, and culture.',
+    @KpiCategoryIdOut = @CatSafetyId OUTPUT;
+EXEC App.usp_UpsertKpiCategory @Code = 'Q', @Name = 'Quality',
+    @Description = N'Service quality, accuracy, and customer outcomes.',
+    @KpiCategoryIdOut = @CatQualityId OUTPUT;
+EXEC App.usp_UpsertKpiCategory @Code = 'P', @Name = 'Productivity',
+    @Description = N'Operational efficiency and resource utilisation.',
+    @KpiCategoryIdOut = @CatProductivityId OUTPUT;
+EXEC App.usp_UpsertKpiCategory @Code = 'F', @Name = 'Finance',
+    @Description = N'Cost, revenue, and margin metrics.',
+    @KpiCategoryIdOut = @CatFinanceId OUTPUT;
+EXEC App.usp_UpsertKpiCategory @Code = 'H', @Name = 'HR/People',
+    @Description = N'Workforce composition, turnover, and engagement.',
+    @KpiCategoryIdOut = @CatHrId OUTPUT;
+EXEC App.usp_UpsertKpiCategory @Code = 'C', @Name = 'Compliance',
+    @Description = N'Regulatory and certification compliance.',
+    @KpiCategoryIdOut = @CatComplianceId OUTPUT;
+
 DECLARE @kid INT;
 
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'S-001', @KPIName = 'Lost Time Injury Rate', @KPIDescription = N'Number of lost-time injuries per 100 full-time equivalent employees per year. Calculated monthly on an annualised basis.', @Category = 'Safety', @Unit = 'per 100 FTE', @DataType = 'Numeric', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'S-002', @KPIName = 'Near Miss Reports', @KPIDescription = N'Total number of near-miss incidents formally reported in the period. Higher reporting indicates a healthy safety culture.', @Category = 'Safety', @Unit = 'count', @DataType = 'Numeric', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'S-003', @KPIName = 'Safety Training Completion Rate', @KPIDescription = N'Percentage of required safety training modules completed by eligible staff in the period.', @Category = 'Safety', @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'S-004', @KPIName = 'Vehicle Incident Rate', @KPIDescription = N'Number of vehicle-related incidents (collisions, near misses) per 1,000 vehicle movements.', @Category = 'Safety', @Unit = 'per 1,000 movements', @DataType = 'Numeric', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'S-001', @KPIName = 'Lost Time Injury Rate', @KPIDescription = N'Number of lost-time injuries per 100 full-time equivalent employees per year. Calculated monthly on an annualised basis.', @KpiCategoryId = @CatSafetyId, @Unit = 'per 100 FTE', @DataType = 'Numeric', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'S-002', @KPIName = 'Near Miss Reports', @KPIDescription = N'Total number of near-miss incidents formally reported in the period. Higher reporting indicates a healthy safety culture.', @KpiCategoryId = @CatSafetyId, @Unit = 'count', @DataType = 'Numeric', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'S-003', @KPIName = 'Safety Training Completion Rate', @KPIDescription = N'Percentage of required safety training modules completed by eligible staff in the period.', @KpiCategoryId = @CatSafetyId, @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'S-004', @KPIName = 'Vehicle Incident Rate', @KPIDescription = N'Number of vehicle-related incidents (collisions, near misses) per 1,000 vehicle movements.', @KpiCategoryId = @CatSafetyId, @Unit = 'per 1,000 movements', @DataType = 'Numeric', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
 
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'Q-001', @KPIName = 'On-Time Delivery Rate', @KPIDescription = N'Percentage of shipments delivered on or before the committed delivery date.', @Category = 'Quality', @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'Q-002', @KPIName = 'Customer Complaint Rate', @KPIDescription = N'Number of formal customer complaints per 10,000 shipments processed.', @Category = 'Quality', @Unit = 'per 10,000 shipments', @DataType = 'Numeric', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'Q-003', @KPIName = 'First-Time Quality Rate', @KPIDescription = N'Percentage of operations completed correctly on the first attempt, without rework or correction.', @Category = 'Quality', @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'Q-004', @KPIName = 'Damage / Loss Rate', @KPIDescription = N'Percentage of shipments with reported damage or loss claims.', @Category = 'Quality', @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'Q-001', @KPIName = 'On-Time Delivery Rate', @KPIDescription = N'Percentage of shipments delivered on or before the committed delivery date.', @KpiCategoryId = @CatQualityId, @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'Q-002', @KPIName = 'Customer Complaint Rate', @KPIDescription = N'Number of formal customer complaints per 10,000 shipments processed.', @KpiCategoryId = @CatQualityId, @Unit = 'per 10,000 shipments', @DataType = 'Numeric', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'Q-003', @KPIName = 'First-Time Quality Rate', @KPIDescription = N'Percentage of operations completed correctly on the first attempt, without rework or correction.', @KpiCategoryId = @CatQualityId, @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'Q-004', @KPIName = 'Damage / Loss Rate', @KPIDescription = N'Percentage of shipments with reported damage or loss claims.', @KpiCategoryId = @CatQualityId, @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
 
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'P-001', @KPIName = 'Shipments Per FTE Per Day', @KPIDescription = N'Average number of shipments processed per full-time equivalent employee per working day.', @Category = 'Productivity', @Unit = 'shipments/FTE/day', @DataType = 'Numeric', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'P-002', @KPIName = 'Warehouse Space Utilisation', @KPIDescription = N'Percentage of allocated warehouse space in active use.', @Category = 'Productivity', @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'P-003', @KPIName = 'Vehicle Fleet Utilisation', @KPIDescription = N'Percentage of available vehicle capacity actively deployed on deliveries.', @Category = 'Productivity', @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'P-004', @KPIName = 'Order Pick Accuracy', @KPIDescription = N'Percentage of order picking operations completed without error (wrong item, wrong quantity, wrong address).', @Category = 'Productivity', @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'P-001', @KPIName = 'Shipments Per FTE Per Day', @KPIDescription = N'Average number of shipments processed per full-time equivalent employee per working day.', @KpiCategoryId = @CatProductivityId, @Unit = 'shipments/FTE/day', @DataType = 'Numeric', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'P-002', @KPIName = 'Warehouse Space Utilisation', @KPIDescription = N'Percentage of allocated warehouse space in active use.', @KpiCategoryId = @CatProductivityId, @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'P-003', @KPIName = 'Vehicle Fleet Utilisation', @KPIDescription = N'Percentage of available vehicle capacity actively deployed on deliveries.', @KpiCategoryId = @CatProductivityId, @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'P-004', @KPIName = 'Order Pick Accuracy', @KPIDescription = N'Percentage of order picking operations completed without error (wrong item, wrong quantity, wrong address).', @KpiCategoryId = @CatProductivityId, @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
 
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'F-001', @KPIName = 'Cost Per Shipment', @KPIDescription = N'Total operational cost divided by total shipments processed. Expressed in local reporting currency.', @Category = 'Finance', @Unit = 'EUR', @DataType = 'Currency', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'F-002', @KPIName = 'Revenue Per Site', @KPIDescription = N'Total revenue attributable to the site in the reporting period.', @Category = 'Finance', @Unit = 'EUR', @DataType = 'Currency', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'F-003', @KPIName = 'Operating Margin', @KPIDescription = N'Operating profit as a percentage of revenue for the period.', @Category = 'Finance', @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'F-004', @KPIName = 'Overtime Cost Ratio', @KPIDescription = N'Overtime labour cost as a percentage of total labour cost in the period.', @Category = 'Finance', @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'F-001', @KPIName = 'Cost Per Shipment', @KPIDescription = N'Total operational cost divided by total shipments processed. Expressed in local reporting currency.', @KpiCategoryId = @CatFinanceId, @Unit = 'EUR', @DataType = 'Currency', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'F-002', @KPIName = 'Revenue Per Site', @KPIDescription = N'Total revenue attributable to the site in the reporting period.', @KpiCategoryId = @CatFinanceId, @Unit = 'EUR', @DataType = 'Currency', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'F-003', @KPIName = 'Operating Margin', @KPIDescription = N'Operating profit as a percentage of revenue for the period.', @KpiCategoryId = @CatFinanceId, @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'F-004', @KPIName = 'Overtime Cost Ratio', @KPIDescription = N'Overtime labour cost as a percentage of total labour cost in the period.', @KpiCategoryId = @CatFinanceId, @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
 
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'H-001', @KPIName = 'Staff Turnover Rate', @KPIDescription = N'Percentage of headcount that left the organisation (voluntary and involuntary) during the period, annualised.', @Category = 'HR/People', @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'H-002', @KPIName = 'Absenteeism Rate', @KPIDescription = N'Percentage of scheduled working hours lost to unplanned absence (sickness, unauthorised leave).', @Category = 'HR/People', @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'H-003', @KPIName = 'Training Hours Per Employee', @KPIDescription = N'Average number of formal training hours completed per employee in the period.', @Category = 'HR/People', @Unit = 'hours', @DataType = 'Numeric', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'H-001', @KPIName = 'Staff Turnover Rate', @KPIDescription = N'Percentage of headcount that left the organisation (voluntary and involuntary) during the period, annualised.', @KpiCategoryId = @CatHrId, @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'H-002', @KPIName = 'Absenteeism Rate', @KPIDescription = N'Percentage of scheduled working hours lost to unplanned absence (sickness, unauthorised leave).', @KpiCategoryId = @CatHrId, @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'H-003', @KPIName = 'Training Hours Per Employee', @KPIDescription = N'Average number of formal training hours completed per employee in the period.', @KpiCategoryId = @CatHrId, @Unit = 'hours', @DataType = 'Numeric', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
 
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'C-001', @KPIName = 'Regulatory Audit Pass Rate', @KPIDescription = N'Percentage of internal and external regulatory audits passed without major findings.', @Category = 'Compliance', @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'C-002', @KPIName = 'Security Incidents Reported', @KPIDescription = N'Number of security-related incidents (theft, unauthorised access, data breach) formally reported in the period.', @Category = 'Compliance', @Unit = 'count', @DataType = 'Numeric', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'C-003', @KPIName = 'Certification Compliance Rate', @KPIDescription = N'Percentage of required operational certifications (ISO, TAPA, GDP) that are current and valid.', @Category = 'Compliance', @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'C-001', @KPIName = 'Regulatory Audit Pass Rate', @KPIDescription = N'Percentage of internal and external regulatory audits passed without major findings.', @KpiCategoryId = @CatComplianceId, @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'C-002', @KPIName = 'Security Incidents Reported', @KPIDescription = N'Number of security-related incidents (theft, unauthorised access, data breach) formally reported in the period.', @KpiCategoryId = @CatComplianceId, @Unit = 'count', @DataType = 'Numeric', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'C-003', @KPIName = 'Certification Compliance Rate', @KPIDescription = N'Percentage of required operational certifications (ISO, TAPA, GDP) that are current and valid.', @KpiCategoryId = @CatComplianceId, @Unit = '%', @DataType = 'Percentage', @CollectionType = 'Manual', @ThresholdDirection = 'Higher', @KPIID = @kid OUTPUT;
 
 -- DataType = 'Time': SubmissionValue and Threshold* are stored as total seconds;
 -- the UI parses HH:MM:SS on input and formats it back on display.
-EXEC App.usp_UpsertKpiDefinition @KPICode = 'Q-005', @KPIName = 'Average Customer Response Time', @KPIDescription = N'Average elapsed time from customer enquiry receipt to first substantive response, expressed as HH:MM:SS.', @Category = 'Quality', @Unit = 'HH:MM:SS', @DataType = 'Time', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
+EXEC App.usp_UpsertKpiDefinition @KPICode = 'Q-005', @KPIName = 'Average Customer Response Time', @KPIDescription = N'Average elapsed time from customer enquiry receipt to first substantive response, expressed as HH:MM:SS.', @KpiCategoryId = @CatQualityId, @Unit = 'HH:MM:SS', @DataType = 'Time', @CollectionType = 'Manual', @ThresholdDirection = 'Lower', @KPIID = @kid OUTPUT;
 
 DECLARE @QtrPeriod0101 INT;       -- Jan 2026 on quarterly schedule
 DECLARE @MthPeriod0202 INT;       -- Feb 2026 on monthly schedule
@@ -1165,48 +1191,50 @@ EXEC App.usp_UpsertKpiAssignmentTemplate
 -- Per-account category weights (normalised at compute time on the Monitoring page).
 -- Categories not listed default to weight 1.0 in App.vSiteCompositeScore once views ship.
 
+-- WeightsJson keys: categoryCode (resolved to KpiCategoryId in the proc) is friendlier
+-- in seed scripts; the front-end normally posts kpiCategoryId directly.
 EXEC App.usp_UpsertCategoryWeights
     @AccountCode = 'DHL',
     @WeightsJson = N'[
-        {"category":"Safety","weight":0.30,"isActive":true},
-        {"category":"Quality","weight":0.25,"isActive":true},
-        {"category":"Productivity","weight":0.20,"isActive":true},
-        {"category":"Finance","weight":0.15,"isActive":true},
-        {"category":"Compliance","weight":0.05,"isActive":true},
-        {"category":"HR/People","weight":0.05,"isActive":true}
+        {"categoryCode":"S","weight":0.30,"isActive":true},
+        {"categoryCode":"Q","weight":0.25,"isActive":true},
+        {"categoryCode":"P","weight":0.20,"isActive":true},
+        {"categoryCode":"F","weight":0.15,"isActive":true},
+        {"categoryCode":"C","weight":0.05,"isActive":true},
+        {"categoryCode":"H","weight":0.05,"isActive":true}
     ]';
 
 EXEC App.usp_UpsertCategoryWeights
     @AccountCode = 'UPS',
     @WeightsJson = N'[
-        {"category":"Safety","weight":0.25,"isActive":true},
-        {"category":"Quality","weight":0.25,"isActive":true},
-        {"category":"Productivity","weight":0.30,"isActive":true},
-        {"category":"Finance","weight":0.10,"isActive":true},
-        {"category":"Compliance","weight":0.05,"isActive":true},
-        {"category":"HR/People","weight":0.05,"isActive":true}
+        {"categoryCode":"S","weight":0.25,"isActive":true},
+        {"categoryCode":"Q","weight":0.25,"isActive":true},
+        {"categoryCode":"P","weight":0.30,"isActive":true},
+        {"categoryCode":"F","weight":0.10,"isActive":true},
+        {"categoryCode":"C","weight":0.05,"isActive":true},
+        {"categoryCode":"H","weight":0.05,"isActive":true}
     ]';
 
 EXEC App.usp_UpsertCategoryWeights
     @AccountCode = 'ACME',
     @WeightsJson = N'[
-        {"category":"Safety","weight":0.40,"isActive":true},
-        {"category":"Quality","weight":0.20,"isActive":true},
-        {"category":"Finance","weight":0.20,"isActive":true},
-        {"category":"Compliance","weight":0.20,"isActive":true}
+        {"categoryCode":"S","weight":0.40,"isActive":true},
+        {"categoryCode":"Q","weight":0.20,"isActive":true},
+        {"categoryCode":"F","weight":0.20,"isActive":true},
+        {"categoryCode":"C","weight":0.20,"isActive":true}
     ]';
 
 EXEC App.usp_UpsertCategoryWeights
     @AccountCode = 'FEDEX',
     @WeightsJson = N'[
-        {"category":"Finance","weight":0.50,"isActive":true},
-        {"category":"Compliance","weight":0.50,"isActive":true}
+        {"categoryCode":"F","weight":0.50,"isActive":true},
+        {"categoryCode":"C","weight":0.50,"isActive":true}
     ]';
 
 EXEC App.usp_UpsertCategoryWeights
     @AccountCode = 'AMZN',
     @WeightsJson = N'[
-        {"category":"HR/People","weight":1.00,"isActive":true}
+        {"categoryCode":"H","weight":1.00,"isActive":true}
     ]';
 
 -- Templates above were created BEFORE the account-level CategoryWeight rows,

@@ -60,6 +60,9 @@ import type {
   KpiAssignment,
   KpiAssignmentGroup,
   KpiAssignmentTemplate,
+  KpiCategory,
+  CreateKpiCategoryInput,
+  UpdateKpiCategoryInput,
   KpiDefinition,
   KpiPeriod,
   KpiPeriodSchedule,
@@ -480,6 +483,26 @@ export const api = {
       },
       setActive(id: number, isActive: boolean): Promise<void> {
         return apiFetch(`/kpi/definitions/${id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) })
+      },
+    },
+    // Global KPI categories (lookup table). Reads are open to all authenticated users
+    // because every KPI form needs them; writes are gated server-side on kpi.admin.
+    categories: {
+      list(params?: { includeInactive?: boolean }): Promise<ApiList<KpiCategory>> {
+        const qs = params?.includeInactive ? '?includeInactive=true' : ''
+        return apiFetch(`/kpi/categories${qs}`)
+      },
+      get(id: number): Promise<KpiCategory> {
+        return apiFetch(`/kpi/categories/${id}`)
+      },
+      create(data: CreateKpiCategoryInput): Promise<KpiCategory> {
+        return apiFetch('/kpi/categories', { method: 'POST', body: JSON.stringify(data) })
+      },
+      update(id: number, data: UpdateKpiCategoryInput): Promise<KpiCategory> {
+        return apiFetch(`/kpi/categories/${id}`, { method: 'PATCH', body: JSON.stringify(data) })
+      },
+      setActive(id: number, isActive: boolean): Promise<void> {
+        return apiFetch(`/kpi/categories/${id}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) })
       },
     },
     assignments: {

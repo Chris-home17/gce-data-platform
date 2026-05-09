@@ -47,11 +47,17 @@ public static class KpiScoringEndpoints
             }
 
             var rows = await conn.QueryAsync<CategoryWeightDto>(@"
-                SELECT cw.Category, cw.Weight, CAST(cw.IsActive AS bit) AS IsActive
+                SELECT
+                    cw.KpiCategoryId,
+                    c.Code  AS CategoryCode,
+                    c.Name  AS Category,
+                    cw.Weight,
+                    CAST(cw.IsActive AS bit) AS IsActive
                 FROM KPI.CategoryWeight AS cw
-                JOIN Dim.Account        AS a ON a.AccountId = cw.AccountId
+                JOIN Dim.Account        AS a ON a.AccountId      = cw.AccountId
+                JOIN KPI.Category       AS c ON c.KpiCategoryId  = cw.KpiCategoryId
                 WHERE a.AccountCode = @AccountCode
-                ORDER BY cw.Category",
+                ORDER BY c.Name",
                 new { AccountCode = accountCode });
 
             var list = rows.ToList();
@@ -70,6 +76,8 @@ public static class KpiScoringEndpoints
                 AccountId,
                 SiteOrgUnitId,
                 PeriodID         AS PeriodId,
+                CategoryId,
+                CategoryCode,
                 Category,
                 CategoryScore,
                 CategoryWeight,
@@ -87,7 +95,7 @@ public static class KpiScoringEndpoints
                     WHERE (@PeriodId      IS NULL OR PeriodID      = @PeriodId)
                       AND (@AccountId     IS NULL OR AccountId     = @AccountId)
                       AND (@SiteOrgUnitId IS NULL OR SiteOrgUnitId = @SiteOrgUnitId)
-                    ORDER BY AccountId, SiteOrgUnitId, Category",
+                    ORDER BY AccountId, SiteOrgUnitId, CategoryCode",
                     new { PeriodId = periodId, AccountId = accountId, SiteOrgUnitId = siteOrgUnitId });
             }
             else
@@ -104,7 +112,7 @@ public static class KpiScoringEndpoints
                       AND (@AccountId     IS NULL OR AccountId     = @AccountId)
                       AND (@SiteOrgUnitId IS NULL OR SiteOrgUnitId = @SiteOrgUnitId)
                       AND AccountId IN (SELECT AccountId FROM AccessibleAccounts)
-                    ORDER BY AccountId, SiteOrgUnitId, Category",
+                    ORDER BY AccountId, SiteOrgUnitId, CategoryCode",
                     new { PeriodId = periodId, AccountId = accountId, SiteOrgUnitId = siteOrgUnitId, UserId = currentUserId.Value });
             }
 
@@ -146,13 +154,11 @@ public static class KpiScoringEndpoints
                 if (accessible is null) return Results.Forbid();
             }
 
-            var actorUpn = user.FindFirstValue("preferred_username")
-                        ?? user.FindFirstValue(ClaimTypes.Upn)
-                        ?? user.FindFirstValue(ClaimTypes.Name);
+            var actorUpn = PlatformAuthService.GetUpn(user);
 
             var result = await conn.QuerySingleAsync<RefreshTemplateCategoryWeightsResponse>(
                 "App.usp_RefreshTemplateCategoryWeights",
-                new { AccountCode = request.AccountCode, Category = request.Category, ActorUPN = actorUpn },
+                new { AccountCode = request.AccountCode, KpiCategoryId = request.KpiCategoryId, ActorUPN = actorUpn },
                 commandType: System.Data.CommandType.StoredProcedure);
 
             return Results.Ok(result);
@@ -186,16 +192,16 @@ public static class KpiScoringEndpoints
                 if (accessible is null) return Results.Forbid();
             }
 
-            var actorUpn = user.FindFirstValue("preferred_username")
-                        ?? user.FindFirstValue(ClaimTypes.Upn)
-                        ?? user.FindFirstValue(ClaimTypes.Name);
+            var actorUpn = PlatformAuthService.GetUpn(user);
 
+            // Each item carries kpiCategoryId (preferred) or categoryCode (resolved server-side).
             var weightsJson = JsonSerializer.Serialize(
                 request.Weights?.Select(w => new
                 {
-                    category = w.Category,
-                    weight   = w.Weight,
-                    isActive = w.IsActive,
+                    kpiCategoryId = w.KpiCategoryId,
+                    categoryCode  = w.CategoryCode,
+                    weight        = w.Weight,
+                    isActive      = w.IsActive,
                 }).ToArray() ?? Array.Empty<object>());
 
             await conn.ExecuteAsync("App.usp_UpsertCategoryWeights",
@@ -203,11 +209,17 @@ public static class KpiScoringEndpoints
                 commandType: System.Data.CommandType.StoredProcedure);
 
             var rows = await conn.QueryAsync<CategoryWeightDto>(@"
-                SELECT cw.Category, cw.Weight, CAST(cw.IsActive AS bit) AS IsActive
+                SELECT
+                    cw.KpiCategoryId,
+                    c.Code  AS CategoryCode,
+                    c.Name  AS Category,
+                    cw.Weight,
+                    CAST(cw.IsActive AS bit) AS IsActive
                 FROM KPI.CategoryWeight AS cw
-                JOIN Dim.Account        AS a ON a.AccountId = cw.AccountId
+                JOIN Dim.Account        AS a ON a.AccountId     = cw.AccountId
+                JOIN KPI.Category       AS c ON c.KpiCategoryId = cw.KpiCategoryId
                 WHERE a.AccountCode = @AccountCode
-                ORDER BY cw.Category",
+                ORDER BY c.Name",
                 new { AccountCode = request.AccountCode });
 
             var list = rows.ToList();

@@ -14,6 +14,7 @@ import {
   ClipboardList,
   GitBranch,
   LayoutDashboard,
+  Layers,
   ListChecks,
   Lock,
   Map,
@@ -95,6 +96,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'KPI Management',
     items: [
       { label: 'KPI Library', href: '/kpi/definitions', icon: ListChecks, permission: PERMISSIONS.KPI_ADMIN },
+      { label: 'KPI Categories', href: '/kpi/categories', icon: Layers, permission: PERMISSIONS.KPI_ADMIN },
       { label: 'KPI Periods', href: '/kpi/periods', icon: Calendar, permission: PERMISSIONS.KPI_ADMIN },
       { label: 'KPI Packages', href: '/kpi/packages', icon: Package, permission: PERMISSIONS.KPI_ADMIN },
       { label: 'Category Weights', href: '/kpi/category-weights', icon: Scale, permission: PERMISSIONS.KPI_ADMIN },

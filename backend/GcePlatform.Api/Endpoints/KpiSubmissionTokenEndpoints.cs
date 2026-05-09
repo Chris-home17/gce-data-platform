@@ -99,6 +99,8 @@ public static class KpiSubmissionTokenEndpoints
                     KpiName,
                     EffectiveKpiName,
                     EffectiveKpiDescription,
+                    CategoryId,
+                    CategoryCode,
                     Category,
                     DataType,
                     AllowMultiValue,

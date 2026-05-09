@@ -341,9 +341,44 @@ export interface KpiPackageItem {
   kpiId: number
   kpiCode: string
   kpiName: string
+  categoryId: number | null
+  categoryCode: string | null
   category: string | null
   dataType: string | null
   kpiIsActive: boolean
+}
+
+/** KPI category — global lookup, shared across all accounts.
+ *  Code is locked from creation onward; Name/Description/IsActive are mutable.
+ *  Lists are sorted alphabetically by Name. */
+export interface KpiCategory {
+  kpiCategoryId: number
+  externalId: string
+  code: string
+  name: string
+  description: string | null
+  isActive: boolean
+  createdOnUtc: string
+  modifiedOnUtc: string
+  /** How many KPI definitions FK to this category. Used by the admin UI to warn before deactivation. */
+  definitionCount: number
+  /** How many account-level CategoryWeight rows reference this category. */
+  categoryWeightCount: number
+}
+
+export interface CreateKpiCategoryInput {
+  /** Locked from creation onward. 1-20 chars, A-Z 0-9 only (uppercased server-side). */
+  code: string
+  name: string
+  description?: string | null
+  isActive?: boolean
+}
+
+export interface UpdateKpiCategoryInput {
+  /** Code is NOT included — it is immutable after creation. */
+  name: string
+  description?: string | null
+  isActive?: boolean | null
 }
 
 export interface KpiPackageDetail {
@@ -583,6 +618,10 @@ export interface KpiDefinition {
   kpiCode: string
   kpiName: string
   kpiDescription: string | null
+  /** FK into KPI.Category — required at creation, mutable on update. */
+  categoryId: number | null
+  categoryCode: string | null
+  /** Display name, sourced from KPI.Category.Name via the view. */
   category: string
   unit: string
   dataType: 'Numeric' | 'Percentage' | 'Boolean' | 'Text' | 'Currency' | 'DropDown' | 'Time' | string
@@ -619,6 +658,8 @@ export interface KpiAssignment {
   externalId: string
   kpiCode: string
   kpiName: string
+  categoryId: number | null
+  categoryCode: string | null
   category: string | null
   accountCode: string
   accountName: string
@@ -649,6 +690,8 @@ export interface KpiAssignmentTemplate {
   customKpiDescription: string | null
   effectiveKpiName: string | null
   effectiveKpiDescription: string | null
+  categoryId: number | null
+  categoryCode: string | null
   category: string | null
   periodScheduleId: number | null
   scheduleName: string | null
@@ -701,24 +744,36 @@ export interface DropDownOptionPoints {
   sortOrder?: number | null
 }
 
-/** From KPI.CategoryWeight: per-account weight applied to each KPI Category. */
+/** From KPI.CategoryWeight: per-account weight applied to each KPI Category.
+ *  Reads carry kpiCategoryId + categoryCode + category (name). */
 export interface CategoryWeight {
+  kpiCategoryId: number
+  categoryCode: string
+  /** Display name, sourced from KPI.Category.Name. */
   category: string
+  weight: number
+  isActive: boolean
+}
+
+/** Each upsert item carries kpiCategoryId (preferred) or categoryCode (resolved server-side). */
+export interface UpsertCategoryWeightItem {
+  kpiCategoryId?: number | null
+  categoryCode?: string | null
   weight: number
   isActive: boolean
 }
 
 export interface UpsertCategoryWeightsInput {
   accountCode: string
-  weights: CategoryWeight[]
+  weights: UpsertCategoryWeightItem[]
 }
 
 /** Trigger an explicit re-snap of CategoryWeightSnapshot on existing templates
- *  for an account (optionally narrowed to one Category) and cascade to
+ *  for an account (optionally narrowed to one category) and cascade to
  *  unsubmitted assignments. Submitted history is unaffected. */
 export interface RefreshTemplateCategoryWeightsInput {
   accountCode: string
-  category?: string | null
+  kpiCategoryId?: number | null
 }
 
 export interface RefreshTemplateCategoryWeightsResponse {
@@ -733,6 +788,8 @@ export interface SiteCategoryScore {
   accountId: number
   siteOrgUnitId: number
   periodId: number
+  categoryId: number
+  categoryCode: string
   category: string
   categoryScore: number | null
   categoryWeight: number
@@ -778,6 +835,8 @@ export interface SiteSubmissionDetail {
   kpiCode: string
   kpiName: string
   effectiveKpiName: string
+  categoryId: number | null
+  categoryCode: string | null
   category: string | null
   dataType: string
   isRequired: boolean
@@ -848,10 +907,13 @@ export interface CreateKpiPeriodScheduleInput {
 }
 
 export interface CreateKpiDefinitionInput {
-  kpiCode: string
+  /** FK into KPI.Category — required. */
+  categoryId: number
+  /** Optional. If empty/omitted, the server auto-generates {CategoryCode}-NNN
+   *  using the next available 3-digit suffix in the chosen category. */
+  kpiCode?: string
   kpiName: string
   kpiDescription?: string
-  category?: string
   unit?: string
   dataType: 'Numeric' | 'Percentage' | 'Boolean' | 'Text' | 'Currency' | 'DropDown' | 'Time'
   allowMultiValue?: boolean
@@ -861,10 +923,12 @@ export interface CreateKpiDefinitionInput {
   tagIds?: number[]
 }
 
+/** KpiCode is immutable post-create; it never appears in this payload.
+ *  CategoryId is mutable — admins may re-categorise; KpiCode does NOT regenerate. */
 export interface UpdateKpiDefinitionInput {
+  categoryId: number
   kpiName: string
   kpiDescription?: string
-  category?: string
   unit?: string
   dataType: 'Numeric' | 'Percentage' | 'Boolean' | 'Text' | 'Currency' | 'DropDown' | 'Time'
   allowMultiValue?: boolean
@@ -1076,6 +1140,8 @@ export interface AssignmentWithSubmission {
   kpiName: string
   effectiveKpiName: string
   effectiveKpiDescription: string | null
+  categoryId: number | null
+  categoryCode: string | null
   category: string | null
   dataType: 'Numeric' | 'Percentage' | 'Currency' | 'Boolean' | 'Text' | 'DropDown' | 'Time' | string
   allowMultiValue: boolean

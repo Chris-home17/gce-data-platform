@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Info, Loader2, Plus, RotateCcw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -8,6 +9,13 @@ import { PageHeader } from '@/components/shared/page-header'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -20,17 +28,6 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { api } from '@/lib/api'
 import { useAccount } from '@/contexts/account-context'
 import type { CategoryWeight } from '@/types/api'
-
-// Category set used as suggestions when the account has no rows yet.
-// These match the values in KPI.Definition.Category and the seed data.
-const SUGGESTED_CATEGORIES = [
-  'Safety',
-  'Quality',
-  'Productivity',
-  'Finance',
-  'Compliance',
-  'HR/People',
-] as const
 
 interface EditableRow extends CategoryWeight {
   isNew?: boolean
@@ -47,8 +44,21 @@ export function CategoryWeightsView() {
     enabled: !!accountCode,
   })
 
+  // Global category lookup feeds the "Add category" dropdown. Inactive
+  // categories are excluded from the picker but still surface for any existing
+  // weight row that references them (so admins can clean those up).
+  const categoriesQuery = useQuery({
+    queryKey: ['kpi', 'categories', 'all'],
+    queryFn: () => api.kpi.categories.list({ includeInactive: true }),
+  })
+  const allCategories = categoriesQuery.data?.items ?? []
+  const activeCategories = useMemo(
+    () => allCategories.filter((c) => c.isActive),
+    [allCategories],
+  )
+
   const [rows, setRows] = useState<EditableRow[]>([])
-  const [newCategory, setNewCategory] = useState('')
+  const [pickerCategoryId, setPickerCategoryId] = useState<string>('')
 
   // Hydrate local edit buffer when the server data arrives or the account changes.
   useEffect(() => {
@@ -60,17 +70,22 @@ export function CategoryWeightsView() {
     [rows],
   )
 
-  const remainingSuggestions = useMemo(() => {
-    const taken = new Set(rows.map((r) => r.category))
-    return SUGGESTED_CATEGORIES.filter((c) => !taken.has(c))
-  }, [rows])
+  // Categories not already used in the current rows — these populate the Add picker.
+  const availablePickerCategories = useMemo(() => {
+    const used = new Set(rows.map((r) => r.kpiCategoryId))
+    return activeCategories.filter((c) => !used.has(c.kpiCategoryId))
+  }, [rows, activeCategories])
 
   const upsertMutation = useMutation({
     mutationFn: () =>
       api.kpi.categoryWeights.upsert({
         accountCode: accountCode!,
-        // Strip the local-only `isNew` flag before sending — backend doesn't know about it.
-        weights: rows.map((r) => ({ category: r.category, weight: r.weight, isActive: r.isActive })),
+        // Strip the local-only `isNew` flag and key by kpiCategoryId.
+        weights: rows.map((r) => ({
+          kpiCategoryId: r.kpiCategoryId,
+          weight: r.weight,
+          isActive: r.isActive,
+        })),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['kpi', 'category-weights', accountCode] })
@@ -97,15 +112,14 @@ export function CategoryWeightsView() {
   })
 
   // The cascade button is disabled while there are local edits, so the admin
-  // must save (or revert) before propagating. Comparison ignores the
-  // local-only isNew flag.
+  // must save (or revert) before propagating.
   const hasUnsavedEdits = useMemo(() => {
     const server = data?.items ?? []
     if (server.length !== rows.length) return true
-    const byCategory = new Map(server.map((r) => [r.category, r]))
+    const byId = new Map(server.map((r) => [r.kpiCategoryId, r]))
     return rows.some((r) => {
       if (r.isNew) return true
-      const s = byCategory.get(r.category)
+      const s = byId.get(r.kpiCategoryId)
       return !s || s.weight !== r.weight || s.isActive !== r.isActive
     })
   }, [rows, data])
@@ -114,14 +128,25 @@ export function CategoryWeightsView() {
     setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)))
   }
 
-  function addRow(category: string) {
-    if (!category.trim()) return
-    if (rows.some((r) => r.category === category)) {
+  function addRow(kpiCategoryId: number) {
+    const cat = activeCategories.find((c) => c.kpiCategoryId === kpiCategoryId)
+    if (!cat) return
+    if (rows.some((r) => r.kpiCategoryId === kpiCategoryId)) {
       toast.error('That category is already in the list.')
       return
     }
-    setRows((prev) => [...prev, { category, weight: 1.0, isActive: true, isNew: true }])
-    setNewCategory('')
+    setRows((prev) => [
+      ...prev,
+      {
+        kpiCategoryId: cat.kpiCategoryId,
+        categoryCode: cat.code,
+        category: cat.name,
+        weight: 1.0,
+        isActive: true,
+        isNew: true,
+      },
+    ])
+    setPickerCategoryId('')
   }
 
   function removeRow(idx: number) {
@@ -202,28 +227,30 @@ export function CategoryWeightsView() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[45%]">Category</TableHead>
-                <TableHead className="w-[20%]">Weight</TableHead>
-                <TableHead className="w-[20%]">Active</TableHead>
+                <TableHead className="w-[20%]">Code</TableHead>
+                <TableHead className="w-[35%]">Category</TableHead>
+                <TableHead className="w-[15%]">Weight</TableHead>
+                <TableHead className="w-[15%]">Active</TableHead>
                 <TableHead className="w-[15%] text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
                     Loading…
                   </TableCell>
                 </TableRow>
               ) : rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
                     No category weights configured. All categories will use weight 1.0 until you set values below.
                   </TableCell>
                 </TableRow>
               ) : (
                 rows.map((row, idx) => (
-                  <TableRow key={`${row.category}-${idx}`}>
+                  <TableRow key={row.kpiCategoryId}>
+                    <TableCell className="font-mono text-sm">{row.categoryCode}</TableCell>
                     <TableCell className="font-medium">{row.category}</TableCell>
                     <TableCell>
                       <Input
@@ -258,19 +285,36 @@ export function CategoryWeightsView() {
             <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Add category
             </label>
-            <Input
-              placeholder="Type a category name or pick a suggestion"
-              value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
-              list="kpi-category-suggestions"
-            />
-            <datalist id="kpi-category-suggestions">
-              {remainingSuggestions.map((c) => (
-                <option key={c} value={c} />
-              ))}
-            </datalist>
+            <Select
+              value={pickerCategoryId}
+              onValueChange={setPickerCategoryId}
+              disabled={availablePickerCategories.length === 0 || categoriesQuery.isLoading}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={
+                  categoriesQuery.isLoading
+                    ? 'Loading…'
+                    : availablePickerCategories.length === 0
+                    ? 'All active categories are already in the list'
+                    : 'Pick a category'
+                } />
+              </SelectTrigger>
+              <SelectContent>
+                {availablePickerCategories.map((cat) => (
+                  <SelectItem key={cat.kpiCategoryId} value={String(cat.kpiCategoryId)}>
+                    <span className="flex items-center gap-2">
+                      <span className="font-mono text-[11px] text-muted-foreground">{cat.code}</span>
+                      <span>{cat.name}</span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <Button onClick={() => addRow(newCategory)} disabled={!newCategory.trim()}>
+          <Button
+            onClick={() => addRow(parseInt(pickerCategoryId, 10))}
+            disabled={!pickerCategoryId}
+          >
             <Plus className="mr-2 h-4 w-4" />
             Add
           </Button>
@@ -278,7 +322,9 @@ export function CategoryWeightsView() {
 
         <p className="text-xs text-muted-foreground">
           Active weights total <span className="font-mono">{total.toFixed(2)}</span>. Composite score normalises by
-          total at compute time — this is informational only.
+          total at compute time — this is informational only.{' '}
+          Need a new category?{' '}
+          <Link href="/kpi/categories" className="underline">Manage KPI categories</Link>.
         </p>
       </section>
     </div>

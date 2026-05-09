@@ -89,6 +89,9 @@
     <!-- KpiSubmissionValidation: per-assignment Min/Max/Precision/Regex + snapshot -->
     <EmbeddedResource Include="Migrations\Scripts\KpiSubmissionValidation.Up.sql" />
     <EmbeddedResource Include="Migrations\Scripts\KpiSubmissionValidation.Down.sql" />
+    <!-- KpiCategoryGlobal: convert KPI category from free text to a global lookup -->
+    <EmbeddedResource Include="Migrations\Scripts\KpiCategoryGlobal.Up.sql" />
+    <EmbeddedResource Include="Migrations\Scripts\KpiCategoryGlobal.Down.sql" />
   </ItemGroup>
 
 </Project>

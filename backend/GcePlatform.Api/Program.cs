@@ -104,6 +104,7 @@ try
     app.MapOrgUnitEndpoints();
     app.MapTagEndpoints();
     app.MapKpiPeriodEndpoints();
+    app.MapKpiCategoryEndpoints();
     app.MapKpiDefinitionEndpoints();
     app.MapKpiAssignmentEndpoints();
     app.MapKpiPackageEndpoints();

@@ -551,6 +551,10 @@ GO
 IF OBJECT_ID('KPI.Definition', 'U') IS NOT NULL
     DROP TABLE KPI.Definition;
 GO
+-- KPI.Category drops AFTER everything that FKs into it (Definition, CategoryWeight).
+IF OBJECT_ID('KPI.Category', 'U') IS NOT NULL
+    DROP TABLE KPI.Category;
+GO
 IF OBJECT_ID('Dim.Tag', 'U') IS NOT NULL
     DROP TABLE Dim.Tag;
 GO
